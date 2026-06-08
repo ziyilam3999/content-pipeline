@@ -38,7 +38,22 @@ describe("selectFacts", () => {
   it("falls back to unguarded facts when more tiles are requested than guarded facts exist", () => {
     const sel = selectFacts(SPEC, 4);
     expect(sel.length).toBe(4);
-    expect(sel[3].scopeGuard).toBeUndefined(); // the 4th is the first unguarded fact
+    expect(sel[3].scopeGuard).toBeUndefined(); // the 4th is an unguarded fact
+  });
+
+  it("drops a bare unguarded tile whose value is already implied by another fact's n= guard (#698)", () => {
+    // "Suite size: 74" just restates the "n=74" already shown on the resolved-rate
+    // tile — a redundant bare-n tile. It should be curated out, freeing the slot for
+    // a genuinely new unguarded fact ("Extra unguarded: 100", which no guard implies).
+    const sel = selectFacts(SPEC, 4);
+    const labels = sel.map((f) => f.label);
+    expect(labels).not.toContain("Suite size");
+    expect(labels).toContain("Extra unguarded");
+  });
+
+  it("keeps an unguarded number that is NOT implied by any guard", () => {
+    const sel = selectFacts(SPEC, 5);
+    expect(sel.map((f) => f.label)).toContain("Extra unguarded"); // value 100, no n=100 guard
   });
 });
 

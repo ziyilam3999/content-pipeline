@@ -10,8 +10,27 @@ export function esc(s: string): string {
 }
 
 export function selectFacts(spec: ContentSpec, maxFacts: number): Fact[] {
+  // Numbers already implied by an "n=<num>" scope guard anywhere in the spec.
+  // e.g. a fact guarded "n=74" tells the viewer the sample size is 74.
+  const impliedNs = new Set<string>();
+  for (const f of spec.facts) {
+    const m = (f.scopeGuard ?? "").match(/\bn\s*=\s*([\d,]+)/i);
+    if (m) impliedNs.add(m[1].replace(/,/g, ""));
+  }
+
+  // A "bare n tile" is an UNGUARDED fact whose value is just a number that some
+  // other fact's guard already implies (e.g. "Suite size: 74" next to "n=74").
+  // It adds a tile without adding information — curate it out so the slot can go
+  // to a fact the viewer hasn't already seen. Guarded facts are never dropped:
+  // they carry their own scope and meaning.
+  const isRedundantBareN = (f: Fact): boolean => {
+    if (f.scopeGuard) return false;
+    const v = f.value.trim().replace(/,/g, "");
+    return /^\d+$/.test(v) && impliedNs.has(v);
+  };
+
   const guarded = spec.facts.filter((f) => !!f.scopeGuard);
-  const unguarded = spec.facts.filter((f) => !f.scopeGuard);
+  const unguarded = spec.facts.filter((f) => !f.scopeGuard && !isRedundantBareN(f));
   return [...guarded, ...unguarded].slice(0, maxFacts);
 }
 
