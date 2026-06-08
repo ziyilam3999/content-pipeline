@@ -87,10 +87,39 @@ export function buildArtPrompt(spec: ContentSpec, extra?: string): string {
 export interface GenArtOpts {
   model?: string;
   keySource?: KeySource;
+  /** Per-attempt network timeout. Default 120s. */
   timeoutMs?: number;
   /** Extra creative direction appended to the prompt. */
   promptExtra?: string;
+  /** Retries on a retryable status (429/500/503). Default 5. */
+  maxRetries?: number;
+  /** Upper bound on a single backoff wait (ms). Default 60s. */
+  maxBackoffMs?: number;
 }
+
+/** Statuses worth retrying with backoff: rate limit + transient server errors. */
+const RETRYABLE_STATUS = new Set([429, 500, 503]);
+
+/**
+ * Parse a Google `RetryInfo.retryDelay` (e.g. "9s", "1.5s") from a 429/503 error body, in ms.
+ * Honoring the server's own delay is the reliable way to avoid re-tripping RPM/IPM limits without
+ * hard-coding model-specific numbers (the docs don't publish per-model image RPM/RPD).
+ */
+export function parseRetryDelayMs(body: string): number | undefined {
+  try {
+    const j = JSON.parse(body);
+    const info = (j?.error?.details ?? []).find((d: { [k: string]: unknown }) =>
+      String(d["@type"] ?? "").includes("RetryInfo"),
+    ) as { retryDelay?: string } | undefined;
+    const m = info?.retryDelay?.match(/^([\d.]+)s$/);
+    if (m) return Math.ceil(parseFloat(m[1]) * 1000);
+  } catch {
+    /* non-JSON body → no hint */
+  }
+  return undefined;
+}
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** A raw prompt-in / data-URI-out caller (the real one hits Gemini; tests inject a fake). */
 export type ArtCaller = (prompt: string) => Promise<string>;
@@ -104,9 +133,27 @@ interface GeminiResponse {
   candidates?: { content?: { parts?: GeminiPart[] } }[];
 }
 
+function extractImage(json: GeminiResponse): string | undefined {
+  const parts = json.candidates?.[0]?.content?.parts ?? [];
+  for (const p of parts) {
+    const inline = p.inlineData ?? p.inline_data;
+    const data = (p.inlineData?.data ?? p.inline_data?.data) || undefined;
+    if (inline && data) {
+      const mime = p.inlineData?.mimeType ?? p.inline_data?.mime_type ?? "image/png";
+      return `data:${mime};base64,${data}`;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Build the real nano-banana caller. POSTs a text prompt and returns the first image part as a
- * base64 PNG data URI. Throws on any non-2xx or missing-image response (no silent fallback).
+ * base64 PNG data URI.
+ *
+ * Rate-limit resilient: on a 429 (RPM/IPM/RPD) or transient 5xx it retries with backoff, HONORING
+ * the server's `RetryInfo.retryDelay` when present (else exponential), up to `maxRetries`. This
+ * avoids re-tripping the per-minute image limit on bursts without hard-coding undocumented numbers.
+ * A non-retryable status, an exhausted-day quota that never clears, or a 200-with-no-image throws.
  */
 export function geminiImageCaller(opts?: GenArtOpts): ArtCaller {
   return async (prompt: string): Promise<string> => {
@@ -115,40 +162,45 @@ export function geminiImageCaller(opts?: GenArtOpts): ArtCaller {
     // v1beta, not v1: image-output `responseModalities` is only recognized on the v1beta surface
     // (the v1 endpoint returns 400 "Unknown name responseModalities"). Verified live 2026-06-08.
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    const maxRetries = opts?.maxRetries ?? 5;
+    const maxBackoffMs = opts?.maxBackoffMs ?? 60_000;
+    const reqBody = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+    });
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 120_000);
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: "POST",
-        headers: { "x-goog-api-key": key, "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-        }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`Gemini HTTP ${res.status} ${res.statusText}: ${body.slice(0, 300)}`);
-    }
-
-    const json = (await res.json()) as GeminiResponse;
-    const parts = json.candidates?.[0]?.content?.parts ?? [];
-    for (const p of parts) {
-      const inline = p.inlineData ?? p.inline_data;
-      const data = (p.inlineData?.data ?? p.inline_data?.data) || undefined;
-      if (inline && data) {
-        const mime = p.inlineData?.mimeType ?? p.inline_data?.mime_type ?? "image/png";
-        return `data:${mime};base64,${data}`;
+    let lastErr = "Gemini call failed";
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 120_000);
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "x-goog-api-key": key, "content-type": "application/json" },
+          body: reqBody,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
       }
+
+      if (res.ok) {
+        const img = extractImage((await res.json()) as GeminiResponse);
+        if (img) return img;
+        throw new Error("Gemini response contained no image part (inlineData).");
+      }
+
+      const body = await res.text().catch(() => "");
+      lastErr = `Gemini HTTP ${res.status} ${res.statusText}: ${body.slice(0, 300)}`;
+      if (!RETRYABLE_STATUS.has(res.status) || attempt === maxRetries) throw new Error(lastErr);
+
+      // Honor the server's retry hint when present; else exponential backoff with jitter.
+      const serverDelay = res.status === 429 ? parseRetryDelayMs(body) : undefined;
+      const backoff = Math.min(serverDelay ?? 1000 * 2 ** attempt, maxBackoffMs);
+      await wait(backoff + Math.floor(backoff * 0.1 * attempt));
     }
-    throw new Error("Gemini response contained no image part (inlineData).");
+    throw new Error(lastErr);
   };
 }
 

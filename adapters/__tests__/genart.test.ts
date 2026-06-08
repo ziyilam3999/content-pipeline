@@ -7,7 +7,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-import { generateArt, buildArtPrompt, type ArtCaller } from "../genart";
+import { generateArt, buildArtPrompt, parseRetryDelayMs, type ArtCaller } from "../genart";
 import { renderImage } from "../image";
 import { type ContentSpec } from "../../inputs/contentspec";
 import { type CopyResult } from "../../pipeline/run";
@@ -40,6 +40,20 @@ describe("buildArtPrompt", () => {
     expect(p).toMatch(/NO logos/i);
     // brand-safety: the prompt explicitly forbids brand names / logos in the pixels
     expect(p).toMatch(/NO brand names/i);
+  });
+});
+
+describe("parseRetryDelayMs", () => {
+  it("reads a RetryInfo retryDelay (seconds) from a 429 body into ms", () => {
+    const body = JSON.stringify({
+      error: { details: [{ "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "9s" }] },
+    });
+    expect(parseRetryDelayMs(body)).toBe(9000);
+  });
+  it("handles fractional seconds and returns undefined when absent or non-JSON", () => {
+    expect(parseRetryDelayMs(JSON.stringify({ error: { details: [{ "@type": "RetryInfo", retryDelay: "1.5s" }] } }))).toBe(1500);
+    expect(parseRetryDelayMs(JSON.stringify({ error: { details: [] } }))).toBeUndefined();
+    expect(parseRetryDelayMs("not json")).toBeUndefined();
   });
 });
 
