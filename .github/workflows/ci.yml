@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node-version: [20]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck (tsc --noEmit — strict, must exit 0)
+        run: npm run typecheck
+
+      - name: Tests (jest — ts-jest discovers **/__tests__/*.test.ts)
+        run: npm test
+
+      # Conventional Commits gate. eslint is intentionally NOT run yet — the
+      # modules were generated test-first, not authored to a lint ruleset, so a
+      # day-1 eslint job would red the board with style-only findings. Add it in
+      # a follow-up once a ruleset is agreed.
+      - name: Validate commit message
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          if echo "$COMMIT_MSG" | grep -qE "^Merge "; then exit 0; fi
+          if ! echo "$COMMIT_MSG" | grep -qE "^(feat|fix|docs|chore|refactor|test|style|perf|ci|build|revert)(\(.+\))?(!)?: .+"; then
+            echo "ERROR: HEAD commit message does not follow Conventional Commits format."
+            echo "  Got: $COMMIT_MSG"
+            echo "  Expected: <type>(<optional scope>): <description>"
+            exit 1
+          fi
+          echo "commit message OK: $COMMIT_MSG"

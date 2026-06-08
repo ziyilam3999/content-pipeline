@@ -1,0 +1,55 @@
+name: Claude Code Review
+
+# Automated PR review by Claude. INERT by default: until a repo secret named
+# CLAUDE_CODE_OAUTH_TOKEN is added (Settings → Secrets and variables → Actions),
+# the `gate` job reports disabled and the `review` job is skipped — so CI stays
+# green on day one with no failing required check.
+#
+# To enable: add the secret CLAUDE_CODE_OAUTH_TOKEN (a Claude Max/Pro
+# subscription OAuth token from `claude setup-token`). Do NOT use a separate
+# pay-as-you-go API key — this account bills via the Max subscription.
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Claude review token present — review job will run."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "No CLAUDE_CODE_OAUTH_TOKEN secret — review job is inert (skipped)."
+          fi
+
+  review:
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Claude code review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Review this pull request as an independent, fresh-eyes reviewer.
+            Focus on correctness bugs, security issues, missing error handling,
+            and regressions. Be strict on bugs and generous on enhancements.
+            Leave concise inline comments via the GitHub review tools.

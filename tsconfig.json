@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "commonjs",
+    "lib": ["ES2021"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": false,
+    "types": ["jest", "node"],
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": [
+    "audio/**/*.ts",
+    "config/**/*.ts",
+    "copy/**/*.ts",
+    "image/**/*.ts",
+    "inputs/**/*.ts",
+    "pipeline/**/*.ts",
+    "video/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}
