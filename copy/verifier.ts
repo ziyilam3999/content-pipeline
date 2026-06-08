@@ -14,17 +14,29 @@ function normalizeToken(n: string): string {
 }
 
 /**
- * Build a single context string from the spec — product name/summary and all
- * fact values + scopeGuards — so every supporting number lives in it.
+ * Build a single context string from the spec so every author-provided number
+ * counts as "supported". The anti-hallucination guard only needs to reject
+ * numbers that appear NOWHERE in the spec; any digit the human put in the spec
+ * — a fact value/guard, a fact LABEL (e.g. "1-shot Opus"), the repo URL handle
+ * (e.g. ".../ziyilam3999"), a highlight, or a CTA — is fair game in the copy.
+ * Omitting those fields caused false-positive "unsupported" flags on legitimate
+ * launch copy; including them is monotonic (only ever adds support, so it can
+ * never mask a genuinely invented statistic like "99%").
  */
 export function buildContext(spec: ContentSpec): string {
   const parts: string[] = [spec.product.name, spec.product.summary];
+  if (spec.product.repoUrl) {
+    parts.push(spec.product.repoUrl);
+  }
   for (const fact of spec.facts) {
+    parts.push(fact.label);
     parts.push(fact.value);
     if (fact.scopeGuard) {
       parts.push(`(${fact.scopeGuard})`);
     }
   }
+  parts.push(...spec.highlights);
+  parts.push(...spec.ctas);
   return parts.join(' ');
 }
 
