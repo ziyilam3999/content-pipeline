@@ -10,7 +10,8 @@
     "smoke:copy": "tsx smoke/copy-smoke.ts",
     "smoke:image": "tsx smoke/image-smoke.ts",
     "smoke:video": "tsx smoke/video-smoke.ts",
-    "smoke:voice": "tsx smoke/voice-smoke.ts"
+    "smoke:voice": "tsx smoke/voice-smoke.ts",
+    "smoke:genart": "tsx smoke/genart-smoke.ts"
   },
   "license": "UNLICENSED",
   "devDependencies": {
