@@ -6,7 +6,8 @@
   "scripts": {
     "test": "jest",
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "build": "tsc",
+    "smoke:copy": "tsx smoke/copy-smoke.ts"
   },
   "license": "UNLICENSED",
   "devDependencies": {
@@ -14,6 +15,7 @@
     "@types/node": "^20.0.0",
     "jest": "^30.0.0",
     "ts-jest": "^29.4.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.4.0"
   }
 }
