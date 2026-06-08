@@ -6,6 +6,7 @@ coverage/
 .env
 .env.*
 tmp/
+out/
 
 # local agent scratch (hooks)
 .ai-workspace/
