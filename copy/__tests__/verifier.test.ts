@@ -38,6 +38,24 @@ describe("verifyDraft", () => {
     expect(r.unsupportedNumbers).toContain("99%");
   });
 
+  it("supports numbers from labels, repoUrl, highlights, and CTAs (not just fact values)", () => {
+    const spec: ContentSpec = {
+      product: {
+        name: "lfah",
+        summary: "a local-first harness",
+        repoUrl: "https://github.com/ziyilam3999/local-first-agent-harness",
+      },
+      facts: [{ label: "1-shot Opus resolved", value: "54%", scopeGuard: "7/13", source: "r.md" }],
+      highlights: ["3 roles: planner, executor, evaluator"],
+      ctas: ["pip install from github.com/ziyilam3999/..."],
+      sourceFiles: [],
+    };
+    // "1" from the "1-shot" label, "3999" from the repo URL/CTA, "3" from a highlight.
+    const r = verifyDraft("1-shot Opus hit 54% (7/13); 3 roles; see github.com/ziyilam3999/...", spec);
+    expect(r.ok).toBe(true);
+    expect(r.unsupportedNumbers).toEqual([]);
+  });
+
   it("normalizes commas and percent so 1,000 matches a 1000 fact", () => {
     const draft = "Across 1,000 cases we hit 83.8%.";
     const r = verifyDraft(draft, SPEC);

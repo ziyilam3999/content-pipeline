@@ -24,6 +24,7 @@ export interface RenderVideoOpts {
   aspectName?: string; // "1:1" | "9:16" | "4:5"; default "9:16"
   fps?: number; // default 30
   durationSec?: number; // explicit; else estimated from the script
+  renderAttempts?: number; // retries on a transient Remotion serve flake; default 3
 }
 
 /** A minimal valid 16-bit mono PCM WAV of pure silence — a free placeholder track for smokes. */
@@ -108,14 +109,31 @@ export async function renderVideo(
 
   const entryPoint = path.join(__dirname, "..", "remotion", "index.tsx");
   const serveUrl = await bundle({ entryPoint });
-  const composition = await selectComposition({ serveUrl, id: "launch", inputProps });
-  await renderMedia({
-    composition,
-    serveUrl,
-    codec: "h264",
-    outputLocation: outPath,
-    inputProps,
-  });
 
-  return outPath;
+  // Remotion's headless Chromium occasionally fails to reach the freshly-served bundle
+  // ("Visited http://localhost:PORT/index.html but got no response") — a transient serve/timing
+  // flake, not a content error. Retry the select+render a few times so a one-off hiccup never
+  // discards the (sometimes paid) upstream artifacts. The bundle is reused across attempts.
+  const maxAttempts = opts?.renderAttempts ?? 3;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const composition = await selectComposition({ serveUrl, id: "launch", inputProps });
+      await renderMedia({
+        composition,
+        serveUrl,
+        codec: "h264",
+        outputLocation: outPath,
+        inputProps,
+      });
+      return outPath;
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const transient = /got no response|net::ERR|Target closed|Timeout|ECONNREFUSED/i.test(msg);
+      if (!transient || attempt === maxAttempts) throw err;
+      await new Promise((r) => setTimeout(r, 1000 * attempt));
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
