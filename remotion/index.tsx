@@ -168,6 +168,14 @@ interface DemoProps {
   cta: string;
   repoUrl?: string;
   audioSrc?: string;
+  /**
+   * #775 — synced captions for the animated demo, timed from the voice engine's real
+   * per-character timestamps. Drawn in a reserved bottom band (see `captionBandY`) that the
+   * per-aspect layout already cleared of content (`reserveCaptionBand`). Empty → no band.
+   */
+  captions?: CaptionCue[];
+  /** #775 — top Y (px) of the caption band; from `captionBandTopY` (below the content). */
+  captionBandY?: number;
   layout: DemoLayout;
   width: number;
   height: number;
@@ -544,6 +552,49 @@ const CtaScene: React.FC<{ cta: string; repoUrl?: string; layout: DemoLayout }> 
   );
 };
 
+/**
+ * #775 — the synced caption band for the demo. Each cue shows for its own [startSec, endSec)
+ * window in a dark pill at `bandY` (the reserved bottom strip the layout already cleared of
+ * content). Mirrors the `launch` composition's caption styling so the two stay consistent.
+ */
+const DemoCaptionBand: React.FC<{ captions: CaptionCue[]; bandY: number; fps: number; typeScale: number }> = ({
+  captions,
+  bandY,
+  fps,
+  typeScale,
+}) => {
+  return (
+    <>
+      {captions.map((c, i) => {
+        const from = Math.round(c.startSec * fps);
+        const durationInFrames = Math.max(1, Math.round((c.endSec - c.startSec) * fps));
+        return (
+          <Sequence key={i} from={from} durationInFrames={durationInFrames} name={`caption-${i}`}>
+            <div style={{ position: "absolute", top: bandY, left: 0, width: "100%", display: "flex", justifyContent: "center" }}>
+              <div
+                style={{
+                  background: "rgba(0,0,0,0.68)",
+                  color: "#fff",
+                  fontSize: Math.round(40 * typeScale),
+                  fontFamily: FONT,
+                  fontWeight: 600,
+                  lineHeight: 1.25,
+                  padding: "14px 26px",
+                  borderRadius: 14,
+                  maxWidth: "86%",
+                  textAlign: "center",
+                }}
+              >
+                {c.text}
+              </div>
+            </div>
+          </Sequence>
+        );
+      })}
+    </>
+  );
+};
+
 const DemoVideo: React.FC<DemoProps> = (props) => {
   const { scenes, fps } = props;
   // #765 — the per-aspect layout drives every scene's vertical fill. Fall back to the
@@ -556,6 +607,7 @@ const DemoVideo: React.FC<DemoProps> = (props) => {
     verdict: <VerdictScene verdict={props.verdict} layout={layout} />,
     cta: <CtaScene cta={props.cta} repoUrl={props.repoUrl} layout={layout} />,
   };
+  const captions = props.captions ?? [];
   return (
     <AbsoluteFill style={{ backgroundColor: BG }}>
       {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
@@ -568,6 +620,14 @@ const DemoVideo: React.FC<DemoProps> = (props) => {
           </Sequence>
         );
       })}
+      {captions.length > 0 ? (
+        <DemoCaptionBand
+          captions={captions}
+          bandY={props.captionBandY ?? Math.round((props.height ?? 1920) * 0.82)}
+          fps={fps}
+          typeScale={layout.typeScale}
+        />
+      ) : null}
     </AbsoluteFill>
   );
 };
@@ -622,6 +682,8 @@ const Root: React.FC = () => {
           cta: "",
           repoUrl: undefined,
           audioSrc: undefined,
+          captions: [] as CaptionCue[],
+          captionBandY: Math.round(1920 * 0.82),
           layout: DEFAULT_LAYOUT_9X16,
           width: 1080,
           height: 1920,

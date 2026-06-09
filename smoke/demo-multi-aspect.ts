@@ -29,6 +29,9 @@ interface NarrationBundle {
   audioPath: string;
   sceneEndTimesSec: number[];
   durationSec: number;
+  /** #775 — the spoken script + per-character alignment, so the 3 aspects render SYNCED captions. */
+  script?: string;
+  charEndTimesSec?: number[];
 }
 
 const ASPECTS = ["9:16", "1:1", "4:5"];
@@ -44,7 +47,17 @@ function loadBundle(): NarrationBundle | null {
   }
   const durationSec: number = raw.durationSec ?? sceneEndTimesSec[sceneEndTimesSec.length - 1];
   if (!fs.existsSync(audioPath)) throw new Error(`bundle audioPath does not exist: ${audioPath}`);
-  return { audioPath, sceneEndTimesSec, durationSec };
+  const script: string | undefined = typeof raw.script === "string" ? raw.script : undefined;
+  const charEndTimesSec: number[] | undefined = Array.isArray(raw.charEndTimesSec) ? raw.charEndTimesSec : undefined;
+  // #775 — a voiced bundle MUST carry the script so captions render (parity is enforced in
+  // renderDemoVideo, but fail EARLY here with a clear message if the bundle is the old derived-only shape).
+  if (!script) {
+    throw new Error(
+      `DEMO_BUNDLE ${p} has no "script" — it's the old derived-only bundle. Re-run smoke:demo-narrated(:paid) ` +
+        `to write the full alignment bundle (script + charEndTimesSec) so captions can render.`,
+    );
+  }
+  return { audioPath, sceneEndTimesSec, durationSec, script, charEndTimesSec };
 }
 
 async function main() {
@@ -70,7 +83,13 @@ async function main() {
       aspectName,
       outDir,
       ...(bundle
-        ? { audioPath: bundle.audioPath, sceneEndTimesSec: bundle.sceneEndTimesSec, durationSec: bundle.durationSec }
+        ? {
+            audioPath: bundle.audioPath,
+            sceneEndTimesSec: bundle.sceneEndTimesSec,
+            durationSec: bundle.durationSec,
+            script: bundle.script, // #775 — opts the render into the synced caption band
+            charEndTimesSec: bundle.charEndTimesSec,
+          }
         : {}),
     });
     const bytes = fs.statSync(file).size;

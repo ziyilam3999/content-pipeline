@@ -19,6 +19,12 @@ import { buildCaptionTrack } from "../video/captions";
 import { buildRenderSpecs, ASPECTS, type Aspect } from "../video/renderSpec";
 import { buildDemoTimeline } from "../video/demoTimeline";
 import { demoLayout } from "../video/demoLayout";
+import {
+  buildDemoCaptionCues,
+  assertVoicedDemoHasCaptions,
+  reserveCaptionBand,
+  captionBandTopY,
+} from "../video/demoCaptions";
 import { assertAudioMatchesSync } from "../video/audioDuration";
 import { type ContentSpec } from "../inputs/contentspec";
 
@@ -197,6 +203,16 @@ export interface RenderDemoOpts {
    * `narrationSceneEndTimes` (see `video/demoTimeline.ts`).
    */
   sceneEndTimesSec?: number[];
+  /**
+   * #775 — the spoken narration script. When present, the demo renders SYNCED CAPTIONS in a
+   * reserved bottom band (the layout is grown to clear room). Pair with `charEndTimesSec` for
+   * real per-word sync; without it captions fall back to even-split (still cover the clip).
+   * PARITY INVARIANT: a voiced render (`audioPath` set) MUST carry a script — else this throws,
+   * so captions can never be silently dropped from a voiced demo again.
+   */
+  script?: string;
+  /** #775 — real per-character end-times (ElevenLabs alignment) that sync captions to the voice. */
+  charEndTimesSec?: number[];
   renderAttempts?: number;
 }
 
@@ -233,8 +249,30 @@ export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts):
   if (!aspect) throw new Error(`unknown aspect "${aspectName}"`);
   const width = aspect.width;
   const height = aspect.height;
-  const layout = demoLayout(width, height);
+  const baseLayout = demoLayout(width, height);
   const durationInFrames = Math.max(1, Math.round(durationSec * fps));
+
+  // #775 — synced captions. A script (the spoken narration) opts the demo into a caption band:
+  // build cues timed to the real voice (charEndTimesSec) when supplied, reserve a bottom band so
+  // the #773 grow-fill content stops above it, and assert the track is non-empty + spans the clip.
+  // PARITY: a voiced render (audioPath) with NO script is refused — captions can't be silently
+  // dropped from a voiced demo again (feedback_carry_capabilities_and_source_data_across_redesign).
+  const hasScript = typeof opts?.script === "string" && opts.script.trim().length > 0;
+  if (opts?.audioPath && !hasScript) {
+    throw new Error(
+      "#775 parity: a voiced demo render (audioPath set) must carry captions — pass opts.script (the spoken narration).",
+    );
+  }
+  let layout = baseLayout;
+  let captionCues: ReturnType<typeof buildDemoCaptionCues> = [];
+  let captionBandY = 0;
+  if (hasScript) {
+    const clip = { durationSec, charEndTimesSec: opts!.charEndTimesSec };
+    captionCues = buildDemoCaptionCues(opts!.script!, clip);
+    assertVoicedDemoHasCaptions(captionCues, clip);
+    layout = reserveCaptionBand(baseLayout);
+    captionBandY = captionBandTopY(layout, height);
+  }
 
   const inputProps = {
     title: timeline.title,
@@ -249,6 +287,8 @@ export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts):
     cta: timeline.cta,
     repoUrl: timeline.repoUrl,
     audioSrc: opts?.audioPath ? toDataUri(opts.audioPath) : undefined,
+    captions: captionCues,
+    captionBandY,
     layout,
     width,
     height,
