@@ -113,4 +113,27 @@ describe("#742 caption↔voiceover sync", () => {
     }).not.toThrow();
     expect(ends(caps)).toEqual(EXPECTED_EVEN_ENDS); // even-split, not the (invalid) alignment
   });
+
+  test("guard: a non-monotonic alignment falls back to even-split (never an inverted caption)", () => {
+    // Right length, but time goes backwards at index 3 — malformed provider data.
+    const nonMonotonic = [1.0, 1.2, 2.0, 0.5, 6.0, 6.1, 9.0];
+    const caps = buildCaptions(
+      SCRIPT,
+      { durationSec: DURATION, charEndTimesSec: nonMonotonic },
+      { maxWords: 1 },
+    );
+    expect(ends(caps)).toEqual(EXPECTED_EVEN_ENDS); // rejected → even-split
+    // and no caption ever runs backwards
+    caps.forEach((c) => expect(c.endSec).toBeGreaterThanOrEqual(c.startSec));
+  });
+
+  test("guard: a non-finite alignment entry falls back to even-split", () => {
+    const withNaN = [1.0, 1.2, 2.0, NaN, 6.0, 6.1, 9.0];
+    const caps = buildCaptions(
+      SCRIPT,
+      { durationSec: DURATION, charEndTimesSec: withNaN },
+      { maxWords: 1 },
+    );
+    expect(ends(caps)).toEqual(EXPECTED_EVEN_ENDS);
+  });
 });

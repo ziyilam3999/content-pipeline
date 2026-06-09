@@ -77,6 +77,15 @@ function realChunkEndTimes(
   // that was sent to the TTS provider — otherwise indices don't correspond.
   if (!ends || ends.length !== script.length) return null;
 
+  // Trust but verify the provider data: every entry must be finite and the
+  // series non-decreasing (time only moves forward). A malformed/non-monotonic
+  // array would otherwise yield an inverted caption (endSec < startSec) that the
+  // structural coverage check can't catch — so fall back to even-split instead.
+  for (let i = 0; i < ends.length; i++) {
+    if (!Number.isFinite(ends[i])) return null;
+    if (i > 0 && ends[i] < ends[i - 1]) return null;
+  }
+
   // Character span of each word in the RAW script (indices match `ends`).
   const spans = Array.from(script.matchAll(/\S+/g)).map((m) => ({
     start: m.index ?? 0,
