@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.4.4](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.3...v0.4.4) (2026-06-09)
+
+### Features
+
+* **publish:** real Typefully v2 posting client (Phase D, #786) (#33) — `TypefullyClient` with `verifyAuth` (GET /v2/me), `uploadMedia` (3-step presigned flow: POST init → PUT raw bytes → poll until ready), and `createDraft` (POST /v2/social-sets/{id}/drafts, `publish_at` omitted/refused so content saves as a DRAFT). Key resolved at runtime (env → macOS keychain), never logged; `fetch` injected for testability. Adds `smoke/publish-typefully.ts` (dry-run default makes zero network calls) and the `smoke:publish-typefully` / `:live` scripts.
+
 ## [0.4.3](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.2...v0.4.3) (2026-06-09)
 
 ### Tests
