@@ -127,6 +127,34 @@ interface DemoVerdict {
   bottomLine: string;
 }
 
+/**
+ * #765 — per-aspect layout, computed by `video/demoLayout.ts` and passed in as plain
+ * data (the TSX stays free of project imports, like the other interfaces here). Tall
+ * cuts FILL the height (`fill`+`space-between`/`space-evenly`, scaled type); the square
+ * cut stays centered. See `SceneShell`.
+ */
+interface DemoLayout {
+  aspectRatio: number;
+  fill: boolean;
+  justify: "center" | "space-evenly" | "space-between";
+  padTopFraction: number;
+  padBottomFraction: number;
+  typeScale: number;
+  gapScale: number;
+  usableSpanFraction: number;
+}
+
+const DEFAULT_LAYOUT_9X16: DemoLayout = {
+  aspectRatio: 1920 / 1080,
+  fill: true,
+  justify: "space-between",
+  padTopFraction: 0.05,
+  padBottomFraction: 0.05,
+  typeScale: 1.18,
+  gapScale: 1.5,
+  usableSpanFraction: 0.9,
+};
+
 interface DemoProps {
   title: string;
   hookHeadline: string;
@@ -140,6 +168,7 @@ interface DemoProps {
   cta: string;
   repoUrl?: string;
   audioSrc?: string;
+  layout: DemoLayout;
   width: number;
   height: number;
   fps: number;
@@ -165,49 +194,100 @@ function entrance(frame: number, fps: number, delay = 0, rise = 36) {
 }
 
 /**
+ * #765 — the per-aspect frame box every demo scene lives in. The outer AbsoluteFill
+ * applies the aspect's top/bottom safe margins (a fraction of the real frame height);
+ * the inner full-height column distributes the scene's blocks with the aspect's
+ * `justify`: tall cuts use `space-between`/`space-evenly` so the first/last block sit at
+ * the safe edges and the content FILLS the height; the square cut centers (its prior
+ * look). Children passed in become the spaced blocks. `gap` is the minimum spacing
+ * (already scaled by the caller); `contentWidth` defaults to the frame width minus side
+ * margins.
+ */
+const SceneShell: React.FC<{
+  layout: DemoLayout;
+  gap?: number;
+  contentWidth?: number;
+  children: React.ReactNode;
+}> = ({ layout, gap = 0, contentWidth, children }) => {
+  const { width, height } = useVideoConfig();
+  return (
+    <AbsoluteFill
+      style={{
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingTop: Math.round(layout.padTopFraction * height),
+        paddingBottom: Math.round(layout.padBottomFraction * height),
+        paddingLeft: 60,
+        paddingRight: 60,
+      }}
+    >
+      <div
+        style={{
+          width: contentWidth ?? Math.min(960, width - 120),
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: layout.fill ? layout.justify : "center",
+          gap,
+        }}
+      >
+        {children}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/** Per-scene font scaler — multiplies a base px size by the aspect's type scale. */
+function scaler(layout: DemoLayout): (px: number) => number {
+  return (px: number) => Math.round(px * layout.typeScale);
+}
+
+/**
  * HOOK (first 30s) — the single most compelling HONEST claim: fixes real bugs at
  * ~half the cloud relay's cost-per-fix because the heavy work runs FREE locally.
  * NOT a "best at everything" claim.
  */
-const HookScene: React.FC<{ title: string; headline: string }> = ({ title, headline }) => {
+const HookScene: React.FC<{ title: string; headline: string; layout: DemoLayout }> = ({ title, headline, layout }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  // Three blocks (eyebrow / headline / badge) spaced top→bottom so the tall cut fills
+  // the frame; on the square cut they cluster centered (the prior look).
   return (
-    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", padding: 80 }}>
-      <div style={{ ...entrance(frame, fps), textAlign: "center" }}>
-        <div style={{ color: "#64748b", fontFamily: FONT, fontSize: 32, letterSpacing: 6, marginBottom: 18 }}>
-          {title}
-        </div>
-        <div
-          style={{
-            ...entrance(frame, fps, 8),
-            color: "#fff",
-            fontFamily: FONT,
-            fontWeight: 800,
-            fontSize: 64,
-            lineHeight: 1.15,
-            marginBottom: 28,
-          }}
-        >
-          {headline}
-        </div>
-        <div
-          style={{
-            ...entrance(frame, fps, 20),
-            display: "inline-block",
-            color: BG,
-            background: LANE_COLOR.local,
-            fontFamily: FONT,
-            fontWeight: 800,
-            fontSize: 34,
-            padding: "12px 26px",
-            borderRadius: 999,
-          }}
-        >
-          Executor runs LOCAL · $0
-        </div>
+    <SceneShell layout={layout} gap={Math.round(24 * layout.gapScale)}>
+      <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(32), letterSpacing: 6, textAlign: "center" }}>
+        {title}
       </div>
-    </AbsoluteFill>
+      <div
+        style={{
+          ...entrance(frame, fps, 8),
+          color: "#fff",
+          fontFamily: FONT,
+          fontWeight: 800,
+          fontSize: f(64),
+          lineHeight: 1.15,
+          textAlign: "center",
+        }}
+      >
+        {headline}
+      </div>
+      <div
+        style={{
+          ...entrance(frame, fps, 20),
+          color: BG,
+          background: LANE_COLOR.local,
+          fontFamily: FONT,
+          fontWeight: 800,
+          fontSize: f(34),
+          padding: "12px 26px",
+          borderRadius: 999,
+        }}
+      >
+        Executor runs LOCAL · $0
+      </div>
+    </SceneShell>
   );
 };
 
@@ -216,16 +296,17 @@ const HookScene: React.FC<{ title: string; headline: string }> = ({ title, headl
  * LOSING 1-shot Sonnet (dimmed, marked "weakest"). The full-cloud relay's
  * resolve % is badged as the ceiling; the hybrid (lfah) is highlighted green.
  */
-const ArmRow: React.FC<{ arm: DemoArm; show: number }> = ({ arm, show }) => {
+const ArmRow: React.FC<{ arm: DemoArm; show: number; layout: DemoLayout }> = ({ arm, show, layout }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const f = scaler(layout);
   const accent = arm.isLfah ? LANE_COLOR.local : arm.topResolve ? LANE_COLOR.cloud : "#475569";
   const dim = arm.key === "sonnet"; // the loser — present but visually de-emphasised
   return (
     <div
       style={{
         ...entrance(frame, fps, show),
-        width: 940,
+        width: "100%",
         background: arm.isLfah ? "#0f2a22" : "#111a30",
         border: `3px solid ${accent}`,
         borderRadius: 18,
@@ -234,20 +315,20 @@ const ArmRow: React.FC<{ arm: DemoArm; show: number }> = ({ arm, show }) => {
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ color: "#fff", fontFamily: FONT, fontWeight: 700, fontSize: 38 }}>
+        <div style={{ color: "#fff", fontFamily: FONT, fontWeight: 700, fontSize: f(38) }}>
           {arm.name}
-          {arm.isLfah ? <span style={{ color: LANE_COLOR.local, fontSize: 26 }}>  ← this is lfah</span> : null}
+          {arm.isLfah ? <span style={{ color: LANE_COLOR.local, fontSize: f(26) }}>  ← this is lfah</span> : null}
         </div>
         <div style={{ display: "flex", gap: 22, alignItems: "baseline" }}>
-          <div style={{ color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: 44 }}>{arm.resolved}</div>
+          <div style={{ color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(44) }}>{arm.resolved}</div>
           {arm.topResolve ? (
-            <div style={{ color: LANE_COLOR.cloud, fontFamily: FONT, fontSize: 24, fontWeight: 700 }}>top resolve</div>
+            <div style={{ color: LANE_COLOR.cloud, fontFamily: FONT, fontSize: f(24), fontWeight: 700 }}>top resolve</div>
           ) : null}
         </div>
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
-        <div style={{ color: "#94a3b8", fontFamily: FONT, fontSize: 26 }}>{arm.note}</div>
-        <div style={{ color: "#cbd5e1", fontFamily: FONT, fontSize: 28 }}>
+        <div style={{ color: "#94a3b8", fontFamily: FONT, fontSize: f(26) }}>{arm.note}</div>
+        <div style={{ color: "#cbd5e1", fontFamily: FONT, fontSize: f(28) }}>
           {arm.totalCost} total · <span style={{ color: arm.isLfah ? LANE_COLOR.local : "#cbd5e1", fontWeight: 700 }}>{arm.perResolved}/fix</span>
         </div>
       </div>
@@ -255,20 +336,20 @@ const ArmRow: React.FC<{ arm: DemoArm; show: number }> = ({ arm, show }) => {
   );
 };
 
-const CompareScene: React.FC<{ arms: DemoArm[] }> = ({ arms }) => {
+const CompareScene: React.FC<{ arms: DemoArm[]; layout: DemoLayout }> = ({ arms, layout }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  // header + the 4 arm rows are direct children → on the tall cut they spread to fill.
   return (
-    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 18, alignItems: "center" }}>
-        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: 34, letterSpacing: 4, marginBottom: 8 }}>
-          ALL 4 WAYS, COMPARED — n=13
-        </div>
-        {arms.map((a, i) => (
-          <ArmRow key={a.key} arm={a} show={10 + i * 12} />
-        ))}
+    <SceneShell layout={layout} gap={Math.round(18 * layout.gapScale)} contentWidth={960}>
+      <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4 }}>
+        ALL 4 WAYS, COMPARED — n=13
       </div>
-    </AbsoluteFill>
+      {arms.map((a, i) => (
+        <ArmRow key={a.key} arm={a} show={10 + i * 12} layout={layout} />
+      ))}
+    </SceneShell>
   );
 };
 
@@ -276,40 +357,39 @@ const CompareScene: React.FC<{ arms: DemoArm[] }> = ({ arms }) => {
  * COSTSPLIT (after 30s) — where the hybrid's money actually goes, per role.
  * The executor runs LOCAL at $0 / 0% of spend — the honest selling point.
  */
-const CostSplitScene: React.FC<{ costSplit: DemoCostRole[] }> = ({ costSplit }) => {
+const CostSplitScene: React.FC<{ costSplit: DemoCostRole[]; layout: DemoLayout }> = ({ costSplit, layout }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const f = scaler(layout);
   return (
-    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 22, width: 900 }}>
-        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: 34, letterSpacing: 4, marginBottom: 8 }}>
-          WHERE THE MONEY GOES
-        </div>
-        {costSplit.map((r, i) => {
-          const isFree = r.sharePct === 0;
-          const accent = isFree ? LANE_COLOR.local : LANE_COLOR.cloud;
-          const barW = interpolate(frame - (10 + i * 10), [0, 24], [0, Math.max(2, r.sharePct) / 100 * 720], {
-            extrapolateLeft: "clamp",
-            extrapolateRight: "clamp",
-          });
-          return (
-            <div key={r.role} style={{ ...entrance(frame, fps, 10 + i * 10, 18), width: 880 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <div style={{ color: "#fff", fontFamily: FONT, fontSize: 32, fontWeight: 700 }}>
-                  {r.role} <span style={{ color: "#64748b", fontSize: 24, fontWeight: 400 }}>· {r.backend}</span>
-                </div>
-                <div style={{ color: isFree ? LANE_COLOR.local : "#fff", fontFamily: FONT, fontWeight: 800, fontSize: 40 }}>
-                  {r.cost} · {r.sharePct}%
-                </div>
+    <SceneShell layout={layout} gap={Math.round(22 * layout.gapScale)} contentWidth={900}>
+      <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4 }}>
+        WHERE THE MONEY GOES
+      </div>
+      {costSplit.map((r, i) => {
+        const isFree = r.sharePct === 0;
+        const accent = isFree ? LANE_COLOR.local : LANE_COLOR.cloud;
+        const barW = interpolate(frame - (10 + i * 10), [0, 24], [0, Math.max(2, r.sharePct) / 100 * 720], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        });
+        return (
+          <div key={r.role} style={{ ...entrance(frame, fps, 10 + i * 10, 18), width: "100%" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <div style={{ color: "#fff", fontFamily: FONT, fontSize: f(32), fontWeight: 700 }}>
+                {r.role} <span style={{ color: "#64748b", fontSize: f(24), fontWeight: 400 }}>· {r.backend}</span>
               </div>
-              <div style={{ height: 16, background: "#1e293b", borderRadius: 8, marginTop: 8, overflow: "hidden" }}>
-                <div style={{ width: barW, height: "100%", background: accent, borderRadius: 8 }} />
+              <div style={{ color: isFree ? LANE_COLOR.local : "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(40) }}>
+                {r.cost} · {r.sharePct}%
               </div>
             </div>
-          );
-        })}
-      </div>
-    </AbsoluteFill>
+            <div style={{ height: 16, background: "#1e293b", borderRadius: 8, marginTop: 8, overflow: "hidden" }}>
+              <div style={{ width: barW, height: "100%", background: accent, borderRadius: 8 }} />
+            </div>
+          </div>
+        );
+      })}
+    </SceneShell>
   );
 };
 
@@ -317,115 +397,120 @@ const CostSplitScene: React.FC<{ costSplit: DemoCostRole[] }> = ({ costSplit }) 
  * VERDICT (after 30s) — honest, axis by axis. CONCEDES the full-cloud relay's
  * higher raw resolve % up front, then recommends lfah on VALUE / as the default.
  */
-const VerdictScene: React.FC<{ verdict: DemoVerdict }> = ({ verdict }) => {
+const VerdictScene: React.FC<{ verdict: DemoVerdict; layout: DemoLayout }> = ({ verdict, layout }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const f = scaler(layout);
   return (
-    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", padding: 60 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, width: 940 }}>
-        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: 34, letterSpacing: 4 }}>
-          THE HONEST VERDICT
-        </div>
-        {verdict.axes.map((ax, i) => {
-          const hybridWins = /hybrid|local/i.test(ax.winner);
-          return (
-            <div
-              key={ax.axis}
-              style={{
-                ...entrance(frame, fps, 8 + i * 8),
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                background: "#111a30",
-                border: `2px solid ${hybridWins ? LANE_COLOR.local : LANE_COLOR.cloud}`,
-                borderRadius: 14,
-                padding: "14px 22px",
-              }}
-            >
-              <div style={{ color: "#cbd5e1", fontFamily: FONT, fontSize: 30 }}>{ax.axis}</div>
-              <div style={{ color: hybridWins ? LANE_COLOR.local : LANE_COLOR.cloud, fontFamily: FONT, fontSize: 30, fontWeight: 800 }}>
-                {ax.winner}
-              </div>
-            </div>
-          );
-        })}
-        <div style={{ ...entrance(frame, fps, 48), color: "#94a3b8", fontFamily: FONT, fontSize: 28, marginTop: 8, lineHeight: 1.3 }}>
-          {verdict.concession}
-        </div>
-        <div style={{ ...entrance(frame, fps, 58), color: "#fff", fontFamily: FONT, fontSize: 32, fontWeight: 700, lineHeight: 1.3 }}>
-          {verdict.bottomLine}
-        </div>
+    <SceneShell layout={layout} gap={Math.round(16 * layout.gapScale)} contentWidth={940}>
+      <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4 }}>
+        THE HONEST VERDICT
       </div>
-    </AbsoluteFill>
+      {verdict.axes.map((ax, i) => {
+        const hybridWins = /hybrid|local/i.test(ax.winner);
+        return (
+          <div
+            key={ax.axis}
+            style={{
+              ...entrance(frame, fps, 8 + i * 8),
+              width: "100%",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              background: "#111a30",
+              border: `2px solid ${hybridWins ? LANE_COLOR.local : LANE_COLOR.cloud}`,
+              borderRadius: 14,
+              padding: "14px 22px",
+              boxSizing: "border-box",
+            }}
+          >
+            <div style={{ color: "#cbd5e1", fontFamily: FONT, fontSize: f(30) }}>{ax.axis}</div>
+            <div style={{ color: hybridWins ? LANE_COLOR.local : LANE_COLOR.cloud, fontFamily: FONT, fontSize: f(30), fontWeight: 800 }}>
+              {ax.winner}
+            </div>
+          </div>
+        );
+      })}
+      <div style={{ ...entrance(frame, fps, 48), color: "#94a3b8", fontFamily: FONT, fontSize: f(28), lineHeight: 1.3, textAlign: "center" }}>
+        {verdict.concession}
+      </div>
+      <div style={{ ...entrance(frame, fps, 58), color: "#fff", fontFamily: FONT, fontSize: f(32), fontWeight: 700, lineHeight: 1.3, textAlign: "center" }}>
+        {verdict.bottomLine}
+      </div>
+    </SceneShell>
   );
 };
 
-const CtaScene: React.FC<{ cta: string; repoUrl?: string }> = ({ cta, repoUrl }) => {
+const CtaScene: React.FC<{ cta: string; repoUrl?: string; layout: DemoLayout }> = ({ cta, repoUrl, layout }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const f = scaler(layout);
   // Split "<verb>: <command>" on the first colon so the (long) install command
   // gets its own wrapping monospace box instead of overflowing the frame.
   const idx = cta.indexOf(":");
   const head = idx >= 0 ? cta.slice(0, idx).trim() : cta.trim();
   const command = idx >= 0 ? cta.slice(idx + 1).trim() : "";
+  // head / command / repo become spaced blocks so the tall cut fills the frame.
   return (
-    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", padding: 70 }}>
-      <div style={{ ...entrance(frame, fps), textAlign: "center", width: "100%" }}>
-        <div style={{ color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: 72, marginBottom: 28 }}>
-          {head}
-        </div>
-        {command ? (
-          <div
-            style={{
-              color: "#e2e8f0",
-              background: "#111a30",
-              border: `2px solid ${LANE_COLOR.local}`,
-              fontFamily: "SFMono-Regular, Menlo, Consolas, monospace",
-              fontSize: 30,
-              lineHeight: 1.4,
-              padding: "20px 26px",
-              borderRadius: 16,
-              maxWidth: 860,
-              margin: "0 auto 26px",
-              overflowWrap: "anywhere",
-              wordBreak: "break-word",
-              textAlign: "left",
-            }}
-          >
-            {command}
-          </div>
-        ) : null}
-        {repoUrl ? (
-          <div
-            style={{
-              color: BG,
-              background: LANE_COLOR.local,
-              fontFamily: FONT,
-              fontWeight: 700,
-              fontSize: 28,
-              padding: "12px 24px",
-              borderRadius: 999,
-              display: "inline-block",
-              maxWidth: 900,
-              overflowWrap: "anywhere",
-            }}
-          >
-            {repoUrl.replace(/^https?:\/\//, "")}
-          </div>
-        ) : null}
+    <SceneShell layout={layout} gap={Math.round(26 * layout.gapScale)}>
+      <div style={{ ...entrance(frame, fps), color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(72), textAlign: "center" }}>
+        {head}
       </div>
-    </AbsoluteFill>
+      {command ? (
+        <div
+          style={{
+            ...entrance(frame, fps, 8),
+            color: "#e2e8f0",
+            background: "#111a30",
+            border: `2px solid ${LANE_COLOR.local}`,
+            fontFamily: "SFMono-Regular, Menlo, Consolas, monospace",
+            fontSize: f(30),
+            lineHeight: 1.4,
+            padding: "20px 26px",
+            borderRadius: 16,
+            maxWidth: 860,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+            textAlign: "left",
+          }}
+        >
+          {command}
+        </div>
+      ) : null}
+      {repoUrl ? (
+        <div
+          style={{
+            ...entrance(frame, fps, 16),
+            color: BG,
+            background: LANE_COLOR.local,
+            fontFamily: FONT,
+            fontWeight: 700,
+            fontSize: f(28),
+            padding: "12px 24px",
+            borderRadius: 999,
+            maxWidth: 900,
+            overflowWrap: "anywhere",
+            textAlign: "center",
+          }}
+        >
+          {repoUrl.replace(/^https?:\/\//, "")}
+        </div>
+      ) : null}
+    </SceneShell>
   );
 };
 
 const DemoVideo: React.FC<DemoProps> = (props) => {
   const { scenes, fps } = props;
+  // #765 — the per-aspect layout drives every scene's vertical fill. Fall back to the
+  // 9:16 default if a caller (e.g. the Remotion preview) omits it.
+  const layout = props.layout ?? DEFAULT_LAYOUT_9X16;
   const sceneEl: Record<string, React.ReactNode> = {
-    hook: <HookScene title={props.title} headline={props.hookHeadline} />,
-    compare: <CompareScene arms={props.arms} />,
-    costsplit: <CostSplitScene costSplit={props.costSplit} />,
-    verdict: <VerdictScene verdict={props.verdict} />,
-    cta: <CtaScene cta={props.cta} repoUrl={props.repoUrl} />,
+    hook: <HookScene title={props.title} headline={props.hookHeadline} layout={layout} />,
+    compare: <CompareScene arms={props.arms} layout={layout} />,
+    costsplit: <CostSplitScene costSplit={props.costSplit} layout={layout} />,
+    verdict: <VerdictScene verdict={props.verdict} layout={layout} />,
+    cta: <CtaScene cta={props.cta} repoUrl={props.repoUrl} layout={layout} />,
   };
   return (
     <AbsoluteFill style={{ backgroundColor: BG }}>
@@ -493,6 +578,7 @@ const Root: React.FC = () => {
           cta: "",
           repoUrl: undefined,
           audioSrc: undefined,
+          layout: DEFAULT_LAYOUT_9X16,
           width: 1080,
           height: 1920,
           fps: 30,
