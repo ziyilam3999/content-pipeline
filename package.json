@@ -12,6 +12,7 @@
     "smoke:video": "tsx smoke/video-smoke.ts",
     "smoke:voice": "tsx smoke/voice-smoke.ts",
     "smoke:genart": "tsx smoke/genart-smoke.ts",
+    "smoke:demo": "tsx smoke/demo-video.ts",
     "e2e:lfah": "tsx smoke/e2e-lfah.ts"
   },
   "license": "UNLICENSED",
