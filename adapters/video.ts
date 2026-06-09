@@ -17,6 +17,8 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 import { type CopyResult } from "../pipeline/run";
 import { buildCaptionTrack } from "../video/captions";
 import { buildRenderSpecs, ASPECTS, type Aspect } from "../video/renderSpec";
+import { buildDemoTimeline } from "../video/demoTimeline";
+import { type ContentSpec } from "../inputs/contentspec";
 
 export interface RenderVideoOpts {
   outDir?: string;
@@ -126,32 +128,108 @@ export async function renderVideo(
   };
 
   const entryPoint = path.join(__dirname, "..", "remotion", "index.tsx");
-  const serveUrl = await bundle({ entryPoint });
+  return renderRemotion({
+    entryPoint,
+    id: "launch",
+    inputProps,
+    outPath,
+    maxAttempts: opts?.renderAttempts ?? 3,
+  });
+}
 
-  // Remotion's headless Chromium occasionally fails to reach the freshly-served bundle
-  // ("Visited http://localhost:PORT/index.html but got no response") — a transient serve/timing
-  // flake, not a content error. Retry the select+render a few times so a one-off hiccup never
-  // discards the (sometimes paid) upstream artifacts. The bundle is reused across attempts.
-  const maxAttempts = opts?.renderAttempts ?? 3;
+/**
+ * Bundle the Remotion entry and render one composition to an MP4, retrying the
+ * select+render on a transient headless-Chromium serve flake ("got no response"
+ * / net::ERR / Target closed / Timeout) so a one-off hiccup never discards the
+ * (sometimes paid) upstream artifacts. The bundle is reused across attempts.
+ */
+async function renderRemotion(args: {
+  entryPoint: string;
+  id: string;
+  inputProps: Record<string, unknown>;
+  outPath: string;
+  maxAttempts: number;
+}): Promise<string> {
+  const serveUrl = await bundle({ entryPoint: args.entryPoint });
   let lastErr: unknown;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  for (let attempt = 1; attempt <= args.maxAttempts; attempt++) {
     try {
-      const composition = await selectComposition({ serveUrl, id: "launch", inputProps });
+      const composition = await selectComposition({ serveUrl, id: args.id, inputProps: args.inputProps });
       await renderMedia({
         composition,
         serveUrl,
         codec: "h264",
-        outputLocation: outPath,
-        inputProps,
+        outputLocation: args.outPath,
+        inputProps: args.inputProps,
       });
-      return outPath;
+      return args.outPath;
     } catch (err) {
       lastErr = err;
       const msg = err instanceof Error ? err.message : String(err);
       const transient = /got no response|net::ERR|Target closed|Timeout|ECONNREFUSED/i.test(msg);
-      if (!transient || attempt === maxAttempts) throw err;
+      if (!transient || attempt === args.maxAttempts) throw err;
       await new Promise((r) => setTimeout(r, 1000 * attempt));
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+export interface RenderDemoOpts {
+  outDir?: string;
+  fileName?: string;
+  durationSec?: number; // default 18 (the free cut); set to the voiceover length for the paid cut
+  fps?: number; // default 30
+  audioPath?: string; // optional voiceover; omitted → silent (free)
+  renderAttempts?: number;
+}
+
+/**
+ * #748 — render the ANIMATED product-demo MP4 (composition id="demo"):
+ * hook (cost-efficiency, free local executor) → 4-way comparison → per-role
+ * cost split → honest verdict → CTA, driven by the data-driven
+ * `buildDemoTimeline` (brand-safe, fact-sourced). HOOK-FIRST: the cost win lands
+ * in the first 30s. Defaults to a free silent 9:16 cut; pass `audioPath` for the
+ * paid voiceover cut.
+ */
+export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts): Promise<string> {
+  const fps = opts?.fps ?? 30;
+  // buildDemoTimeline hard-bounds the duration to the 45–90s launch window; read
+  // the clamped value back so the frame count matches the actual timeline.
+  const timeline = buildDemoTimeline(spec, { durationSec: opts?.durationSec, fps });
+  const durationSec = timeline.durationSec;
+  const width = 1080;
+  const height = 1920;
+  const durationInFrames = Math.max(1, Math.round(durationSec * fps));
+
+  const inputProps = {
+    title: timeline.title,
+    hookHeadline: timeline.hookHeadline,
+    scenes: timeline.scenes,
+    nodes: timeline.diagram.nodes,
+    edges: timeline.diagram.edges,
+    numbers: timeline.numbers,
+    arms: timeline.arms,
+    costSplit: timeline.costSplit,
+    verdict: timeline.verdict,
+    cta: timeline.cta,
+    repoUrl: timeline.repoUrl,
+    audioSrc: opts?.audioPath ? toDataUri(opts.audioPath) : undefined,
+    width,
+    height,
+    fps,
+    durationInFrames,
+  };
+
+  const outDir = opts?.outDir ?? path.join(process.cwd(), "out", "video");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, opts?.fileName ?? "demo-9x16.mp4");
+
+  const entryPoint = path.join(__dirname, "..", "remotion", "index.tsx");
+  return renderRemotion({
+    entryPoint,
+    id: "demo",
+    inputProps,
+    outPath,
+    maxAttempts: opts?.renderAttempts ?? 3,
+  });
 }
