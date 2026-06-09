@@ -65,9 +65,12 @@ npm test            # run the full jest suite (9 suites, 87 tests)
 - Use [Conventional Commits](https://www.conventionalcommits.org/) for commit
   messages (`feat:`, `fix:`, `chore:`, `docs:` …). CI checks this on merge, and
   the release notes are generated from these messages.
-- Releases: bump the version in `package.json`, add a section to `CHANGELOG.md`,
-  then push a tag `vX.Y.Z`. The Release workflow turns that changelog section
-  into a GitHub Release.
+- Releases are cut by the `/ship` pipeline (Stage 7) — the same client-side flow
+  every repo in this fleet uses. It bumps the version in `package.json` from the
+  conventional-commit history, prepends a `CHANGELOG.md` section, opens a release
+  PR, and after that merges it tags `vX.Y.Z` and creates the GitHub Release from
+  the changelog section. There is no tag-triggered release Action — `/ship` owns
+  it end-to-end so the flow is identical across repos.
 
 ## License
 
