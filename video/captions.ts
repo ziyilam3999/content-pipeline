@@ -86,6 +86,17 @@ function realChunkEndTimes(
     if (i > 0 && ends[i] < ends[i - 1]) return null;
   }
 
+  // #13 — the alignment must actually MATCH this clip. The final per-character
+  // end time should land on (≈) clip.durationSec; if it's out of range, the whole
+  // array is mis-scaled / for a different clip, so its internal boundaries can't be
+  // trusted either. Snapping only the LAST chunk to durationSec while the internal
+  // boundaries come from a mismatched array yields a "wrong but clean" track (passes
+  // the structural coverage check yet is out of sync with the voice). Fall back to
+  // even-split instead. Tolerance scales with clip length (≥0.1s, or 1% of duration).
+  const finalEnd = ends[ends.length - 1];
+  const tolerance = Math.max(0.1, clip.durationSec * 0.01);
+  if (Math.abs(finalEnd - clip.durationSec) > tolerance) return null;
+
   // Character span of each word in the RAW script (indices match `ends`).
   const spans = Array.from(script.matchAll(/\S+/g)).map((m) => ({
     start: m.index ?? 0,
