@@ -1,55 +1,43 @@
 /**
- * #743 — demo-video timeline spec.
+ * #748 — demo-video timeline spec (the honest 4-WAY comparison + verdict).
  *
  * The timeline is the deterministic source of truth the animated demo renders
- * from. These tests pin: scene tiling/coverage, proportional rescale, that every
- * count-up number is sourced verbatim from a real fact (no invented values), the
- * architecture diagram shape (local "Fix" + a cloud escalation), and number parsing.
+ * from. These tests pin: scene tiling/coverage, proportional rescale, the
+ * HOOK-FIRST ordering (cost-efficiency hook inside the first 30s), the full
+ * 4-arm comparison (including the LOSING 1-shot Sonnet — no cherry-picking),
+ * the per-role cost split (executor local = $0), the honest verdict (which
+ * concedes the full-cloud relay's higher raw resolve %), number parsing, and
+ * that every count-up number is sourced verbatim from a real fact.
  */
 
 import {
   buildDemoTimeline,
   parseFactNumber,
   deriveTitle,
+  buildArms,
   clampDemoDurationSec,
   MIN_DEMO_SEC,
   MAX_DEMO_SEC,
   DEFAULT_DEMO_SEC,
   HOOK_WINDOW_SEC,
 } from "../demoTimeline";
+import { lfahSpec } from "../../smoke/lfahSpec";
 import { type ContentSpec } from "../../inputs/contentspec";
 
-const SPEC: ContentSpec = {
-  product: {
-    name: "local-first-agent-harness",
-    summary:
-      "an AI coding agent that fixes real bugs — runs the heavy work on a cheap local model",
-    repoUrl: "https://github.com/example/repo",
-  },
-  facts: [
-    { label: "full-cloud resolved", value: "77%", scopeGuard: "10/13", source: "README" },
-    { label: "hybrid resolved", value: "62%", scopeGuard: "8/13", source: "README" },
-    { label: "1-shot resolved", value: "54%", scopeGuard: "7/13", source: "README" },
-    { label: "full-cloud cost", value: "$35.0", scopeGuard: "n=13", source: "README" },
-    { label: "hybrid cost", value: "$15.7", scopeGuard: "n=13", source: "README" },
-    { label: "executor cost share", value: "0%", scopeGuard: "free local", source: "README" },
-  ],
-  highlights: ["heavy editing runs free on a local model"],
-  ctas: ["Try it: pip install git+https://github.com/example/repo"],
-  sourceFiles: ["README"],
-};
+// The real shipped spec — these tests run against the ACTUAL 4-way fact set so
+// the demo can never drift from the numbers it ships with.
+const SPEC: ContentSpec = lfahSpec();
 
-const EPS = 1e-9;
 const factValues = SPEC.facts.map((f) => f.value);
 
-describe("#743 demo timeline", () => {
-  test("five scenes in the documented order", () => {
-    const t = buildDemoTimeline(SPEC, { durationSec: 18, fps: 30 });
+describe("#748 demo timeline — structure", () => {
+  test("hook-first scene order: hook → compare → costsplit → verdict → cta", () => {
+    const t = buildDemoTimeline(SPEC, { durationSec: 60, fps: 30 });
     expect(t.scenes.map((s) => s.id)).toEqual([
       "hook",
-      "pipeline",
-      "escalation",
-      "results",
+      "compare",
+      "costsplit",
+      "verdict",
       "cta",
     ]);
   });
@@ -74,6 +62,25 @@ describe("#743 demo timeline", () => {
       expect(b.scenes[i].durationSec).toBeCloseTo(a.scenes[i].durationSec * 2, 6);
     }
   });
+});
+
+describe("#748 demo timeline — HOOK-FIRST (cost-efficiency, free local executor)", () => {
+  test("the hook scene is first and lives entirely inside the 30s hook window", () => {
+    const t = buildDemoTimeline(SPEC, { durationSec: 60 });
+    const hook = t.scenes.find((s) => s.id === "hook")!;
+    expect(hook.fromSec).toBe(0);
+    expect(hook.fromSec + hook.durationSec).toBeLessThanOrEqual(HOOK_WINDOW_SEC);
+  });
+
+  test("the hook headline lands the cost-efficiency angle + free local executor (no false 'best at everything')", () => {
+    const t = buildDemoTimeline(SPEC, { durationSec: 60 });
+    const h = t.hookHeadline.toLowerCase();
+    // Cost-efficiency, not raw resolve %, is the honest hook.
+    expect(h).toMatch(/cost|half|cheaper|value|\$/);
+    expect(h).toMatch(/local|free/);
+    // Must NOT overclaim being the best/highest on resolve rate.
+    expect(h).not.toMatch(/best at everything|highest resolve|most bugs/);
+  });
 
   test("every count-up number is sourced verbatim from a real fact (no invented values)", () => {
     const t = buildDemoTimeline(SPEC);
@@ -82,69 +89,167 @@ describe("#743 demo timeline", () => {
       expect(factValues).toContain(n.value); // verbatim, verifier-consistent
     }
   });
+});
 
-  test("numbers carry parsed prefix/numeric/suffix for the count-up animation", () => {
-    const t = buildDemoTimeline(SPEC);
-    const pct = t.numbers.find((n) => n.value === "77%");
-    expect(pct).toMatchObject({ prefix: "", numeric: 77, suffix: "%" });
-    const cost = t.numbers.find((n) => n.value === "$35.0");
-    expect(cost).toMatchObject({ prefix: "$", numeric: 35, suffix: "" });
+describe("#748 demo timeline — the honest 4-WAY comparison (show ALL arms incl. the loser)", () => {
+  test("buildArms returns exactly the 4 arms in canonical order", () => {
+    const arms = buildArms(SPEC);
+    expect(arms.map((a) => a.key)).toEqual([
+      "opus",
+      "sonnet",
+      "fullcloud",
+      "hybrid",
+    ]);
   });
 
+  test("all four arms are present on the timeline, including the LOSING 1-shot Sonnet", () => {
+    const t = buildDemoTimeline(SPEC);
+    const names = t.arms.map((a) => a.name.toLowerCase());
+    expect(names.some((n) => n.includes("opus"))).toBe(true);
+    expect(names.some((n) => n.includes("sonnet"))).toBe(true); // the loser — no cherry-picking
+    expect(names.some((n) => n.includes("cloud"))).toBe(true);
+    expect(names.some((n) => n.includes("hybrid") || n.includes("local-first"))).toBe(true);
+    expect(t.arms.length).toBe(4);
+  });
+
+  test("each arm carries verbatim resolved %, total cost, and $/resolved sourced from real facts", () => {
+    const t = buildDemoTimeline(SPEC);
+    for (const arm of t.arms) {
+      expect(factValues).toContain(arm.resolved);
+      expect(factValues).toContain(arm.totalCost);
+      expect(factValues).toContain(arm.perResolved);
+    }
+  });
+
+  test("the full-cloud relay is flagged as the highest raw resolve %, hybrid is flagged as lfah", () => {
+    const t = buildDemoTimeline(SPEC);
+    const cloud = t.arms.find((a) => a.key === "fullcloud")!;
+    const hybrid = t.arms.find((a) => a.key === "hybrid")!;
+    expect(cloud.topResolve).toBe(true); // honest: cloud wins raw resolve %
+    expect(hybrid.isLfah).toBe(true);
+    expect(cloud.topResolve && cloud.isLfah).toBe(false); // lfah is NOT the resolve-% winner
+  });
+
+  test("the hybrid (lfah) has the best $/resolved among the relay-class arms (the value claim is true)", () => {
+    const t = buildDemoTimeline(SPEC);
+    const hybrid = t.arms.find((a) => a.key === "hybrid")!;
+    const fullcloud = t.arms.find((a) => a.key === "fullcloud")!;
+    const num = (v: string) => parseFactNumber(v)!.numeric;
+    // $2.24 < $3.50 — the hybrid resolves bugs cheaper than the full-cloud relay.
+    expect(num(hybrid.perResolved)).toBeLessThan(num(fullcloud.perResolved));
+  });
+});
+
+describe("#748 demo timeline — per-role cost split (executor runs LOCAL at $0)", () => {
+  test("the cost split includes the executor running local at 0% of spend", () => {
+    const t = buildDemoTimeline(SPEC);
+    const exec = t.costSplit.find((r) => /executor/i.test(r.role))!;
+    expect(exec).toBeDefined();
+    expect(exec.backend.toLowerCase()).toMatch(/local/);
+    expect(exec.sharePct).toBe(0); // the honest selling point
+  });
+
+  test("the cost-split shares are sourced and sum to ~100%", () => {
+    const t = buildDemoTimeline(SPEC);
+    const total = t.costSplit.reduce((a, r) => a + r.sharePct, 0);
+    expect(total).toBeGreaterThanOrEqual(95);
+    expect(total).toBeLessThanOrEqual(105);
+  });
+});
+
+describe("#748 demo timeline — the honest VERDICT (after the 30s mark)", () => {
+  test("a verdict scene exists and starts at or after the 30s hook window", () => {
+    const t = buildDemoTimeline(SPEC, { durationSec: 60 });
+    const verdict = t.scenes.find((s) => s.id === "verdict")!;
+    expect(verdict).toBeDefined();
+    expect(verdict.fromSec).toBeGreaterThanOrEqual(HOOK_WINDOW_SEC);
+  });
+
+  test("the verdict CONCEDES the full-cloud relay's higher raw resolve % (no overclaim)", () => {
+    const t = buildDemoTimeline(SPEC);
+    const concession = t.verdict.concession.toLowerCase();
+    expect(concession).toMatch(/cloud/);
+    expect(concession).toMatch(/77%|highest|most|raw resolve|resolve/);
+  });
+
+  test("the verdict bottom line recommends lfah on VALUE / default, not raw resolve %", () => {
+    const t = buildDemoTimeline(SPEC);
+    const bl = t.verdict.bottomLine.toLowerCase();
+    expect(bl).toMatch(/value|default|cost/);
+  });
+
+  test("the verdict has axis-by-axis rows, each naming an axis and a winner", () => {
+    const t = buildDemoTimeline(SPEC);
+    expect(t.verdict.axes.length).toBeGreaterThanOrEqual(2);
+    for (const ax of t.verdict.axes) {
+      expect(ax.axis.length).toBeGreaterThan(0);
+      expect(ax.winner.length).toBeGreaterThan(0);
+    }
+    // At least one axis the cloud relay wins (honest), at least one the hybrid wins.
+    const winners = t.verdict.axes.map((a) => a.winner.toLowerCase()).join(" ");
+    expect(winners).toMatch(/cloud/);
+    expect(winners).toMatch(/hybrid|local/);
+  });
+});
+
+describe("#748 demo timeline — duration bounded to a launch-appropriate 45–90s", () => {
+  test("bounds are 45s..90s with a 60s default, and a 30s hook window", () => {
+    expect(MIN_DEMO_SEC).toBe(45);
+    expect(MAX_DEMO_SEC).toBe(90);
+    expect(DEFAULT_DEMO_SEC).toBe(60);
+    // ~30% of viewers leave by 30s → the first 30s must be the hook (#748 design rule).
+    expect(HOOK_WINDOW_SEC).toBe(30);
+  });
+
+  test("clampDemoDurationSec floors below-min, caps above-max, keeps in-range, defaults bad input", () => {
+    expect(clampDemoDurationSec(18)).toBe(45); // the old too-short value is floored
+    expect(clampDemoDurationSec(10)).toBe(45);
+    expect(clampDemoDurationSec(120)).toBe(90);
+    expect(clampDemoDurationSec(60)).toBe(60);
+    expect(clampDemoDurationSec(45)).toBe(45);
+    expect(clampDemoDurationSec(90)).toBe(90);
+    expect(clampDemoDurationSec(undefined)).toBe(DEFAULT_DEMO_SEC);
+    expect(clampDemoDurationSec(NaN)).toBe(DEFAULT_DEMO_SEC);
+  });
+
+  test("buildDemoTimeline never produces a timeline shorter than 45s, even if asked for 18s", () => {
+    const t = buildDemoTimeline(SPEC, { durationSec: 18 });
+    expect(t.durationSec).toBe(45);
+    const last = t.scenes[t.scenes.length - 1];
+    expect(last.fromSec + last.durationSec).toBeCloseTo(45, 6);
+  });
+
+  test("buildDemoTimeline caps at 90s and defaults to 60s, always inside [45,90]", () => {
+    expect(buildDemoTimeline(SPEC, { durationSec: 300 }).durationSec).toBe(90);
+    expect(buildDemoTimeline(SPEC).durationSec).toBe(DEFAULT_DEMO_SEC);
+    const t = buildDemoTimeline(SPEC);
+    expect(t.durationSec).toBeGreaterThanOrEqual(45);
+    expect(t.durationSec).toBeLessThanOrEqual(90);
+  });
+});
+
+describe("#748 demo timeline — diagram + parsing + flow-through (carried from #743)", () => {
   test("diagram shows the local Fix node plus a cloud escalation edge", () => {
     const t = buildDemoTimeline(SPEC);
     const fix = t.diagram.nodes.find((n) => n.id === "fix");
     expect(fix?.lane).toBe("local");
     expect(t.diagram.nodes.some((n) => n.lane === "cloud")).toBe(true);
-    // The documented main flow plan→fix→grade→tests is present...
     const flow = t.diagram.edges.filter((e) => e.kind === "flow").map((e) => `${e.from}->${e.to}`);
     expect(flow).toEqual(["plan->fix", "fix->grade", "grade->tests"]);
-    // ...and a single "escalate when stuck" edge off the local Fix node.
     const esc = t.diagram.edges.filter((e) => e.kind === "escalate");
     expect(esc).toEqual([{ from: "fix", to: "cloud", kind: "escalate" }]);
   });
 
   test("title is derived from the product summary's first clause (no invented copy)", () => {
-    expect(deriveTitle(SPEC)).toBe("An AI coding agent that fixes real bugs");
+    expect(deriveTitle(SPEC)).toBe(
+      "An AI coding agent that fixes real bugs",
+    );
   });
 
   test("cta + repoUrl flow through from the spec", () => {
     const t = buildDemoTimeline(SPEC);
     expect(t.cta).toBe(SPEC.ctas[0]);
     expect(t.repoUrl).toBe(SPEC.product.repoUrl);
-  });
-
-  describe("duration is bounded to a launch-appropriate 45–90s (never an 18s clip again)", () => {
-    test("bounds are 45s..90s with a 60s default, and a 30s hook window", () => {
-      expect(MIN_DEMO_SEC).toBe(45);
-      expect(MAX_DEMO_SEC).toBe(90);
-      expect(DEFAULT_DEMO_SEC).toBe(60);
-      // ~30% of viewers leave by 30s → the first 30s must be the hook (#748 design rule).
-      expect(HOOK_WINDOW_SEC).toBe(30);
-    });
-
-    test("clampDemoDurationSec floors below-min, caps above-max, keeps in-range, defaults bad input", () => {
-      expect(clampDemoDurationSec(18)).toBe(45); // the old too-short value is floored
-      expect(clampDemoDurationSec(10)).toBe(45);
-      expect(clampDemoDurationSec(120)).toBe(90);
-      expect(clampDemoDurationSec(60)).toBe(60);
-      expect(clampDemoDurationSec(45)).toBe(45);
-      expect(clampDemoDurationSec(90)).toBe(90);
-      expect(clampDemoDurationSec(undefined)).toBe(DEFAULT_DEMO_SEC);
-      expect(clampDemoDurationSec(NaN)).toBe(DEFAULT_DEMO_SEC);
-    });
-
-    test("buildDemoTimeline never produces a timeline shorter than 45s, even if asked for 18s", () => {
-      const t = buildDemoTimeline(SPEC, { durationSec: 18 });
-      expect(t.durationSec).toBe(45);
-      const last = t.scenes[t.scenes.length - 1];
-      expect(last.fromSec + last.durationSec).toBeCloseTo(45, 6);
-    });
-
-    test("buildDemoTimeline caps at 90s and defaults to 60s", () => {
-      expect(buildDemoTimeline(SPEC, { durationSec: 300 }).durationSec).toBe(90);
-      expect(buildDemoTimeline(SPEC).durationSec).toBe(DEFAULT_DEMO_SEC);
-    });
   });
 
   test("parseFactNumber handles %, $, plain, and rejects non-numeric", () => {

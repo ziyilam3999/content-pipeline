@@ -94,7 +94,7 @@ const LaunchVideo: React.FC<LaunchProps> = ({ imageSrc, audioSrc, captions, band
   );
 };
 
-// ───────────────────────────── demo (#743) ──────────────────────────────────
+// ───────────────────────────── demo (#748) ──────────────────────────────────
 
 type Lane = "local" | "cloud" | "test";
 interface DemoNode { id: string; label: string; lane: Lane; badge: string }
@@ -109,12 +109,34 @@ interface DemoNumber {
 }
 interface DemoScene { id: string; fromSec: number; durationSec: number }
 
+interface DemoArm {
+  key: "opus" | "sonnet" | "fullcloud" | "hybrid";
+  name: string;
+  resolved: string;
+  totalCost: string;
+  perResolved: string;
+  topResolve: boolean;
+  isLfah: boolean;
+  note: string;
+}
+interface DemoCostRole { role: string; backend: string; cost: string; sharePct: number }
+interface DemoVerdictAxis { axis: string; winner: string; note: string }
+interface DemoVerdict {
+  axes: DemoVerdictAxis[];
+  concession: string;
+  bottomLine: string;
+}
+
 interface DemoProps {
   title: string;
+  hookHeadline: string;
   scenes: DemoScene[];
   nodes: DemoNode[];
   edges: DemoEdge[];
   numbers: DemoNumber[];
+  arms: DemoArm[];
+  costSplit: DemoCostRole[];
+  verdict: DemoVerdict;
   cta: string;
   repoUrl?: string;
   audioSrc?: string;
@@ -131,7 +153,6 @@ const LANE_COLOR: Record<Lane, string> = {
   cloud: "#60a5fa", // blue — cloud
   test: "#fbbf24", // amber — real test oracle
 };
-const LANE_LABEL: Record<Lane, string> = { local: "LOCAL", cloud: "CLOUD", test: "TESTS" };
 
 /** Fade + rise driven by a spring; returns inline style for an entrance. */
 function entrance(frame: number, fps: number, delay = 0, rise = 36) {
@@ -143,160 +164,197 @@ function entrance(frame: number, fps: number, delay = 0, rise = 36) {
   return { opacity, transform: `translateY(${interpolate(s, [0, 1], [rise, 0])}px)` };
 }
 
-const HookScene: React.FC<{ title: string }> = ({ title }) => {
+/**
+ * HOOK (first 30s) — the single most compelling HONEST claim: fixes real bugs at
+ * ~half the cloud relay's cost-per-fix because the heavy work runs FREE locally.
+ * NOT a "best at everything" claim.
+ */
+const HookScene: React.FC<{ title: string; headline: string }> = ({ title, headline }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   return (
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", padding: 80 }}>
       <div style={{ ...entrance(frame, fps), textAlign: "center" }}>
-        <div style={{ color: "#64748b", fontFamily: FONT, fontSize: 34, letterSpacing: 6, marginBottom: 24 }}>
-          HOW IT WORKS
-        </div>
-        <div style={{ color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: 72, lineHeight: 1.1 }}>
+        <div style={{ color: "#64748b", fontFamily: FONT, fontSize: 32, letterSpacing: 6, marginBottom: 18 }}>
           {title}
+        </div>
+        <div
+          style={{
+            ...entrance(frame, fps, 8),
+            color: "#fff",
+            fontFamily: FONT,
+            fontWeight: 800,
+            fontSize: 64,
+            lineHeight: 1.15,
+            marginBottom: 28,
+          }}
+        >
+          {headline}
+        </div>
+        <div
+          style={{
+            ...entrance(frame, fps, 20),
+            display: "inline-block",
+            color: BG,
+            background: LANE_COLOR.local,
+            fontFamily: FONT,
+            fontWeight: 800,
+            fontSize: 34,
+            padding: "12px 26px",
+            borderRadius: 999,
+          }}
+        >
+          Executor runs LOCAL · $0
         </div>
       </div>
     </AbsoluteFill>
   );
 };
 
-const NodeBox: React.FC<{ node: DemoNode; show: number; stuck?: boolean }> = ({ node, show, stuck }) => {
+/**
+ * COMPARE (after 30s) — the honest 4-way table. ALL four arms, including the
+ * LOSING 1-shot Sonnet (dimmed, marked "weakest"). The full-cloud relay's
+ * resolve % is badged as the ceiling; the hybrid (lfah) is highlighted green.
+ */
+const ArmRow: React.FC<{ arm: DemoArm; show: number }> = ({ arm, show }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const color = LANE_COLOR[node.lane];
-  const pulse = stuck ? 1 + 0.04 * Math.sin(frame / 3) : 1;
+  const accent = arm.isLfah ? LANE_COLOR.local : arm.topResolve ? LANE_COLOR.cloud : "#475569";
+  const dim = arm.key === "sonnet"; // the loser — present but visually de-emphasised
   return (
     <div
       style={{
         ...entrance(frame, fps, show),
-        width: 620,
-        background: "#111a30",
-        border: `3px solid ${color}`,
-        borderRadius: 20,
-        padding: "26px 32px",
-        transform: `${entrance(frame, fps, show).transform} scale(${pulse})`,
-        boxShadow: stuck ? `0 0 40px ${color}` : "none",
+        width: 940,
+        background: arm.isLfah ? "#0f2a22" : "#111a30",
+        border: `3px solid ${accent}`,
+        borderRadius: 18,
+        padding: "20px 26px",
+        opacity: dim ? 0.62 : 1,
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ color: "#fff", fontFamily: FONT, fontWeight: 700, fontSize: 40 }}>{node.label}</div>
-        <div
-          style={{
-            color: BG,
-            background: color,
-            fontFamily: FONT,
-            fontWeight: 800,
-            fontSize: 22,
-            padding: "6px 14px",
-            borderRadius: 999,
-          }}
-        >
-          {LANE_LABEL[node.lane]}
+        <div style={{ color: "#fff", fontFamily: FONT, fontWeight: 700, fontSize: 38 }}>
+          {arm.name}
+          {arm.isLfah ? <span style={{ color: LANE_COLOR.local, fontSize: 26 }}>  ← this is lfah</span> : null}
+        </div>
+        <div style={{ display: "flex", gap: 22, alignItems: "baseline" }}>
+          <div style={{ color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: 44 }}>{arm.resolved}</div>
+          {arm.topResolve ? (
+            <div style={{ color: LANE_COLOR.cloud, fontFamily: FONT, fontSize: 24, fontWeight: 700 }}>top resolve</div>
+          ) : null}
         </div>
       </div>
-      <div style={{ color: "#94a3b8", fontFamily: FONT, fontSize: 28, marginTop: 8 }}>{node.badge}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+        <div style={{ color: "#94a3b8", fontFamily: FONT, fontSize: 26 }}>{arm.note}</div>
+        <div style={{ color: "#cbd5e1", fontFamily: FONT, fontSize: 28 }}>
+          {arm.totalCost} total · <span style={{ color: arm.isLfah ? LANE_COLOR.local : "#cbd5e1", fontWeight: 700 }}>{arm.perResolved}/fix</span>
+        </div>
+      </div>
     </div>
   );
 };
 
-const PipelineScene: React.FC<{ nodes: DemoNode[] }> = ({ nodes }) => {
-  const frame = useCurrentFrame();
-  // Main flow nodes only (exclude the cloud-helper, which stars in the escalation scene).
-  const flow = nodes.filter((n) => n.id !== "cloud");
-  return (
-    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 22, alignItems: "center" }}>
-        {flow.map((n, i) => (
-          <React.Fragment key={n.id}>
-            <NodeBox node={n} show={i * 12} />
-            {i < flow.length - 1 ? (
-              <div
-                style={{
-                  width: 6,
-                  height: interpolate(frame, [i * 12 + 8, i * 12 + 20], [0, 36], {
-                    extrapolateLeft: "clamp",
-                    extrapolateRight: "clamp",
-                  }),
-                  background: "#334155",
-                  borderRadius: 3,
-                }}
-              />
-            ) : null}
-          </React.Fragment>
-        ))}
-      </div>
-    </AbsoluteFill>
-  );
-};
-
-const EscalationScene: React.FC<{ nodes: DemoNode[] }> = ({ nodes }) => {
-  const frame = useCurrentFrame();
-  const { fps, durationInFrames } = useVideoConfig();
-  const fix = nodes.find((n) => n.id === "fix");
-  const cloud = nodes.find((n) => n.id === "cloud");
-  // Resolve to green in the last third of the scene.
-  const resolved = frame > durationInFrames * 0.62;
-  const arrow = interpolate(frame, [10, 28], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  return (
-    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 18, alignItems: "center", width: 680 }}>
-        <div style={{ ...entrance(frame, fps), color: "#fff", fontFamily: FONT, fontSize: 40, fontWeight: 700, textAlign: "center" }}>
-          {resolved ? "Hardest bugs → solved ✓" : "Stuck? Escalate — only when needed"}
-        </div>
-        {cloud ? <NodeBox node={cloud} show={6} /> : null}
-        <div
-          style={{
-            width: 6,
-            height: 48 * arrow,
-            background: resolved ? LANE_COLOR.local : LANE_COLOR.cloud,
-            borderRadius: 3,
-          }}
-        />
-        {fix ? <NodeBox node={{ ...fix, badge: resolved ? "fixed locally + cloud help" : fix.badge }} show={0} stuck={!resolved} /> : null}
-      </div>
-    </AbsoluteFill>
-  );
-};
-
-const CountUp: React.FC<{ n: DemoNumber; delay: number }> = ({ n, delay }) => {
+const CompareScene: React.FC<{ arms: DemoArm[] }> = ({ arms }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const decimals = n.value.includes(".") ? 1 : 0;
-  const v = interpolate(frame - delay, [0, 26], [0, n.numeric], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  const display = `${n.prefix}${v.toFixed(decimals)}${n.suffix}`;
-  // Bar width is proportional to the value within a 0..100-ish range (percentages),
-  // or normalised by the largest cost for $-values — kept simple/relative.
-  const barFrac = Math.max(0.06, Math.min(1, n.numeric / (n.suffix === "%" ? 100 : 40)));
-  const barW = interpolate(frame - delay, [0, 26], [0, barFrac * 560], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
   return (
-    <div style={{ ...entrance(frame, fps, delay, 18), width: 760 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <div style={{ color: "#cbd5e1", fontFamily: FONT, fontSize: 30 }}>{n.label}</div>
-        <div style={{ color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: 52 }}>{display}</div>
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 18, alignItems: "center" }}>
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: 34, letterSpacing: 4, marginBottom: 8 }}>
+          ALL 4 WAYS, COMPARED — n=13
+        </div>
+        {arms.map((a, i) => (
+          <ArmRow key={a.key} arm={a} show={10 + i * 12} />
+        ))}
       </div>
-      <div style={{ height: 16, background: "#1e293b", borderRadius: 8, marginTop: 8, overflow: "hidden" }}>
-        <div style={{ width: barW, height: "100%", background: LANE_COLOR.local, borderRadius: 8 }} />
-      </div>
-      {n.scopeGuard ? (
-        <div style={{ color: "#64748b", fontFamily: FONT, fontSize: 22, marginTop: 4 }}>{n.scopeGuard}</div>
-      ) : null}
-    </div>
+    </AbsoluteFill>
   );
 };
 
-const ResultsScene: React.FC<{ numbers: DemoNumber[] }> = ({ numbers }) => {
+/**
+ * COSTSPLIT (after 30s) — where the hybrid's money actually goes, per role.
+ * The executor runs LOCAL at $0 / 0% of spend — the honest selling point.
+ */
+const CostSplitScene: React.FC<{ costSplit: DemoCostRole[] }> = ({ costSplit }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   return (
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 34 }}>
-        {numbers.map((n, i) => (
-          <CountUp key={n.label} n={n} delay={i * 8} />
-        ))}
+      <div style={{ display: "flex", flexDirection: "column", gap: 22, width: 900 }}>
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: 34, letterSpacing: 4, marginBottom: 8 }}>
+          WHERE THE MONEY GOES
+        </div>
+        {costSplit.map((r, i) => {
+          const isFree = r.sharePct === 0;
+          const accent = isFree ? LANE_COLOR.local : LANE_COLOR.cloud;
+          const barW = interpolate(frame - (10 + i * 10), [0, 24], [0, Math.max(2, r.sharePct) / 100 * 720], {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          });
+          return (
+            <div key={r.role} style={{ ...entrance(frame, fps, 10 + i * 10, 18), width: 880 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <div style={{ color: "#fff", fontFamily: FONT, fontSize: 32, fontWeight: 700 }}>
+                  {r.role} <span style={{ color: "#64748b", fontSize: 24, fontWeight: 400 }}>· {r.backend}</span>
+                </div>
+                <div style={{ color: isFree ? LANE_COLOR.local : "#fff", fontFamily: FONT, fontWeight: 800, fontSize: 40 }}>
+                  {r.cost} · {r.sharePct}%
+                </div>
+              </div>
+              <div style={{ height: 16, background: "#1e293b", borderRadius: 8, marginTop: 8, overflow: "hidden" }}>
+                <div style={{ width: barW, height: "100%", background: accent, borderRadius: 8 }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/**
+ * VERDICT (after 30s) — honest, axis by axis. CONCEDES the full-cloud relay's
+ * higher raw resolve % up front, then recommends lfah on VALUE / as the default.
+ */
+const VerdictScene: React.FC<{ verdict: DemoVerdict }> = ({ verdict }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  return (
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", padding: 60 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, width: 940 }}>
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: 34, letterSpacing: 4 }}>
+          THE HONEST VERDICT
+        </div>
+        {verdict.axes.map((ax, i) => {
+          const hybridWins = /hybrid|local/i.test(ax.winner);
+          return (
+            <div
+              key={ax.axis}
+              style={{
+                ...entrance(frame, fps, 8 + i * 8),
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "#111a30",
+                border: `2px solid ${hybridWins ? LANE_COLOR.local : LANE_COLOR.cloud}`,
+                borderRadius: 14,
+                padding: "14px 22px",
+              }}
+            >
+              <div style={{ color: "#cbd5e1", fontFamily: FONT, fontSize: 30 }}>{ax.axis}</div>
+              <div style={{ color: hybridWins ? LANE_COLOR.local : LANE_COLOR.cloud, fontFamily: FONT, fontSize: 30, fontWeight: 800 }}>
+                {ax.winner}
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ ...entrance(frame, fps, 48), color: "#94a3b8", fontFamily: FONT, fontSize: 28, marginTop: 8, lineHeight: 1.3 }}>
+          {verdict.concession}
+        </div>
+        <div style={{ ...entrance(frame, fps, 58), color: "#fff", fontFamily: FONT, fontSize: 32, fontWeight: 700, lineHeight: 1.3 }}>
+          {verdict.bottomLine}
+        </div>
       </div>
     </AbsoluteFill>
   );
@@ -363,10 +421,10 @@ const CtaScene: React.FC<{ cta: string; repoUrl?: string }> = ({ cta, repoUrl })
 const DemoVideo: React.FC<DemoProps> = (props) => {
   const { scenes, fps } = props;
   const sceneEl: Record<string, React.ReactNode> = {
-    hook: <HookScene title={props.title} />,
-    pipeline: <PipelineScene nodes={props.nodes} />,
-    escalation: <EscalationScene nodes={props.nodes} />,
-    results: <ResultsScene numbers={props.numbers} />,
+    hook: <HookScene title={props.title} headline={props.hookHeadline} />,
+    compare: <CompareScene arms={props.arms} />,
+    costsplit: <CostSplitScene costSplit={props.costSplit} />,
+    verdict: <VerdictScene verdict={props.verdict} />,
     cta: <CtaScene cta={props.cta} repoUrl={props.repoUrl} />,
   };
   return (
@@ -424,10 +482,14 @@ const Root: React.FC = () => {
         height={1920}
         defaultProps={{
           title: "How it works",
+          hookHeadline: "",
           scenes: [] as DemoScene[],
           nodes: [] as DemoNode[],
           edges: [] as DemoEdge[],
           numbers: [] as DemoNumber[],
+          arms: [] as DemoArm[],
+          costSplit: [] as DemoCostRole[],
+          verdict: { axes: [], concession: "", bottomLine: "" } as DemoVerdict,
           cta: "",
           repoUrl: undefined,
           audioSrc: undefined,

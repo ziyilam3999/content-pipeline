@@ -1,10 +1,11 @@
 /**
- * #743 — demo-video smoke (FREE, no API calls).
+ * #748 — demo-video smoke (FREE, no API calls).
  *
  * Renders the ANIMATED product-demo MP4 (composition id="demo") from the real
- * lfah numbers, silent (no voiceover → no paid call), and asserts a real,
- * non-empty MP4 was written. Saves it to out/review/lfah/demo for the operator
- * to watch and request creative iteration.
+ * lfah numbers — the honest 4-WAY comparison (hook → 4-arm table → per-role cost
+ * split → verdict → CTA), silent (no voiceover → no paid call), and asserts a
+ * real, non-empty MP4 was written. Saves it to out/review/lfah/demo for the
+ * operator to watch and request creative iteration.
  *
  * Run: `npm run smoke:demo`
  */
@@ -22,7 +23,7 @@ async function main() {
   // Default to the 60s launch target; buildDemoTimeline hard-bounds to 45–90s regardless.
   const durationSec = Number(process.env.DEMO_DURATION_SEC ?? "60");
 
-  console.log(`\n=== #743 demo-video smoke — animated lfah product demo (${durationSec}s, silent/free) ===\n`);
+  console.log(`\n=== #748 demo-video smoke — honest 4-way lfah product demo (${durationSec}s, silent/free) ===\n`);
   const t0 = Date.now();
   const outPath = await renderDemoVideo(lfahSpec(), {
     durationSec,

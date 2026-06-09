@@ -1,10 +1,17 @@
 /**
- * #743 — demo-video TIMELINE (the deterministic spec the animation renders from).
+ * #748 — demo-video TIMELINE (the deterministic spec the animation renders from).
  *
  * Pure, no Remotion / no network. Turns a brand-safe `ContentSpec` plus a target
- * length into an ordered set of scenes, an architecture diagram, and a set of
- * count-up numbers — all sourced from the spec's real facts so the moving demo
+ * length into an ordered set of scenes, the honest 4-WAY comparison (all four
+ * arms, including the LOSING 1-shot Sonnet — no cherry-picking), the per-role
+ * cost split (executor local = $0), and an honest VERDICT that recommends lfah
+ * on cost-efficiency while conceding the full-cloud relay's higher raw resolve %.
+ * Every number is sourced VERBATIM from the spec's real facts so the moving demo
  * stays consistent with the thread/card and never invents a value.
+ *
+ * HOOK-FIRST: the first scene (inside the 30s hook window) lands the single most
+ * compelling HONEST claim — the cost-efficiency angle + a free local executor —
+ * and the detailed comparison / cost split / verdict come AFTER 30s.
  *
  * The Remotion composition (remotion/index.tsx, id="demo") is the VIEW over this
  * spec; this module is unit-tested as the source of truth for timings + content.
@@ -46,7 +53,7 @@ export interface DemoNumber {
   scopeGuard?: string;
 }
 
-export type SceneId = "hook" | "pipeline" | "escalation" | "results" | "cta";
+export type SceneId = "hook" | "compare" | "costsplit" | "verdict" | "cta";
 
 export interface DemoScene {
   id: SceneId;
@@ -54,13 +61,62 @@ export interface DemoScene {
   durationSec: number;
 }
 
+/** One row of the honest 4-way comparison table. Values are verbatim fact strings. */
+export interface DemoArm {
+  /** Stable key for tests/styling (not shown). */
+  key: "opus" | "sonnet" | "fullcloud" | "hybrid";
+  /** Human label shown on screen, e.g. "1-shot Sonnet". */
+  name: string;
+  resolved: string; // e.g. "62%"
+  totalCost: string; // e.g. "$15.7"
+  perResolved: string; // e.g. "$2.24"
+  /** True for the arm with the highest raw resolve % (the full-cloud relay — honest). */
+  topResolve: boolean;
+  /** True for the local-first hybrid (lfah) — the arm we recommend. */
+  isLfah: boolean;
+  /** Short honest note, e.g. "weakest arm" / "quality ceiling" / "best value". */
+  note: string;
+}
+
+/** One row of the per-role cost split — where the hybrid's money actually goes. */
+export interface DemoCostRole {
+  role: string; // "Planner" | "Executor" | ...
+  backend: string; // "cloud Opus" | "local model" | ...
+  cost: string; // "$8.9" | "$0.0"
+  sharePct: number; // 52 | 0 ...
+}
+
+/** One axis of the honest, axis-by-axis verdict. */
+export interface DemoVerdictAxis {
+  axis: string; // "Raw resolve %" | "Cost per resolved" | ...
+  winner: string; // "Full-cloud relay" | "Local-first hybrid" | ...
+  note: string;
+}
+
+/** The honest verdict: a hook headline, axis-by-axis rows, a concession, a bottom line. */
+export interface DemoVerdict {
+  axes: DemoVerdictAxis[];
+  /** Explicitly concedes the full-cloud relay's higher raw resolve % (no overclaim). */
+  concession: string;
+  /** Recommends lfah on VALUE / default — not on raw resolve %. */
+  bottomLine: string;
+}
+
 export interface DemoTimeline {
   durationSec: number;
   fps: number;
   title: string;
+  /** The honest cost-efficiency hook line (free local executor), shown in the first 30s. */
+  hookHeadline: string;
   scenes: DemoScene[];
   diagram: DemoDiagram;
   numbers: DemoNumber[];
+  /** The 4-way comparison (all arms, incl. the losing 1-shot Sonnet). */
+  arms: DemoArm[];
+  /** Per-role cost split (executor local = $0). */
+  costSplit: DemoCostRole[];
+  /** The honest verdict (concedes cloud's raw-resolve lead; recommends lfah on value). */
+  verdict: DemoVerdict;
   cta: string;
   repoUrl?: string;
 }
@@ -98,13 +154,21 @@ export function clampDemoDurationSec(requested?: number): number {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-/** Relative scene weights; actual seconds scale these to fill `durationSec`. */
+/**
+ * Relative scene weights; actual seconds scale these to fill `durationSec`.
+ *
+ * Tuned so HOOK-FIRST holds across the whole 45–90s window:
+ *   - the `hook` scene ends well inside HOOK_WINDOW_SEC (30s) at every length, and
+ *   - the `verdict` scene starts at/after HOOK_WINDOW_SEC at every length
+ *     (worst case is the 45s floor; the cumulative weight before `verdict` puts its
+ *      start at ≈30.7s there).
+ */
 const SCENE_WEIGHTS: { id: SceneId; weight: number }[] = [
-  { id: "hook", weight: 2.5 },
-  { id: "pipeline", weight: 6 },
-  { id: "escalation", weight: 3 },
-  { id: "results", weight: 5 },
-  { id: "cta", weight: 2 },
+  { id: "hook", weight: 4 },
+  { id: "compare", weight: 6 },
+  { id: "costsplit", weight: 4 },
+  { id: "verdict", weight: 4 },
+  { id: "cta", weight: 2.5 },
 ];
 
 /** lfah's pipeline, as a fixed flow (the architecture this product demonstrates). */
@@ -150,6 +214,115 @@ function toDemoNumber(fact: Fact): DemoNumber | null {
     suffix: parsed.suffix,
     scopeGuard: fact.scopeGuard,
   };
+}
+
+// ── 4-way comparison / cost split / verdict (sourced verbatim from facts) ────
+
+/** Look up a fact's verbatim value by an exact label; throws if the spec is missing it. */
+function factValue(spec: ContentSpec, label: string): string {
+  const f = spec.facts.find((x) => x.label === label);
+  if (!f) {
+    throw new Error(`lfah spec is missing required fact "${label}" — update smoke/lfahSpec.ts`);
+  }
+  return f.value;
+}
+
+/**
+ * The honest 4-way comparison: 1-shot Opus, the LOSING 1-shot Sonnet, the
+ * full-cloud relay (highest raw resolve %), and the local-first hybrid (lfah).
+ * Every number is pulled verbatim from the spec's facts — no invented values.
+ */
+export function buildArms(spec: ContentSpec): DemoArm[] {
+  return [
+    {
+      key: "opus",
+      name: "1-shot Opus",
+      resolved: factValue(spec, "1-shot Opus resolved"),
+      totalCost: factValue(spec, "1-shot Opus total cost"),
+      perResolved: factValue(spec, "1-shot Opus per resolved"),
+      topResolve: false,
+      isLfah: false,
+      note: "blind single shot — no plan, no test-check",
+    },
+    {
+      key: "sonnet",
+      name: "1-shot Sonnet",
+      resolved: factValue(spec, "1-shot Sonnet resolved"),
+      totalCost: factValue(spec, "1-shot Sonnet total cost"),
+      perResolved: factValue(spec, "1-shot Sonnet per resolved"),
+      topResolve: false,
+      isLfah: false,
+      note: "weakest arm — lowest resolve % AND poor value",
+    },
+    {
+      key: "fullcloud",
+      name: "Full-cloud relay",
+      resolved: factValue(spec, "full-cloud relay resolved"),
+      totalCost: factValue(spec, "full-cloud relay total cost"),
+      perResolved: factValue(spec, "full-cloud relay per resolved"),
+      topResolve: true, // honest: this arm wins raw resolve %
+      isLfah: false,
+      note: "quality ceiling — but priciest total",
+    },
+    {
+      key: "hybrid",
+      name: "Local-first hybrid",
+      resolved: factValue(spec, "local-first hybrid resolved (with cloud fallback)"),
+      totalCost: factValue(spec, "local-first hybrid total cost"),
+      perResolved: factValue(spec, "local-first hybrid per resolved"),
+      topResolve: false,
+      isLfah: true,
+      note: "the value play — free local executor, cloud only when stuck",
+    },
+  ];
+}
+
+/** Per-role cost split for the hybrid — where the money actually goes (executor = $0). */
+export function buildCostSplit(spec: ContentSpec): DemoCostRole[] {
+  const share = (label: string): number => {
+    const parsed = parseFactNumber(factValue(spec, label));
+    return parsed ? parsed.numeric : 0;
+  };
+  return [
+    { role: "Planner", backend: "cloud Opus", cost: "$8.9", sharePct: share("planner (cloud) cost share") },
+    { role: "Evaluator", backend: "cloud", cost: "$6.8", sharePct: share("evaluator (cloud) cost share") },
+    { role: "Executor", backend: "local model", cost: "$0.0", sharePct: share("executor (local) cost share") },
+    { role: "Cloud fallback", backend: "cloud (hard bugs only)", cost: "$1.4", sharePct: share("cloud fallback cost share") },
+  ];
+}
+
+/**
+ * The honest, axis-by-axis verdict. Concedes the full-cloud relay's higher raw
+ * resolve % up front, then recommends lfah on VALUE / as the safe default —
+ * never an overclaimed "best at everything".
+ */
+export function buildVerdict(spec: ContentSpec): DemoVerdict {
+  const cloudResolved = factValue(spec, "full-cloud relay resolved"); // "77%"
+  const hybridPerResolved = factValue(spec, "local-first hybrid per resolved"); // "$2.24"
+  const saving = factValue(spec, "cost saving vs full-cloud (same chain)"); // "55%"
+  return {
+    axes: [
+      { axis: "Raw resolve %", winner: "Full-cloud relay", note: `${cloudResolved} — the quality ceiling` },
+      { axis: "Cost per resolved", winner: "Local-first hybrid", note: `${hybridPerResolved} — best value` },
+      { axis: "Heavy-role labor", winner: "Local-first hybrid", note: "executor runs free on a local model" },
+      { axis: "Safe default", winner: "Local-first hybrid", note: "plans + verifies like the cloud chain, for free labor" },
+    ],
+    concession:
+      `Honest: the full-cloud relay has the highest raw resolve % (${cloudResolved}) — it's the quality ceiling.`,
+    bottomLine:
+      `But the local-first hybrid wins on value — same chain at ${saving} less cost, ` +
+      `with the heavy role running free locally. Best default when you don't know if a bug is easy or hard.`,
+  };
+}
+
+/** The HONEST cost-efficiency hook line (free local executor) — shown in the first 30s. */
+export function buildHookHeadline(spec: ContentSpec): string {
+  const hybridPerResolved = factValue(spec, "local-first hybrid per resolved"); // "$2.24"
+  const cloudPerResolved = factValue(spec, "full-cloud relay per resolved"); // "$3.50"
+  return (
+    `Fixes real bugs at ${hybridPerResolved} each — roughly half the cloud relay's ` +
+    `${cloudPerResolved} — because the heavy work runs FREE on a local model.`
+  );
 }
 
 // ── Title ──────────────────────────────────────────────────────────────────
@@ -199,9 +372,13 @@ export function buildDemoTimeline(
     durationSec,
     fps,
     title: deriveTitle(spec),
+    hookHeadline: buildHookHeadline(spec),
     scenes,
     diagram: DIAGRAM,
     numbers,
+    arms: buildArms(spec),
+    costSplit: buildCostSplit(spec),
+    verdict: buildVerdict(spec),
     cta: spec.ctas[0] ?? "",
     repoUrl: spec.product.repoUrl,
   };

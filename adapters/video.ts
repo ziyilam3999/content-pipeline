@@ -184,10 +184,12 @@ export interface RenderDemoOpts {
 }
 
 /**
- * #743 — render the ANIMATED product-demo MP4 (composition id="demo"): hook →
- * pipeline diagram → escalation → count-up results → CTA, driven by the
- * data-driven `buildDemoTimeline` (brand-safe, fact-sourced). Defaults to a free
- * silent 9:16 cut; pass `audioPath` for the paid voiceover cut.
+ * #748 — render the ANIMATED product-demo MP4 (composition id="demo"):
+ * hook (cost-efficiency, free local executor) → 4-way comparison → per-role
+ * cost split → honest verdict → CTA, driven by the data-driven
+ * `buildDemoTimeline` (brand-safe, fact-sourced). HOOK-FIRST: the cost win lands
+ * in the first 30s. Defaults to a free silent 9:16 cut; pass `audioPath` for the
+ * paid voiceover cut.
  */
 export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts): Promise<string> {
   const fps = opts?.fps ?? 30;
@@ -201,10 +203,14 @@ export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts):
 
   const inputProps = {
     title: timeline.title,
+    hookHeadline: timeline.hookHeadline,
     scenes: timeline.scenes,
     nodes: timeline.diagram.nodes,
     edges: timeline.diagram.edges,
     numbers: timeline.numbers,
+    arms: timeline.arms,
+    costSplit: timeline.costSplit,
+    verdict: timeline.verdict,
     cta: timeline.cta,
     repoUrl: timeline.repoUrl,
     audioSrc: opts?.audioPath ? toDataUri(opts.audioPath) : undefined,
