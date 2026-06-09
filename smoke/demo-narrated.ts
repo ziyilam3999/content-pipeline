@@ -125,8 +125,10 @@ async function main() {
   // ── #775 — caption track (synced to the real voice alignment). Build it here so the
   //     bundle records its size + we can FAIL the smoke if a voiced demo would ship empty
   //     captions (the parity invariant, proven FREE on the mock path). The caption clip's
-  //     duration is the CLAMPED demo duration the render actually uses (45–90s window).
-  const renderDurationSec = clampDemoDurationSec(durationSec);
+  //     duration must match the duration the render actually uses. #777 — a VOICED render
+  //     (sceneEndTimesSec present) uses the REAL narration length (floored at MIN, NOT capped
+  //     at MAX), so the caption clip is clamped with { voiced: true } to stay in lockstep.
+  const renderDurationSec = clampDemoDurationSec(durationSec, { voiced: true });
   const captionCues = buildDemoCaptionCues(script, { durationSec: renderDurationSec, charEndTimesSec });
   assertVoicedDemoHasCaptions(captionCues, { durationSec: renderDurationSec });
   const captionsClean = Math.abs(captionCues[captionCues.length - 1].endSec - renderDurationSec) <= 1e-3;

@@ -54,7 +54,7 @@ export interface DemoNumber {
   scopeGuard?: string;
 }
 
-export type SceneId = "hook" | "compare" | "costsplit" | "verdict" | "cta";
+export type SceneId = "hook" | "pipeline" | "compare" | "costsplit" | "verdict" | "cta";
 
 export interface DemoScene {
   id: SceneId;
@@ -147,10 +147,25 @@ export const DEFAULT_DEMO_SEC = 60;
 /** The opening window that MUST be the hook (≈30% of viewers leave by here). */
 export const HOOK_WINDOW_SEC = 30;
 
-/** Clamp any requested duration into the [MIN, MAX] launch window; bad input → default. */
-export function clampDemoDurationSec(requested?: number): number {
+/**
+ * Clamp a requested demo duration into the launch window.
+ *
+ * SILENT / free cut (default): clamp to [MIN, MAX]; bad input → DEFAULT. The MAX cap keeps the
+ * free promo short (the 45–90s sweet spot) and the MIN floor blocks the old under-baked 18s clip.
+ *
+ * #777 — VOICED cut (`opts.voiced === true`): the demo now carries 6 scenes + a 6th narration
+ * segment, so the REAL spoken narration can run LONGER than MAX_DEMO_SEC. A voiced render must
+ * use the ACTUAL audio length (not a 90s truncation) or the captions + scene cuts desync from
+ * the voice — total-length-match ≠ sync (feedback_real_audio_alignment_drives_all_timed_visual_tracks).
+ * So in voiced mode we keep the MIN floor (never under-baked) but DROP the MAX cap: the real
+ * narration length flows straight through, and `assertAudioMatchesSync` (audio ≈ last scene end)
+ * still binds the timeline to the synth it came from.
+ */
+export function clampDemoDurationSec(requested?: number, opts?: { voiced?: boolean }): number {
   if (requested === undefined || !Number.isFinite(requested)) return DEFAULT_DEMO_SEC;
-  return Math.min(MAX_DEMO_SEC, Math.max(MIN_DEMO_SEC, requested));
+  const floored = Math.max(MIN_DEMO_SEC, requested);
+  // Voiced: real narration may exceed MAX — keep the full length so captions/scenes stay synced.
+  return opts?.voiced ? floored : Math.min(MAX_DEMO_SEC, floored);
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -158,14 +173,20 @@ export function clampDemoDurationSec(requested?: number): number {
 /**
  * Relative scene weights; actual seconds scale these to fill `durationSec`.
  *
- * Tuned so HOOK-FIRST holds across the whole 45–90s window:
- *   - the `hook` scene ends well inside HOOK_WINDOW_SEC (30s) at every length, and
+ * #780 — `pipeline` (the lfah FLOW DIAGRAM) is inserted as the 2nd scene, between the
+ * hook and the comparison: after the cost-efficiency hook lands, SHOW the loop
+ * (plan → fix → grade → tests, escalate-only-when-stuck) before the numbers.
+ *
+ * Tuned so HOOK-FIRST holds across the whole 45–90s window even with 6 scenes:
+ *   - the `hook` scene ends well inside HOOK_WINDOW_SEC (30s) at every length
+ *     (hook fraction 3.5/25 = 0.14 → at the 90s ceiling hook ends ≈12.6s, far under 30s), and
  *   - the `verdict` scene starts at/after HOOK_WINDOW_SEC at every length
- *     (worst case is the 45s floor; the cumulative weight before `verdict` puts its
- *      start at ≈30.7s there).
+ *     (cumulative weight before `verdict` = 18.5/25 = 0.74 → worst case is the 45s
+ *      floor, where verdict starts ≈33.3s, still ≥30s).
  */
 const SCENE_WEIGHTS: { id: SceneId; weight: number }[] = [
-  { id: "hook", weight: 4 },
+  { id: "hook", weight: 3.5 },
+  { id: "pipeline", weight: 5 },
   { id: "compare", weight: 6 },
   { id: "costsplit", weight: 4 },
   { id: "verdict", weight: 4 },
@@ -476,13 +497,24 @@ function scenesFromEndTimes(ends: number[], durationSec: number): DemoScene[] {
  * ≈ durationSec) AND valid, scene boundaries DERIVE from the narration timing so
  * the screens follow the narrator. When absent or invalid, the existing
  * weight-tiling drives the scenes (the silent-cut fallback — unchanged).
+ *
+ * #777 — supplying `sceneEndTimesSec` ALSO marks the render as VOICED: the duration is
+ * floored at MIN but NOT capped at MAX, so a real narration that runs past 90s keeps its
+ * full length (captions + scenes stay synced to the audio). The silent cut stays [45,90].
  */
 export function buildDemoTimeline(
   spec: ContentSpec,
   opts?: { durationSec?: number; fps?: number; sceneEndTimesSec?: number[] },
 ): DemoTimeline {
-  // Hard-bound the duration to the 45–90s launch window (no more 18s clips).
-  const durationSec = clampDemoDurationSec(opts?.durationSec);
+  // #777 — a VOICED render (real narration alignment supplied via sceneEndTimesSec) uses the
+  // ACTUAL audio length: with 6 scenes the spoken narration can run past MAX_DEMO_SEC(90), so
+  // capping it would truncate the voice and desync captions/scenes. The silent/free cut (no
+  // sceneEndTimesSec) stays clamped to [45,90]. We detect "voiced" by a NON-EMPTY sceneEndTimesSec
+  // (the real-synth signal); whether those values are *valid* is checked separately below to pick
+  // narration-tiling vs the weight-tiling fallback.
+  const voiced = !!opts?.sceneEndTimesSec && opts.sceneEndTimesSec.length > 0;
+  // Hard-bound the duration to the launch window. Voiced → floor only (no 90s cap); else [45,90].
+  const durationSec = clampDemoDurationSec(opts?.durationSec, { voiced });
   const fps = opts?.fps ?? 30;
 
   const scenes: DemoScene[] = validSceneEndTimes(opts?.sceneEndTimesSec, durationSec)

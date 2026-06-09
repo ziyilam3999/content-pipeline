@@ -57,6 +57,20 @@ function syntheticAlignment(durationSec: number): number[] {
 
 const align = syntheticAlignment(TARGET_DUR);
 
+// ── 0. shape: 6 scenes / 6 narration segments (#780) ─────────────────────────
+describe("#780 demo shape — 6 scenes / 6 narration segments, 1:1", () => {
+  it("DEMO_NARRATION has 6 segments and the timeline has 6 scenes in 1:1 order", () => {
+    expect(DEMO_NARRATION).toHaveLength(6);
+    const t = buildDemoTimeline(lfahSpec(), { durationSec: 60 });
+    expect(t.scenes).toHaveLength(6);
+    // segment scene order matches the timeline scene order exactly.
+    expect(DEMO_NARRATION.map((s) => s.sceneId)).toEqual(t.scenes.map((s) => s.id));
+    // the new flow-diagram scene is the 2nd entry.
+    expect(t.scenes[1].id).toBe("pipeline");
+    expect(DEMO_NARRATION[1].sceneId).toBe("pipeline");
+  });
+});
+
 // ── 1. usedRealSceneSync ─────────────────────────────────────────────────────
 describe("#778 scene-sync invariant (usedRealSceneSync — scenes follow the narrator)", () => {
   it("derives non-null per-scene end-times from the narration alignment", () => {
@@ -99,7 +113,9 @@ describe("#778 scene-sync invariant (usedRealSceneSync — scenes follow the nar
 
 // ── 2. caption coverage + parity ─────────────────────────────────────────────
 describe("#778 caption coverage + parity invariant", () => {
-  const renderDurationSec = clampDemoDurationSec(TARGET_DUR);
+  // #777 — a voiced render uses the REAL narration length (voiced clamp: floor only, no 90s cap),
+  // so the caption clip is measured with { voiced: true } to stay in lockstep with the render.
+  const renderDurationSec = clampDemoDurationSec(TARGET_DUR, { voiced: true });
 
   it("builds a non-empty caption track that starts at 0 and spans the clip", () => {
     const cues = buildDemoCaptionCues(script, { durationSec: renderDurationSec, charEndTimesSec: align });
