@@ -218,11 +218,16 @@ export interface RenderDemoOpts {
 
 /**
  * #748 — render the ANIMATED product-demo MP4 (composition id="demo"):
- * hook (cost-efficiency, free local executor) → 4-way comparison → per-role
- * cost split → honest verdict → CTA, driven by the data-driven
- * `buildDemoTimeline` (brand-safe, fact-sourced). HOOK-FIRST: the cost win lands
- * in the first 30s. Defaults to a free silent 9:16 cut; pass `audioPath` for the
- * paid voiceover cut.
+ * hook (cost-efficiency, free local executor) → pipeline flow diagram (#780) →
+ * 4-way comparison → per-role cost split → honest verdict → CTA, driven by the
+ * data-driven `buildDemoTimeline` (brand-safe, fact-sourced). HOOK-FIRST: the cost
+ * win lands in the first 30s. Defaults to a free silent 9:16 cut; pass `audioPath`
+ * for the paid voiceover cut.
+ *
+ * #777 — when `sceneEndTimesSec` is supplied (a real voiced synth), `buildDemoTimeline`
+ * uses the ACTUAL narration length instead of clamping to 90s, so the now-longer 6-scene
+ * voiced narration is never truncated (captions + scenes stay synced to the audio). The
+ * silent/free cut (no sceneEndTimesSec) stays clamped to [45,90].
  */
 export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts): Promise<string> {
   const fps = opts?.fps ?? 30;

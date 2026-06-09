@@ -33,10 +33,11 @@ const SPEC: ContentSpec = lfahSpec();
 const factValues = SPEC.facts.map((f) => f.value);
 
 describe("#748 demo timeline — structure", () => {
-  test("hook-first scene order: hook → compare → costsplit → verdict → cta", () => {
+  test("hook-first scene order: hook → pipeline → compare → costsplit → verdict → cta", () => {
     const t = buildDemoTimeline(SPEC, { durationSec: 60, fps: 30 });
     expect(t.scenes.map((s) => s.id)).toEqual([
       "hook",
+      "pipeline",
       "compare",
       "costsplit",
       "verdict",
@@ -238,10 +239,37 @@ describe("#748 demo timeline — duration bounded to a launch-appropriate 45–9
     expect(t.durationSec).toBeGreaterThanOrEqual(45);
     expect(t.durationSec).toBeLessThanOrEqual(90);
   });
+
+  test("#777 voiced clamp: a VOICED render keeps the REAL narration length (no 90s cap)", () => {
+    // 100s of voiced narration with a 6-value ascending alignment ending at the clip length.
+    const DUR = 100;
+    const sceneEndTimesSec = [12, 30, 55, 68, 88, DUR]; // 6 scenes, ascending, last = DUR
+    // clampDemoDurationSec: silent caps at 90; voiced floors at MIN but keeps the full length.
+    expect(clampDemoDurationSec(DUR)).toBe(MAX_DEMO_SEC); // silent: capped
+    expect(clampDemoDurationSec(DUR, { voiced: true })).toBe(DUR); // voiced: full length
+    // A still-too-short voiced clip is still floored (never under-baked).
+    expect(clampDemoDurationSec(18, { voiced: true })).toBe(MIN_DEMO_SEC);
+
+    // buildDemoTimeline with the alignment uses the REAL length and the scenes span it.
+    const t = buildDemoTimeline(SPEC, { durationSec: DUR, sceneEndTimesSec });
+    expect(t.durationSec).toBe(DUR); // NOT truncated to 90
+    const last = t.scenes[t.scenes.length - 1];
+    expect(last.fromSec + last.durationSec).toBeCloseTo(DUR, 6); // scenes span the full audio
+    // Each scene boundary follows the narration alignment (no desync from truncation).
+    for (let i = 0; i < t.scenes.length; i++) {
+      expect(t.scenes[i].fromSec + t.scenes[i].durationSec).toBeCloseTo(sceneEndTimesSec[i], 6);
+    }
+  });
+
+  test("#777 silent cut stays clamped to [45,90] even at 6 scenes", () => {
+    // No sceneEndTimesSec → silent/free cut → still capped at 90 (kept short for the promo).
+    expect(buildDemoTimeline(SPEC, { durationSec: 300 }).durationSec).toBe(MAX_DEMO_SEC);
+    expect(buildDemoTimeline(SPEC, { durationSec: 18 }).durationSec).toBe(MIN_DEMO_SEC);
+  });
 });
 
 describe("#763 demo timeline — scenes follow the narration (sceneEndTimesSec)", () => {
-  const SCENE_COUNT = 5; // hook, compare, costsplit, verdict, cta
+  const SCENE_COUNT = 6; // hook, pipeline, compare, costsplit, verdict, cta (#780)
 
   test("narrationSceneEndTimes maps a known char-aligned fixture to the right per-scene end-times", () => {
     // Two tiny segments joined by a single space: "ab cd" (5 chars).
@@ -269,7 +297,7 @@ describe("#763 demo timeline — scenes follow the narration (sceneEndTimesSec)"
     expect(narrationSceneEndTimes(segs, [0.1, Number.NaN])).toBeNull();
   });
 
-  test("on the real 5-segment narration, end-times line up with each scene and are ascending", () => {
+  test("on the real 6-segment narration, end-times line up with each scene and are ascending", () => {
     const script = narrationScript(DEMO_NARRATION);
     expect(DEMO_NARRATION.length).toBe(SCENE_COUNT);
     // Synthetic monotone alignment: one entry per character, last ≈ a realistic ~65s.
@@ -300,7 +328,7 @@ describe("#763 demo timeline — scenes follow the narration (sceneEndTimesSec)"
 
   test("when sceneEndTimesSec is provided, scene boundaries equal those values (NOT weight-tiling)", () => {
     const DUR = 65;
-    const sceneEndTimesSec = [12, 34, 44, 58, DUR]; // ascending, last = duration
+    const sceneEndTimesSec = [10, 24, 40, 48, 58, DUR]; // 6 values, ascending, last = duration
     const t = buildDemoTimeline(SPEC, { durationSec: DUR, sceneEndTimesSec });
     const weight = buildDemoTimeline(SPEC, { durationSec: DUR }); // fallback for comparison
 
@@ -324,7 +352,7 @@ describe("#763 demo timeline — scenes follow the narration (sceneEndTimesSec)"
 
   test("the realistic ~65s narration timings keep the HOOK-FIRST invariants", () => {
     const DUR = 65;
-    const sceneEndTimesSec = [22, 47, 53, 62, DUR]; // realistic-ish narration spans
+    const sceneEndTimesSec = [12, 22, 47, 53, 62, DUR]; // 6 realistic-ish narration spans
     const t = buildDemoTimeline(SPEC, { durationSec: DUR, sceneEndTimesSec });
     const hook = t.scenes.find((s) => s.id === "hook")!;
     const verdict = t.scenes.find((s) => s.id === "verdict")!;
@@ -336,10 +364,10 @@ describe("#763 demo timeline — scenes follow the narration (sceneEndTimesSec)"
     const DUR = 60;
     const weight = buildDemoTimeline(SPEC, { durationSec: DUR });
     const cases: number[][] = [
-      [10, 20, 30, 40], // wrong length (4 ≠ 5)
-      [10, 20, 15, 40, DUR], // not ascending
-      [10, 20, 30, 40, DUR + 5], // last out of range
-      [0, 20, 30, 40, DUR], // zero-length first scene
+      [10, 20, 30, 40, 50], // wrong length (5 ≠ 6)
+      [10, 20, 15, 40, 50, DUR], // not ascending
+      [10, 20, 30, 40, 50, DUR + 5], // last out of range
+      [0, 20, 30, 40, 50, DUR], // zero-length first scene
     ];
     for (const sceneEndTimesSec of cases) {
       const t = buildDemoTimeline(SPEC, { durationSec: DUR, sceneEndTimesSec });
@@ -353,8 +381,8 @@ describe("#763 demo timeline — scenes follow the narration (sceneEndTimesSec)"
   test("when sceneEndTimesSec is ABSENT, weight-tiling is used (existing behavior preserved)", () => {
     const DUR = 60;
     const t = buildDemoTimeline(SPEC, { durationSec: DUR });
-    // Match the documented weight-tiling math exactly.
-    const weights = [4, 6, 4, 4, 2.5];
+    // Match the documented weight-tiling math exactly (#780 — 6 scenes).
+    const weights = [3.5, 5, 6, 4, 4, 2.5];
     const total = weights.reduce((a, b) => a + b, 0);
     let cursor = 0;
     for (let i = 0; i < t.scenes.length; i++) {

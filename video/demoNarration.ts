@@ -1,6 +1,7 @@
 /**
- * #763 — the demo narration, as ORDERED SEGMENTS that map 1:1 to the 5 demo
- * scenes (hook → compare → costsplit → verdict → cta).
+ * #763 — the demo narration, as ORDERED SEGMENTS that map 1:1 to the 6 demo
+ * scenes (hook → pipeline → compare → costsplit → verdict → cta). #780 added the
+ * `pipeline` segment (the lfah FLOW DIAGRAM scene) as the 2nd entry.
  *
  * Productizes what used to live in the one-off `tmp/produce-narrated-demo.ts`.
  * The concatenation (segments joined by a single space) is the spoken script
@@ -46,6 +47,13 @@ export const DEMO_NARRATION: NarrationSegment[] = [
       "cloud tokens on a single blind guess. With Alpha, the heavy work runs free on a local model, and it " +
       "only calls the cloud when it's truly stuck. The headline: it fixes bugs at two dollars twenty-four " +
       "cents each — fifty-five percent less total cost than a full-cloud relay.",
+  },
+  {
+    sceneId: "pipeline",
+    text:
+      "Here's the loop. A cloud planner writes the plan. Then the executor — running free, right on " +
+      "your own machine — makes the fix. A cloud grader checks it against real tests. And only when the " +
+      "local model gets stuck does it call the cloud for backup.",
   },
   {
     sceneId: "compare",

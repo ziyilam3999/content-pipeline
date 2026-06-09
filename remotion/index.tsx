@@ -7,9 +7,9 @@
  *
  * Two compositions:
  *   id="launch" — static result-card over a dark bg with timed captions + optional audio.
- *   id="demo"   — #743 ANIMATED product demo: hook → pipeline diagram → escalation →
- *                 count-up results → CTA, all driven by `video/demoTimeline.ts` (data-driven,
- *                 brand-safe). Props are the flattened timeline (see adapters/video.ts).
+ *   id="demo"   — ANIMATED product demo: hook → pipeline flow diagram (#780) → 4-way compare →
+ *                 cost split → honest verdict → CTA, all driven by `video/demoTimeline.ts`
+ *                 (data-driven, brand-safe). Props are the flattened timeline (see adapters/video.ts).
  */
 
 import React from "react";
@@ -553,6 +553,133 @@ const CtaScene: React.FC<{ cta: string; repoUrl?: string; layout: DemoLayout }> 
 };
 
 /**
+ * PIPELINE (#780 — the 2nd scene, after the hook) — the lfah FLOW DIAGRAM. Renders the
+ * `nodes`/`edges` from the timeline as a clean TOP-TO-BOTTOM flow: each node is a lane-colored
+ * card (local = green with a "$0 · free" badge, cloud = blue, test = amber); normal flow edges
+ * draw a solid down-arrow between consecutive cards; the `fix -> cloud` edge is a DASHED
+ * "escalate — only when stuck" arrow drawn to the side. Staggered entrance via `entrance()`.
+ *
+ * Honest framing: the heavy executor card is the only LOCAL/free one; the cloud only shows up at
+ * the bottom as the escalation, never the default — the same honesty the rest of the demo carries.
+ */
+const LANE_BADGE_LABEL: Record<Lane, string> = {
+  local: "$0 · free",
+  cloud: "cloud",
+  test: "real tests",
+};
+
+const PipelineScene: React.FC<{ nodes: DemoNode[]; edges: DemoEdge[]; layout: DemoLayout }> = ({
+  nodes,
+  edges,
+  layout,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  // The vertical flow = the nodes that are on a normal "flow" edge path, in order, starting at the
+  // first edge's source. The escalate target (`cloud`) is drawn as a side branch off its source.
+  const flowEdges = edges.filter((e) => e.kind === "flow");
+  const escalate = edges.find((e) => e.kind === "escalate");
+  // Order the spine: start node + each flow edge's target (plan → fix → grade → tests).
+  const spineIds: string[] = [];
+  if (flowEdges.length > 0) {
+    spineIds.push(flowEdges[0].from);
+    for (const e of flowEdges) if (!spineIds.includes(e.to)) spineIds.push(e.to);
+  }
+  const byId = (id: string) => nodes.find((n) => n.id === id);
+  const spine = spineIds.map(byId).filter((n): n is DemoNode => !!n);
+  const escNode = escalate ? byId(escalate.to) : undefined;
+  const escFromIdx = escalate ? spineIds.indexOf(escalate.from) : -1;
+
+  const card = (node: DemoNode, delay: number, dashed = false) => {
+    const color = LANE_COLOR[node.lane];
+    return (
+      <div
+        style={{
+          ...entrance(frame, fps, delay),
+          width: "100%",
+          boxSizing: "border-box",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 18,
+          background: node.lane === "local" ? "#0f2a22" : "#111a30",
+          border: `3px ${dashed ? "dashed" : "solid"} ${color}`,
+          borderRadius: 18,
+          padding: layout.fill ? "26px 28px" : "18px 24px",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(38) }}>{node.label}</div>
+          <div style={{ color: "#94a3b8", fontFamily: FONT, fontSize: f(26) }}>{node.badge}</div>
+        </div>
+        <div
+          style={{
+            color: node.lane === "local" ? BG : "#fff",
+            background: node.lane === "local" ? color : "transparent",
+            border: node.lane === "local" ? "none" : `2px solid ${color}`,
+            fontFamily: FONT,
+            fontWeight: 800,
+            fontSize: f(26),
+            padding: "8px 18px",
+            borderRadius: 999,
+            flexShrink: 0,
+          }}
+        >
+          {LANE_BADGE_LABEL[node.lane]}
+        </div>
+      </div>
+    );
+  };
+
+  // A solid down-arrow between two flow cards.
+  const arrow = (delay: number) => (
+    <div
+      style={{
+        ...entrance(frame, fps, delay, 14),
+        color: "#64748b",
+        fontFamily: FONT,
+        fontSize: f(30),
+        lineHeight: 1,
+        textAlign: "center",
+        width: "100%",
+      }}
+    >
+      ↓
+    </div>
+  );
+
+  return (
+    <SceneShell
+      layout={layout}
+      gap={Math.round(12 * layout.gapScale)}
+      contentWidth={920}
+      header={
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4, paddingBottom: 6 }}>
+          HOW THE LOOP WORKS
+        </div>
+      }
+    >
+      {spine.map((node, i) => (
+        <React.Fragment key={node.id}>
+          {card(node, 8 + i * 12)}
+          {i < spine.length - 1 ? arrow(12 + i * 12) : null}
+          {/* The dashed escalate branch is drawn right after its source card. */}
+          {escNode && i === escFromIdx ? (
+            <div style={{ ...entrance(frame, fps, 14 + i * 12, 14), width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: Math.round(8 * layout.gapScale) }}>
+              <div style={{ color: LANE_COLOR.cloud, fontFamily: FONT, fontSize: f(24), fontWeight: 700, textAlign: "center" }}>
+                ⤷ escalate — only when stuck
+              </div>
+              {card(escNode, 18 + i * 12, true)}
+            </div>
+          ) : null}
+        </React.Fragment>
+      ))}
+    </SceneShell>
+  );
+};
+
+/**
  * #775 — the synced caption band for the demo. Each cue shows for its own [startSec, endSec)
  * window in a dark pill at `bandY` (the reserved bottom strip the layout already cleared of
  * content). Mirrors the `launch` composition's caption styling so the two stay consistent.
@@ -602,6 +729,7 @@ const DemoVideo: React.FC<DemoProps> = (props) => {
   const layout = props.layout ?? DEFAULT_LAYOUT_9X16;
   const sceneEl: Record<string, React.ReactNode> = {
     hook: <HookScene title={props.title} headline={props.hookHeadline} layout={layout} />,
+    pipeline: <PipelineScene nodes={props.nodes} edges={props.edges} layout={layout} />,
     compare: <CompareScene arms={props.arms} layout={layout} />,
     costsplit: <CostSplitScene costSplit={props.costSplit} layout={layout} />,
     verdict: <VerdictScene verdict={props.verdict} layout={layout} />,
