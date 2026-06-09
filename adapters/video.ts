@@ -71,7 +71,18 @@ function estimateDurationSec(script: string): number {
  * Defaults to a 9:16 vertical video under `<cwd>/out/video`.
  */
 export async function renderVideo(
-  args: { script: string; audioPath: string; imagePath: string },
+  args: {
+    script: string;
+    audioPath: string;
+    imagePath: string;
+    /**
+     * #742 — real per-character end-times threaded from the voice stage by the
+     * conductor (`runPipeline`). Takes precedence over `opts.charEndTimesSec`.
+     * Lets the adapter be wired DIRECTLY as the injected `renderVideo` dep and
+     * still receive the alignment, instead of needing a closure-smuggle wrapper.
+     */
+    charEndTimesSec?: number[];
+  },
   opts?: RenderVideoOpts,
 ): Promise<string> {
   const aspectName = opts?.aspectName ?? "9:16";
@@ -81,11 +92,12 @@ export async function renderVideo(
   const durationSec = opts?.durationSec ?? estimateDurationSec(args.script);
 
   // Build captions + render-spec from the REAL modules. When real per-character
-  // timing is supplied (#742), captions sync to the actual voice instead of an
-  // even-split estimate.
+  // timing is supplied (#742) — via the conductor-threaded `args.charEndTimesSec`
+  // (preferred) or an explicit `opts.charEndTimesSec` — captions sync to the
+  // actual voice instead of an even-split estimate.
   const captionTrack = buildCaptionTrack(args.script, {
     durationSec,
-    charEndTimesSec: opts?.charEndTimesSec,
+    charEndTimesSec: args.charEndTimesSec ?? opts?.charEndTimesSec,
   });
   const renderSpec = buildRenderSpecs(
     {
