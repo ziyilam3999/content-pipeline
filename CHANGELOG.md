@@ -7,6 +7,32 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.4.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.3.0...v0.4.0) (2026-06-09)
+
+The demo video now fills every aspect ratio edge-to-edge, keeps its audio and
+on-screen timing provably in step, and shows synced captions again — and agents
+get a project index to find the right files fast.
+
+### Features
+
+- **video**: the demo now fills each aspect's frame instead of letterboxing a
+  square inside a taller canvas — the 9:16 phone cut is true full-bleed, with its
+  own vertical layout, type scale, and safe band (#765).
+- **video**: demo content grows to fill the 9:16 frame, and a provenance guard now
+  binds a voiceover's saved timing to the exact audio it was derived from — a
+  mismatched audio/sync pair is rejected at render time instead of drifting (#773,
+  #774).
+- **video**: restored synced captions on the animated demo, timed from the TTS
+  engine's real per-character timestamps, with a reserved bottom band so captions
+  never cover the cards. A parity invariant makes a voiced demo with no captions
+  throw, so they can never be silently dropped again, and the narration bundle now
+  persists the full alignment so future caption renders are free (#775).
+
+### Miscellaneous
+
+- added a content-pipeline project index so agents can ground themselves at
+  session start and find the few files they need for any task (#772).
+
 ## [0.3.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.2.0...v0.3.0) (2026-06-09)
 
 The launch demo video is now a moving, honest product walkthrough whose on-screen
