@@ -18,6 +18,7 @@
  */
 
 import { type ContentSpec, type Fact } from "../inputs/contentspec";
+import { type NarrationSegment, narrationScript } from "./demoNarration";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -339,21 +340,69 @@ export function deriveTitle(spec: ContentSpec): string {
   return clause.charAt(0).toUpperCase() + clause.slice(1);
 }
 
-// ── buildDemoTimeline ──────────────────────────────────────────────────────
+// ── narrationSceneEndTimes (scenes follow the narrator) ──────────────────────
 
 /**
- * Build the deterministic demo timeline. Scenes tile [0, durationSec) back-to-back
- * with no gaps; the final scene ends exactly at durationSec. Numbers are sourced
- * verbatim from the spec's facts (those that carry a parseable number), capped.
+ * #763 — given the narration as ORDERED SEGMENTS (one per scene, in scene order)
+ * and the REAL per-character end-times for the CONCATENATED spoken script
+ * (`narrationScript(segments)` — segments joined by a single space), return the
+ * end-time of each segment. The i-th value is when scene i's narration finishes,
+ * so the demo can transition scene i exactly there instead of on a fixed timer.
+ *
+ * This is the SCENE-transition twin of `realChunkEndTimes` in `video/captions.ts`
+ * and mirrors its conventions exactly:
+ *   - the alignment must have one entry per character of the concatenated script
+ *     (otherwise indices don't correspond → null),
+ *   - every entry must be finite and the series non-decreasing (time only moves
+ *     forward) → otherwise null (a malformed array would invert a scene),
+ *   - segment k (not the last) ends at the end-time of the last character BEFORE
+ *     segment k+1's first character — the single-space separator — so scenes stay
+ *     back-to-back with no gap; the LAST segment ends at the final char's time.
+ *
+ * Returns null on any mismatch so the caller falls back to weight-tiling — the
+ * same silent-cut fallback `buildCaptions` uses for captions.
  */
-export function buildDemoTimeline(
-  spec: ContentSpec,
-  opts?: { durationSec?: number; fps?: number },
-): DemoTimeline {
-  // Hard-bound the duration to the 45–90s launch window (no more 18s clips).
-  const durationSec = clampDemoDurationSec(opts?.durationSec);
-  const fps = opts?.fps ?? 30;
+export function narrationSceneEndTimes(
+  segments: NarrationSegment[],
+  charEndTimesSec: number[] | undefined,
+): number[] | null {
+  if (!segments.length) return null;
+  const script = narrationScript(segments);
+  const ends = charEndTimesSec;
+  // One entry per character of the concatenated script, or indices don't line up.
+  if (!ends || ends.length !== script.length) return null;
 
+  // Trust but verify: finite + non-decreasing (mirror realChunkEndTimes).
+  for (let i = 0; i < ends.length; i++) {
+    if (!Number.isFinite(ends[i])) return null;
+    if (i > 0 && ends[i] < ends[i - 1]) return null;
+  }
+
+  // First-character index of each segment in the single-space-joined script.
+  // Segment k+1's first char = (chars of segments 0..k) + k separator spaces.
+  const firstCharIdx: number[] = [];
+  let acc = 0;
+  for (let k = 0; k < segments.length; k++) {
+    firstCharIdx.push(acc);
+    acc += segments[k].text.length + 1; // +1 for the single-space separator
+  }
+
+  const endTimes: number[] = [];
+  for (let k = 0; k < segments.length; k++) {
+    if (k === segments.length - 1) {
+      endTimes.push(ends[ends.length - 1]); // last segment → final char's time
+    } else {
+      const nextFirstChar = firstCharIdx[k + 1];
+      endTimes.push(ends[nextFirstChar - 1]); // char before the next segment (the space)
+    }
+  }
+  return endTimes;
+}
+
+// ── scene tiling (weight fallback vs narration-aligned) ──────────────────────
+
+/** Existing behavior: tile scenes by fixed relative weights scaled to fill `durationSec`. */
+function scenesFromWeights(durationSec: number): DemoScene[] {
   const totalWeight = SCENE_WEIGHTS.reduce((a, s) => a + s.weight, 0);
   const scenes: DemoScene[] = [];
   let cursor = 0;
@@ -367,6 +416,66 @@ export function buildDemoTimeline(
     scenes.push({ id, fromSec, durationSec: durationThis });
     cursor = fromSec + durationThis;
   }
+  return scenes;
+}
+
+/**
+ * #763 — are these scene end-times usable? One per scene, strictly ascending,
+ * each in (0, durationSec], so they can drive back-to-back, in-bounds scenes.
+ */
+function validSceneEndTimes(ends: number[] | undefined, durationSec: number): boolean {
+  if (!ends || ends.length !== SCENE_WEIGHTS.length) return false;
+  let prev = 0;
+  for (const e of ends) {
+    if (!Number.isFinite(e)) return false;
+    if (e <= prev) return false; // strictly ascending (no zero-length scene)
+    if (e > durationSec + 1e-6) return false; // in range
+    prev = e;
+  }
+  return true;
+}
+
+/**
+ * #763 — derive scenes from narration-aligned end-times: scene 0 starts at 0,
+ * scene i ends at `ends[i]`, and the FINAL scene snaps to `durationSec` (float-safe)
+ * so the timeline still ends exactly at the clip length.
+ */
+function scenesFromEndTimes(ends: number[], durationSec: number): DemoScene[] {
+  const scenes: DemoScene[] = [];
+  let cursor = 0;
+  for (let i = 0; i < SCENE_WEIGHTS.length; i++) {
+    const { id } = SCENE_WEIGHTS[i];
+    const isLast = i === SCENE_WEIGHTS.length - 1;
+    const endThis = isLast ? durationSec : ends[i];
+    scenes.push({ id, fromSec: cursor, durationSec: endThis - cursor });
+    cursor = endThis;
+  }
+  return scenes;
+}
+
+// ── buildDemoTimeline ──────────────────────────────────────────────────────
+
+/**
+ * Build the deterministic demo timeline. Scenes tile [0, durationSec) back-to-back
+ * with no gaps; the final scene ends exactly at durationSec. Numbers are sourced
+ * verbatim from the spec's facts (those that carry a parseable number), capped.
+ *
+ * #763 — when `sceneEndTimesSec` is supplied (one ascending value per scene, last
+ * ≈ durationSec) AND valid, scene boundaries DERIVE from the narration timing so
+ * the screens follow the narrator. When absent or invalid, the existing
+ * weight-tiling drives the scenes (the silent-cut fallback — unchanged).
+ */
+export function buildDemoTimeline(
+  spec: ContentSpec,
+  opts?: { durationSec?: number; fps?: number; sceneEndTimesSec?: number[] },
+): DemoTimeline {
+  // Hard-bound the duration to the 45–90s launch window (no more 18s clips).
+  const durationSec = clampDemoDurationSec(opts?.durationSec);
+  const fps = opts?.fps ?? 30;
+
+  const scenes: DemoScene[] = validSceneEndTimes(opts?.sceneEndTimesSec, durationSec)
+    ? scenesFromEndTimes(opts!.sceneEndTimesSec!, durationSec)
+    : scenesFromWeights(durationSec);
 
   const numbers = spec.facts
     .map(toDemoNumber)

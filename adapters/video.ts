@@ -180,6 +180,14 @@ export interface RenderDemoOpts {
   durationSec?: number; // default 18 (the free cut); set to the voiceover length for the paid cut
   fps?: number; // default 30
   audioPath?: string; // optional voiceover; omitted → silent (free)
+  /**
+   * #763 — narration-aligned scene end-times (one per scene, ascending, last ≈
+   * durationSec). When present + valid, the demo's SCENE transitions follow the
+   * narrator instead of weight-tiling. Omitted → the silent-cut weight-tiling
+   * fallback (unchanged). Derive these from the real voice alignment via
+   * `narrationSceneEndTimes` (see `video/demoTimeline.ts`).
+   */
+  sceneEndTimesSec?: number[];
   renderAttempts?: number;
 }
 
@@ -195,7 +203,11 @@ export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts):
   const fps = opts?.fps ?? 30;
   // buildDemoTimeline hard-bounds the duration to the 45–90s launch window; read
   // the clamped value back so the frame count matches the actual timeline.
-  const timeline = buildDemoTimeline(spec, { durationSec: opts?.durationSec, fps });
+  const timeline = buildDemoTimeline(spec, {
+    durationSec: opts?.durationSec,
+    fps,
+    sceneEndTimesSec: opts?.sceneEndTimesSec, // #763 — scenes follow the narrator when present
+  });
   const durationSec = timeline.durationSec;
   const width = 1080;
   const height = 1920;
