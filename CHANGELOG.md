@@ -7,6 +7,25 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## Unreleased
+
+The launch demo video is now a moving, honest product walkthrough whose on-screen
+scenes follow the narrator, and the narration introduces the project by name and
+explains why it helps.
+
+### Features
+
+- **video**: redesigned the demo into an honest four-way comparison (1-shot Opus,
+  1-shot Sonnet, full-cloud relay, and the local-first hybrid) with a verdict that
+  concedes the cloud relay's higher resolve % and recommends the local-first option
+  on value (#743, #748).
+- **video**: the demo's on-screen scenes now follow the narrator — each scene change
+  lands on the real voiceover timing instead of a fixed timer, so the screen never
+  moves ahead of what's being said (#19, #763).
+- **video**: the demo narration now introduces the project by its spoken name
+  ("Alpha", how "lfah" is said aloud), expands what the name stands for, and leads
+  with a plain with-vs-without hook before any numbers (#764).
+
 ## [0.2.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.1.0...v0.2.0) (2026-06-09)
 
 Captions now sync to the real voiceover audio instead of an even-time guess, and
