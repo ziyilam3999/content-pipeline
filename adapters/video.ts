@@ -24,6 +24,7 @@ export interface RenderVideoOpts {
   aspectName?: string; // "1:1" | "9:16" | "4:5"; default "9:16"
   fps?: number; // default 30
   durationSec?: number; // explicit; else estimated from the script
+  charEndTimesSec?: number[]; // #742 — real per-char end-times; syncs captions to the voice
   renderAttempts?: number; // retries on a transient Remotion serve flake; default 3
 }
 
@@ -79,8 +80,13 @@ export async function renderVideo(
   const fps = opts?.fps ?? 30;
   const durationSec = opts?.durationSec ?? estimateDurationSec(args.script);
 
-  // Build captions + render-spec from the REAL modules.
-  const captionTrack = buildCaptionTrack(args.script, { durationSec });
+  // Build captions + render-spec from the REAL modules. When real per-character
+  // timing is supplied (#742), captions sync to the actual voice instead of an
+  // even-split estimate.
+  const captionTrack = buildCaptionTrack(args.script, {
+    durationSec,
+    charEndTimesSec: opts?.charEndTimesSec,
+  });
   const renderSpec = buildRenderSpecs(
     {
       script: args.script,

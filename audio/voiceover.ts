@@ -25,6 +25,13 @@ export interface VoiceClip {
   voiceId: string;
   audio: string;
   durationSec: number;
+  /**
+   * #742 — real per-character end-times (seconds) from the TTS provider, one
+   * per character of the spoken script. Lets a later captions step time each
+   * caption to the ACTUAL voice instead of an even-split estimate. Optional:
+   * providers without timestamps (or the free fallback) simply omit it.
+   */
+  charEndTimesSec?: number[];
 }
 
 export type VoiceCaller = (req: SpeechRequest) => Promise<VoiceClip>;

@@ -135,7 +135,15 @@ export function elevenLabsCaller(opts?: ElevenLabsOpts): VoiceCaller {
     const ends = json.alignment?.character_end_times_seconds ?? [];
     const durationSec = ends.length ? ends[ends.length - 1] : 0;
 
-    return { provider: PRIMARY_PROVIDER, voiceId, audio: json.audio_base64, durationSec };
+    // #742 — keep the FULL per-character timing array (not just the last
+    // element) so a later captions step can sync to the real voice.
+    return {
+      provider: PRIMARY_PROVIDER,
+      voiceId,
+      audio: json.audio_base64,
+      durationSec,
+      charEndTimesSec: ends.length ? ends : undefined,
+    };
   };
 }
 
@@ -160,6 +168,8 @@ export interface SynthVoiceOutcome {
   usedProvider: string;
   provedPrimary: boolean;
   durationSec: number;
+  /** #742 — real per-character end-times, threaded to the captions step for sync. */
+  charEndTimesSec?: number[];
   pathLine: string;
 }
 
@@ -223,6 +233,7 @@ export async function synthesizeVoiceToFile(
     usedProvider: vo.usedProvider,
     provedPrimary: vo.provedPrimary,
     durationSec: vo.clip.durationSec,
+    charEndTimesSec: vo.clip.charEndTimesSec,
     pathLine,
   };
 }
