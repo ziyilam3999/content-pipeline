@@ -2,9 +2,10 @@
 
 All notable changes to content-pipeline are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
-[Conventional Commits](https://www.conventionalcommits.org/). The Release
-workflow pulls the section for a tag `vX.Y.Z` out of this file as the GitHub
-Release notes, so this changelog is the single source of truth for "what changed".
+[Conventional Commits](https://www.conventionalcommits.org/). The `/ship`
+release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
+the GitHub Release notes, so this changelog is the single source of truth for
+"what changed".
 
 ## [0.1.0](https://github.com/ziyilam3999/content-pipeline/releases/tag/v0.1.0) (2026-06-08)
 
