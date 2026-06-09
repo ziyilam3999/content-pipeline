@@ -7,6 +7,25 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.4.3](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.2...v0.4.3) (2026-06-09)
+
+### Tests
+
+- **video:** verify rendered MP4s via a vendored-ffmpeg probe (#784, #31). New
+  `video/renderProbe.ts` resolves the ffmpeg remotion already vendors and reports
+  decoded frame count, duration, and audio-stream presence — throwing (never a silent
+  false-negative) when the binary is missing or output is unparseable, replacing the
+  missing system `ffprobe` whose absence read identically to a real "no audio" result.
+  Both render smokes now assert frame count ≈ `round(durationSec*fps)` (a truncated cut
+  FAILS) and audio presence on voiced renders, printing a `RENDER-VERIFY:` line.
+
+### Bug Fixes
+
+- **smoke:** `smoke:demo-multi` no longer silently renders (and overwrites with) the
+  free/silent cut — it defaults `DEMO_BUNDLE` to the bundle `smoke:demo-narrated` writes
+  so it produces the VOICED deliverable, and prints a loud banner when it genuinely
+  falls back to the free cut (#784).
+
 ## [0.4.2](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.1...v0.4.2) (2026-06-09)
 
 The animated demo gains a 6th scene — the lfah flow diagram — that SHOWS the loop
