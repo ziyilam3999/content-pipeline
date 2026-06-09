@@ -95,7 +95,7 @@ async function main() {
   const durationSec = voice.durationSec;
 
   // ── derive per-scene end-times from the alignment ──────────────────────────
-  const sceneEndTimesSec = narrationSceneEndTimes(DEMO_NARRATION, charEndTimesSec);
+  const sceneEndTimesSec = narrationSceneEndTimes(DEMO_NARRATION, charEndTimesSec, durationSec);
   if (!sceneEndTimesSec) {
     console.error("FAIL: narrationSceneEndTimes returned null — alignment did not line up with the script.");
     process.exit(1);

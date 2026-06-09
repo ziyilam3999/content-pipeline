@@ -365,6 +365,7 @@ export function deriveTitle(spec: ContentSpec): string {
 export function narrationSceneEndTimes(
   segments: NarrationSegment[],
   charEndTimesSec: number[] | undefined,
+  durationSec?: number,
 ): number[] | null {
   if (!segments.length) return null;
   const script = narrationScript(segments);
@@ -376,6 +377,17 @@ export function narrationSceneEndTimes(
   for (let i = 0; i < ends.length; i++) {
     if (!Number.isFinite(ends[i])) return null;
     if (i > 0 && ends[i] < ends[i - 1]) return null;
+  }
+
+  // #13 parity (mirror realChunkEndTimes): when the clip length is known, reject a
+  // MIS-SCALED alignment whose final char-time is far from the clip end. Without this
+  // an under-scaled alignment (final time 30s for a 65s clip) would pass the ascending
+  // + in-range gates yet drive in-bounds-but-mis-synced scenes — the exact "looks fine,
+  // isn't synced" trap this whole fix exists to close. Generalizes the caption guard.
+  if (durationSec !== undefined) {
+    const finalEnd = ends[ends.length - 1];
+    const tol = Math.max(0.1, durationSec * 0.01);
+    if (Math.abs(finalEnd - durationSec) > tol) return null;
   }
 
   // First-character index of each segment in the single-space-joined script.

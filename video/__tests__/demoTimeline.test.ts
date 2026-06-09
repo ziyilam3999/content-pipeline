@@ -284,6 +284,20 @@ describe("#763 demo timeline — scenes follow the narration (sceneEndTimesSec)"
     expect(ends[ends.length - 1]).toBeCloseTo(DUR, 6);
   });
 
+  test("#13 parity: narrationSceneEndTimes rejects a MIS-SCALED alignment when durationSec is known", () => {
+    const script = narrationScript(DEMO_NARRATION);
+    const DUR = 65;
+    // Alignment scaled to only 30s for a 65s clip — ascending + in-range, but mis-synced.
+    const underscaled = Array.from({ length: script.length }, (_, i) => ((i + 1) / script.length) * 30);
+    // Without durationSec the helper can't know it's wrong (back-compat) → returns times.
+    expect(narrationSceneEndTimes(DEMO_NARRATION, underscaled)).not.toBeNull();
+    // With durationSec it catches the mis-scale (final 30s ≉ 65s) → null → weight-tiling fallback.
+    expect(narrationSceneEndTimes(DEMO_NARRATION, underscaled, DUR)).toBeNull();
+    // A well-scaled alignment (final ≈ duration) still passes with durationSec.
+    const wellScaled = Array.from({ length: script.length }, (_, i) => ((i + 1) / script.length) * DUR);
+    expect(narrationSceneEndTimes(DEMO_NARRATION, wellScaled, DUR)).not.toBeNull();
+  });
+
   test("when sceneEndTimesSec is provided, scene boundaries equal those values (NOT weight-tiling)", () => {
     const DUR = 65;
     const sceneEndTimesSec = [12, 34, 44, 58, DUR]; // ascending, last = duration
