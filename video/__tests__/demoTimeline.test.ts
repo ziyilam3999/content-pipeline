@@ -15,6 +15,7 @@ import {
   MIN_DEMO_SEC,
   MAX_DEMO_SEC,
   DEFAULT_DEMO_SEC,
+  HOOK_WINDOW_SEC,
 } from "../demoTimeline";
 import { type ContentSpec } from "../../inputs/contentspec";
 
@@ -114,10 +115,12 @@ describe("#743 demo timeline", () => {
   });
 
   describe("duration is bounded to a launch-appropriate 45–90s (never an 18s clip again)", () => {
-    test("bounds are 45s..90s with a 60s default", () => {
+    test("bounds are 45s..90s with a 60s default, and a 30s hook window", () => {
       expect(MIN_DEMO_SEC).toBe(45);
       expect(MAX_DEMO_SEC).toBe(90);
       expect(DEFAULT_DEMO_SEC).toBe(60);
+      // ~30% of viewers leave by 30s → the first 30s must be the hook (#748 design rule).
+      expect(HOOK_WINDOW_SEC).toBe(30);
     });
 
     test("clampDemoDurationSec floors below-min, caps above-max, keeps in-range, defaults bad input", () => {

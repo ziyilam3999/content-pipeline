@@ -66,14 +66,29 @@ export interface DemoTimeline {
 }
 
 // ── Duration policy ─────────────────────────────────────────────────────────
-// A launch product-demo needs room to land its content (a 4-way comparison +
-// verdict) but must respect short-form attention spans. Research (2026): the
-// product-demo sweet spot is ~60–90s; X/Reels skew shorter. We hard-bound the
-// demo to 45–90s so an under-baked clip (e.g. the earlier 18s cut) can NEVER be
-// generated again — the lower bound is the load-bearing rule.
+// THE RULE (and why it exists):
+//   A launch product-demo must land enough content (a 4-way comparison + verdict)
+//   while respecting short-form attention spans. Research (2026): product-demo
+//   videos in the 30s–2min band convert best, and with shrinking attention spans
+//   the modern sweet spot has tightened to ~60–90s. Critically, ~30% of viewers
+//   drop off within the FIRST 30 SECONDS — so the opening hook matters more than
+//   raw length. X/Reels skew shorter; LinkedIn/Shorts sit at the top of the band.
+//
+//   Therefore we hard-bound the demo to 45–90s (default 60s) so an under-baked
+//   clip (e.g. the earlier 18s cut) can NEVER be generated again — the lower
+//   bound is the load-bearing rule.
+//
+// HOOK-FIRST DESIGN RULE: because of the 30%-drop-in-30s data, ALWAYS design the
+//   first HOOK_WINDOW_SEC (30s) as the HOOK — the single most compelling claim
+//   up front (what it is + the headline result/cost win) — and put the detailed
+//   ELABORATION (per-arm breakdown, per-role cost, axis-by-axis verdict) AFTER
+//   the 30s mark. Front-load value; never bury the lede behind a slow build.
+//   The #748 4-way redesign must honor this ordering.
 export const MIN_DEMO_SEC = 45;
 export const MAX_DEMO_SEC = 90;
 export const DEFAULT_DEMO_SEC = 60;
+/** The opening window that MUST be the hook (≈30% of viewers leave by here). */
+export const HOOK_WINDOW_SEC = 30;
 
 /** Clamp any requested duration into the [MIN, MAX] launch window; bad input → default. */
 export function clampDemoDurationSec(requested?: number): number {
