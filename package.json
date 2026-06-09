@@ -1,6 +1,6 @@
 {
   "name": "content-pipeline",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "private": true,
   "description": "Turn a launch announcement into ready-to-post social content: copy, an image card, a voiceover spec, and video render specs.",
   "scripts": {
