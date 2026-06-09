@@ -23,7 +23,18 @@ import * as path from "path";
 
 import { renderDemoVideo } from "../adapters/video";
 import { audioDurationSec } from "../video/audioDuration";
+import { clampDemoDurationSec } from "../video/demoTimeline";
+import { probeRender, assertVideoFrameCount } from "../video/renderProbe";
 import { lfahSpec } from "./lfahSpec";
+
+/** #784 — where smoke:demo-narrated writes its full alignment bundle. */
+const DEFAULT_BUNDLE_PATH = path.join(
+  "out",
+  "review",
+  "lfah",
+  "demo-narrated",
+  "scene-sync-check.json",
+);
 
 interface NarrationBundle {
   audioPath: string;
@@ -37,7 +48,15 @@ interface NarrationBundle {
 const ASPECTS = ["9:16", "1:1", "4:5"];
 
 function loadBundle(): NarrationBundle | null {
-  const p = process.env.DEMO_BUNDLE;
+  // #784 — default DEMO_BUNDLE to the bundle smoke:demo-narrated writes, when present.
+  // This means the FREE mock path (which writes scene-sync-check.json) feeds the voiced
+  // multi-aspect render without an explicit env var — and crucially the smoke no longer
+  // silently renders the free/silent cut just because DEMO_BUNDLE was unset.
+  let p = process.env.DEMO_BUNDLE;
+  if (!p && fs.existsSync(DEFAULT_BUNDLE_PATH)) {
+    p = DEFAULT_BUNDLE_PATH;
+    console.log(`[demo-multi] DEMO_BUNDLE defaulted to ${p}`);
+  }
   if (!p) return null;
   const raw = JSON.parse(fs.readFileSync(p, "utf8"));
   const audioPath: string = raw.audioPath;
@@ -72,10 +91,21 @@ async function main() {
         `dur=${audioDur?.toFixed(2)}s syncEnds=${bundle.sceneEndTimesSec[bundle.sceneEndTimesSec.length - 1]}s ===\n`,
     );
   } else {
-    console.log(`\n=== #744 multi-aspect demo (FREE / silent) — 3 aspects, frame-filling ===\n`);
+    // #784 — LOUD, unmistakable banner so a free/silent cut can NEVER be mistaken for the
+    // real voiced deliverable (the silent-overwrite anti-pattern this task fixes).
+    console.log("\n############################################################");
+    console.log("### RENDERING FREE / SILENT CUT — set DEMO_BUNDLE for the voiced deliverable ###");
+    console.log("############################################################\n");
   }
 
   const spec = lfahSpec();
+  // #784 — the duration the render will actually use (the timeline clamps it): voiced uses
+  // the real bundle length floored at MIN (no MAX cap); free uses the default cut clamped to
+  // [MIN,MAX]. We assert the rendered frame count against this expected duration.
+  const RENDER_FPS = 30;
+  const expectedDurationSec = bundle
+    ? clampDemoDurationSec(bundle.durationSec, { voiced: true })
+    : clampDemoDurationSec(undefined);
   const results: { aspect: string; file: string; bytes: number }[] = [];
   for (const aspectName of ASPECTS) {
     const t0 = Date.now();
@@ -98,6 +128,23 @@ async function main() {
       process.exit(1);
     }
     console.log(`DEMO-PATH: aspect=${aspectName} file="${file}" bytes=${bytes} render=${((Date.now() - t0) / 1000).toFixed(1)}s`);
+
+    // #784 — VERIFY each rendered aspect: right frame count (a truncated cut FAILS), and a
+    // voiced render MUST carry an audio stream. Hard gate — never a silent false-negative.
+    const probe = probeRender(file);
+    console.log(
+      `RENDER-VERIFY: aspect=${aspectName} frames=${probe.videoFrames} dur=${probe.videoDurationSec.toFixed(2)}s ` +
+        `audio=${probe.hasAudioStream} (expected ~${Math.round(expectedDurationSec * RENDER_FPS)} frames @ ${RENDER_FPS}fps)`,
+    );
+    try {
+      assertVideoFrameCount(probe.videoFrames, expectedDurationSec, RENDER_FPS, { label: aspectName });
+      if (bundle && !probe.hasAudioStream) {
+        throw new Error(`voiced ${aspectName} render has NO audio stream — the voiceover was dropped.`);
+      }
+    } catch (verifyErr) {
+      console.error(`SMOKE FAIL: #784 RENDER-VERIFY ${verifyErr instanceof Error ? verifyErr.message : String(verifyErr)}`);
+      process.exit(1);
+    }
     results.push({ aspect: aspectName, file, bytes });
   }
 

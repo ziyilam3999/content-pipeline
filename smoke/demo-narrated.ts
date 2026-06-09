@@ -28,6 +28,7 @@ import { renderDemoVideo, makeSilentWav } from "../adapters/video";
 import { buildDemoTimeline, narrationSceneEndTimes, clampDemoDurationSec } from "../video/demoTimeline";
 import { DEMO_NARRATION, narrationScript } from "../video/demoNarration";
 import { buildDemoCaptionCues, assertVoicedDemoHasCaptions } from "../video/demoCaptions";
+import { probeRender, assertVideoFrameCount } from "../video/renderProbe";
 import {
   type VoiceCaller,
   type VoiceClip,
@@ -151,8 +152,32 @@ async function main() {
     if (bytes <= 0) throw new Error("rendered MP4 is empty");
     console.log(`  video: ${videoPath} (${bytes} bytes)`);
   } catch (err) {
+    videoPath = undefined; // a failed render is NOT verified below
     videoNote = `video render skipped (best-effort): ${err instanceof Error ? err.message : String(err)}`;
     console.warn(`  ${videoNote}`);
+  }
+
+  // #784 — VERIFY a render that ACTUALLY succeeded. This is a HARD gate (NOT folded into
+  // the best-effort render catch above): a render that produced a file but is TRUNCATED
+  // or SILENT must FAIL the smoke, never be quietly downgraded to a note. The render uses
+  // fps=30 and the voiced-clamped duration (renderDurationSec).
+  if (videoPath) {
+    const RENDER_FPS = 30;
+    const probe = probeRender(videoPath); // throws (loud) if the vendored ffmpeg is missing
+    console.log(
+      `  RENDER-VERIFY: file=${path.basename(videoPath)} frames=${probe.videoFrames} ` +
+        `dur=${probe.videoDurationSec.toFixed(2)}s audio=${probe.hasAudioStream} ` +
+        `(expected ~${Math.round(renderDurationSec * RENDER_FPS)} frames @ ${RENDER_FPS}fps)`,
+    );
+    try {
+      assertVideoFrameCount(probe.videoFrames, renderDurationSec, RENDER_FPS, { label: "demo-narrated 9:16" });
+      if (!probe.hasAudioStream) {
+        throw new Error("#784 RENDER-VERIFY: voiced demo has NO audio stream — the voiceover was dropped.");
+      }
+    } catch (verifyErr) {
+      console.error(`\n#784 RENDER-VERIFY FAIL: ${verifyErr instanceof Error ? verifyErr.message : String(verifyErr)}`);
+      process.exit(1);
+    }
   }
 
   const syncCheck = {
