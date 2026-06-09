@@ -25,8 +25,9 @@ import * as path from "path";
 
 import { synthesizeVoiceToFile } from "../adapters/voice";
 import { renderDemoVideo, makeSilentWav } from "../adapters/video";
-import { buildDemoTimeline, narrationSceneEndTimes } from "../video/demoTimeline";
+import { buildDemoTimeline, narrationSceneEndTimes, clampDemoDurationSec } from "../video/demoTimeline";
 import { DEMO_NARRATION, narrationScript } from "../video/demoNarration";
+import { buildDemoCaptionCues, assertVoicedDemoHasCaptions } from "../video/demoCaptions";
 import {
   type VoiceCaller,
   type VoiceClip,
@@ -121,15 +122,26 @@ async function main() {
   const differsFromWeights = maxDriftVsWeight > EPS;
   const usedRealSceneSync = equalsNarration && differsFromWeights;
 
-  // ── render the demo with the narration-aligned scenes ──────────────────────
+  // ── #775 — caption track (synced to the real voice alignment). Build it here so the
+  //     bundle records its size + we can FAIL the smoke if a voiced demo would ship empty
+  //     captions (the parity invariant, proven FREE on the mock path). The caption clip's
+  //     duration is the CLAMPED demo duration the render actually uses (45–90s window).
+  const renderDurationSec = clampDemoDurationSec(durationSec);
+  const captionCues = buildDemoCaptionCues(script, { durationSec: renderDurationSec, charEndTimesSec });
+  assertVoicedDemoHasCaptions(captionCues, { durationSec: renderDurationSec });
+  const captionsClean = Math.abs(captionCues[captionCues.length - 1].endSec - renderDurationSec) <= 1e-3;
+
+  // ── render the demo with the narration-aligned scenes + synced captions ────
   let videoPath: string | undefined;
   let videoNote: string | undefined;
   try {
-    console.log("→ rendering the narrated demo MP4 (scenes follow the narration)…");
+    console.log("→ rendering the narrated demo MP4 (scenes follow the narration; synced captions)…");
     videoPath = await renderDemoVideo(lfahSpec(), {
       durationSec,
       audioPath: voice.audioPath,
       sceneEndTimesSec,
+      script,
+      charEndTimesSec,
       outDir: reviewDir,
       fileName: "demo-narrated-9x16.mp4",
     });
@@ -142,7 +154,7 @@ async function main() {
   }
 
   const syncCheck = {
-    task: "#763",
+    task: "#763/#775",
     paidCall: PAID,
     scriptChars: script.length,
     alignmentLength: charEndTimesSec.length,
@@ -155,6 +167,13 @@ async function main() {
     equalsNarration,
     differsFromWeights,
     usedRealSceneSync,
+    // #775 — the FULL alignment bundle (SOURCE data, not just the derived sceneEndTimesSec):
+    // persist the spoken script + the per-character end-times so future caption renders are
+    // FREE (no paid re-synth) — the lesson from feedback_carry_capabilities_and_source_data_across_redesign.
+    script,
+    charEndTimesSec: charEndTimesSec.map((s) => Number(s.toFixed(4))),
+    captionCount: captionCues.length,
+    captionsClean,
     audioPath: voice.audioPath,
     videoPath: videoPath ?? null,
     videoNote: videoNote ?? null,
@@ -164,8 +183,15 @@ async function main() {
     JSON.stringify(syncCheck, null, 2) + "\n",
   );
 
-  console.log("\n=== scene-sync-check.json ===");
-  console.log(JSON.stringify(syncCheck, null, 2));
+  console.log("\n=== scene-sync-check.json (charEndTimesSec elided) ===");
+  console.log(JSON.stringify({ ...syncCheck, charEndTimesSec: `[${charEndTimesSec.length} entries]`, script: `${script.length} chars` }, null, 2));
+
+  // #775 — a voiced demo MUST carry captions; the parity assertion above already threw on empty,
+  // but guard the recorded count too so a silent regression can't pass the smoke.
+  if (captionCues.length === 0) {
+    console.error("\n#775 CAPTION-PARITY: FAIL — caption track is EMPTY.");
+    process.exit(1);
+  }
 
   if (!usedRealSceneSync) {
     if (!equalsNarration)
@@ -179,7 +205,7 @@ async function main() {
   }
 
   console.log(
-    `\n#763 SCENE-SYNC: PASS — usedRealSceneSync=true ` +
+    `\n#763/#775 SCENE-SYNC + CAPTIONS: PASS — usedRealSceneSync=true, ${captionCues.length} synced captions ` +
       `(scenes follow the narration; max drift vs weight-tiling = ${maxDriftVsWeight.toFixed(2)}s` +
       `${PAID ? "" : "; NO paid call"}).`,
   );
