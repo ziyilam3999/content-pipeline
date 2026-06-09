@@ -43,15 +43,35 @@ export interface PipelineInput {
   resolveSpec: () => ContentSpec;
 }
 
+/**
+ * The voice stage's output. A bare string (the audio file path) stays accepted
+ * for backward compatibility; the richer object additionally carries the REAL
+ * per-character end-times (#742) so the conductor can thread them into the video
+ * stage and guarantee captions sync to the actual voice on the LIVE path —
+ * instead of only inside a smoke that smuggles them around via a closure.
+ */
+export interface VoiceStageResult {
+  audioPath: string;
+  /** #742 — real per-character end-times (seconds) from the TTS provider; omitted → even-split fallback. */
+  charEndTimesSec?: number[];
+}
+
 /** The injected renderers; each string return is a file path. */
 export interface PipelineDeps {
   writeCopy: (spec: ContentSpec) => Promise<CopyResult>;
   renderImage: (args: { spec: ContentSpec; copy: CopyResult }) => Promise<string>;
-  synthVoice: (args: { script: string }) => Promise<string>;
+  /** Returns the audio path, or `{ audioPath, charEndTimesSec }` to thread real caption sync. */
+  synthVoice: (args: { script: string }) => Promise<string | VoiceStageResult>;
   renderVideo: (args: {
     script: string;
     audioPath: string;
     imagePath: string;
+    /**
+     * #742 — real per-character end-times threaded from the voice stage so the
+     * LIVE path syncs captions to the actual voice. Optional: when absent the
+     * video stage falls back to an even-split-by-words estimate.
+     */
+    charEndTimesSec?: number[];
   }) => Promise<string>;
   publishClient: PublishClient;
 }
@@ -109,8 +129,23 @@ export async function runPipeline(
   // (b) Run the stages strictly in order, awaiting each and feeding output in.
   const copy = await deps.writeCopy(spec);
   const imagePath = await deps.renderImage({ spec, copy });
-  const audioPath = await deps.synthVoice({ script: copy.script });
-  const videoPath = await deps.renderVideo({ script: copy.script, audioPath, imagePath });
+
+  // The voice stage may return a bare path (legacy) or a richer object carrying
+  // the REAL per-character end-times (#742). Normalise, then THREAD the alignment
+  // into the video stage so the live path syncs captions to the actual voice —
+  // not just inside the e2e smoke. When alignment is absent, the video stage's
+  // even-split fallback stays intact.
+  const voiceOut = await deps.synthVoice({ script: copy.script });
+  const audioPath = typeof voiceOut === "string" ? voiceOut : voiceOut.audioPath;
+  const charEndTimesSec =
+    typeof voiceOut === "string" ? undefined : voiceOut.charEndTimesSec;
+
+  const videoPath = await deps.renderVideo({
+    script: copy.script,
+    audioPath,
+    imagePath,
+    charEndTimesSec,
+  });
 
   // (c) Publish in dry-run by default.
   const targets = opts.targets ?? ["x"];

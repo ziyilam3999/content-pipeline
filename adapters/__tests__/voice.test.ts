@@ -10,8 +10,10 @@ import * as path from "path";
 import {
   synthVoice,
   synthesizeVoiceToFile,
+  DEFAULT_VOICE_ID,
   type SynthVoiceDeps,
 } from "../voice";
+import { CONFIG } from "../../config";
 import { type VoiceCaller } from "../../audio/voiceover";
 
 const SAMPLE = Buffer.from("ID3 fake mp3 bytes for a unit test", "utf8");
@@ -87,5 +89,23 @@ describe("synthVoice adapter (injected fake caller)", () => {
     );
     expect(out.provedPrimary).toBe(false);
     expect(out.usedProvider).toBe("kokoro");
+  });
+});
+
+/**
+ * LOCKS the channel voice for consistency: a channel needs ONE recognizable
+ * voice, so the default must stay the locked MALE "Adam" voice in the config
+ * SSOT. Flipping the voice id or the gender — or letting the adapter drift
+ * away from the SSOT — trips these tests. Changing the locked voice needs
+ * explicit operator sign-off.
+ */
+describe("channel voice lock (config SSOT)", () => {
+  it("CONFIG.voice is the locked male Adam voice", () => {
+    expect(CONFIG.voice.channelVoiceId).toBe("pNInz6obpgDQGcFmaJgB");
+    expect(CONFIG.voice.channelVoiceGender).toBe("male");
+  });
+
+  it("the voice adapter default sources from the config SSOT", () => {
+    expect(DEFAULT_VOICE_ID).toBe(CONFIG.voice.channelVoiceId);
   });
 });

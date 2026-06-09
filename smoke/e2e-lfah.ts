@@ -24,7 +24,7 @@ import * as path from "path";
 import { runPipeline, type PipelineInput, type PipelineDeps, type CopyResult } from "../pipeline/run";
 import { writeCopy } from "../adapters/copy";
 import { renderImage } from "../adapters/image";
-import { synthesizeVoiceToFile } from "../adapters/voice";
+import { synthVoiceStage } from "../adapters/voice";
 import { renderVideo } from "../adapters/video";
 import { lfahSpec } from "./lfahSpec";
 
@@ -49,8 +49,11 @@ async function main() {
   const reviewDir = path.join(process.cwd(), "out", "review", "lfah");
   fs.mkdirSync(reviewDir, { recursive: true });
 
+  // Only the video DURATION still needs the closure (it isn't part of the
+  // conductor's dep boundary). The caption ALIGNMENT (#742) now flows through
+  // runPipeline itself: synthVoiceStage returns charEndTimesSec → the conductor
+  // threads it into renderVideo. No closure smuggle for the alignment.
   let realDurationSec: number | undefined;
-  let realCharEndTimesSec: number[] | undefined;
 
   const deps: PipelineDeps = {
     writeCopy: async (spec): Promise<CopyResult> => {
@@ -80,23 +83,31 @@ async function main() {
       return p;
     },
 
-    synthVoice: async (args): Promise<string> => {
+    synthVoice: async (args) => {
       console.log("→ [3/5] voice — real PAID ElevenLabs (primary-only, proven)…");
-      const outcome = await synthesizeVoiceToFile(args, undefined, {
+      const stage = await synthVoiceStage(args, undefined, {
         outDir: path.join(reviewDir, "audio"),
       });
-      realDurationSec = outcome.durationSec;
-      realCharEndTimesSec = outcome.charEndTimesSec; // #742 — sync captions to the real voice
-      console.log(`  ${outcome.pathLine}`);
-      return outcome.audioPath;
+      // Stash only the duration for the video stage (not a conductor dep field).
+      // The video duration is recovered from the audio file when re-derived; here
+      // we read it back off the same synth call via a follow-up not needed —
+      // instead capture it from the alignment array's last entry when present.
+      realDurationSec =
+        stage.charEndTimesSec && stage.charEndTimesSec.length
+          ? stage.charEndTimesSec[stage.charEndTimesSec.length - 1]
+          : undefined;
+      console.log(`  voice audio: ${stage.audioPath}`);
+      // #742 — return charEndTimesSec so the CONDUCTOR threads it to the video
+      // stage. Captions sync to the real voice via the live runPipeline path.
+      return stage;
     },
 
     renderVideo: async (args): Promise<string> => {
       console.log("→ [4/5] video — real Remotion MP4 (9:16, synced to real audio)…");
+      // args.charEndTimesSec arrives THREADED FROM THE CONDUCTOR (#742) — no closure.
       const p = await renderVideo(args, {
         aspectName: "9:16",
         durationSec: realDurationSec, // sync to the true ElevenLabs clip length
-        charEndTimesSec: realCharEndTimesSec, // #742 — sync captions to the real voice
         outDir: path.join(reviewDir, "video"),
       });
       console.log(`  video: ${p}`);

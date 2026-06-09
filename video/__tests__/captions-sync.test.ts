@@ -127,6 +127,46 @@ describe("#742 caption↔voiceover sync", () => {
     caps.forEach((c) => expect(c.endSec).toBeGreaterThanOrEqual(c.startSec));
   });
 
+  test("#13 guard: an out-of-range final time (≠ clip.durationSec ± tol) falls back to even-split (no wrong-but-clean track)", () => {
+    // Monotonic + finite + right length, but the LAST end time is 12.0 while the
+    // clip is only 9.0s — the alignment is for a different/mis-scaled clip. Snapping
+    // the final chunk to 9.0 while taking internal boundaries from this array would
+    // produce a structurally-clean but out-of-sync track. Must fall back instead.
+    const outOfRange = [1.0, 1.2, 2.0, 5.0, 6.0, 6.1, 12.0];
+    const caps = buildCaptions(
+      SCRIPT,
+      { durationSec: DURATION, charEndTimesSec: outOfRange },
+      { maxWords: 1 },
+    );
+    expect(ends(caps)).toEqual(EXPECTED_EVEN_ENDS); // even-split, NOT the mismatched alignment
+
+    // And it really would have been "wrong but clean" — the structural coverage
+    // check on the even-split fallback still passes (proving the fallback is the safe path).
+    const track = buildCaptionTrack(
+      SCRIPT,
+      { durationSec: DURATION, charEndTimesSec: outOfRange },
+      { maxWords: 1 },
+    );
+    expect(track.pathLine).toContain("clean=true");
+  });
+
+  test("#13 guard: a final time WITHIN tolerance of clip.durationSec still uses real sync", () => {
+    // Last end time 9.05 vs duration 9.0 → diff 0.05 ≤ tol max(0.1, 0.09) = 0.1 → accepted.
+    const inRange = [1.0, 1.2, 2.0, 5.0, 6.0, 6.1, 9.05];
+    const synced = buildCaptions(
+      SCRIPT,
+      { durationSec: DURATION, charEndTimesSec: inRange },
+      { maxWords: 1 },
+    );
+    // Internal boundaries come from the REAL alignment (not even-split); final snaps to duration.
+    synced.forEach((c, i) => {
+      expect(c.startSec).toBeCloseTo(EXPECTED_SYNCED_STARTS[i], 6);
+      expect(c.endSec).toBeCloseTo(EXPECTED_SYNCED_ENDS[i], 6);
+    });
+    // Distinct from even-split → proves the real path ran, not the fallback.
+    expect(ends(synced)).not.toEqual(EXPECTED_EVEN_ENDS);
+  });
+
   test("guard: a non-finite alignment entry falls back to even-split", () => {
     const withNaN = [1.0, 1.2, 2.0, NaN, 6.0, 6.1, 9.0];
     const caps = buildCaptions(
