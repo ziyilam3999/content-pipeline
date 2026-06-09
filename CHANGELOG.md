@@ -7,6 +7,22 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.4.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.0...v0.4.1) (2026-06-09)
+
+The demo's scene-sync, caption-sync, and parity invariants are now a CI gate, so
+every future video stays consistent in quality even though CI never runs a real
+video render.
+
+### Miscellaneous
+
+- **video**: add a pure jest integration test that makes the end-to-end
+  scene-sync + caption-sync + audio/sync provenance + parity pipeline a CI gate —
+  mirrors the `usedRealSceneSync` smoke proof with a synthetic non-linear
+  alignment (no Remotion render, CI-safe + fast); fails the build if scenes ever
+  silently fall back to weight-tiling, captions go empty/non-spanning, audio and
+  alignment drift apart, or the persisted sync bundle drops its source data
+  (#778).
+
 ## [0.4.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.3.0...v0.4.0) (2026-06-09)
 
 The demo video now fills every aspect ratio edge-to-edge, keeps its audio and
