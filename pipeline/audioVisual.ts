@@ -49,8 +49,16 @@ export async function buildAudioVisual(
   // Step 1: get the voice clip (primary → fallback behind the scenes).
   const voiceover = await synthesizeVoiceover(script, callers);
 
-  // Step 2: build captions timed to the clip's REAL length.
-  const captions = buildCaptionTrack(script, { durationSec: voiceover.clip.durationSec }, opts);
+  // Step 2: build captions timed to the clip's REAL length — and, when the
+  // provider returned per-character timestamps (#742), synced to the real voice.
+  const captions = buildCaptionTrack(
+    script,
+    {
+      durationSec: voiceover.clip.durationSec,
+      charEndTimesSec: voiceover.clip.charEndTimesSec,
+    },
+    opts,
+  );
 
   // Step 3: derive the greppable pathLine.
   const clean =

@@ -20,6 +20,13 @@ export interface Caption {
 
 export interface VoiceClipLike {
   durationSec: number;
+  /**
+   * #742 — real per-character end-times from the TTS provider (ElevenLabs
+   * `alignment.character_end_times_seconds[]`), one entry per character of the
+   * spoken script. When present AND length-matched to the script, captions are
+   * timed to the ACTUAL voice instead of an even-split-by-words estimate.
+   */
+  charEndTimesSec?: number[];
 }
 
 export interface CaptionTrack {
@@ -50,11 +57,72 @@ export function splitCaptionText(
 // ── buildCaptions ────────────────────────────────────────────────────────
 
 /**
- * Group the words via splitCaptionText, then TIME each chunk by even-split
- * by-words: seconds-per-word = clip.durationSec / totalWords, so each
- * caption's duration = its wordCount * secondsPerWord. Captions run
- * back-to-back with no gaps — the first starts at 0, the last's endSec
- * snaps to clip.durationSec.
+ * #742 — map each caption chunk's END time to the REAL voice timing using the
+ * provider's per-character end-times. Returns null (→ caller falls back to
+ * even-split) if no alignment was supplied or it doesn't line up with the
+ * script character-for-character.
+ *
+ * Boundary rule: chunk k ends at the end-time of the last character BEFORE
+ * chunk k+1's first character (a whitespace/punctuation gap), so captions stay
+ * back-to-back with no gap; the final chunk snaps to clip.durationSec. The
+ * first chunk starts at 0. This preserves the assertCaptionsCoverClip contract.
+ */
+function realChunkEndTimes(
+  script: string,
+  chunks: string[],
+  clip: VoiceClipLike,
+): number[] | null {
+  const ends = clip.charEndTimesSec;
+  // Alignment must exist and have exactly one entry per character of the script
+  // that was sent to the TTS provider — otherwise indices don't correspond.
+  if (!ends || ends.length !== script.length) return null;
+
+  // Trust but verify the provider data: every entry must be finite and the
+  // series non-decreasing (time only moves forward). A malformed/non-monotonic
+  // array would otherwise yield an inverted caption (endSec < startSec) that the
+  // structural coverage check can't catch — so fall back to even-split instead.
+  for (let i = 0; i < ends.length; i++) {
+    if (!Number.isFinite(ends[i])) return null;
+    if (i > 0 && ends[i] < ends[i - 1]) return null;
+  }
+
+  // Character span of each word in the RAW script (indices match `ends`).
+  const spans = Array.from(script.matchAll(/\S+/g)).map((m) => ({
+    start: m.index ?? 0,
+  }));
+  const wordsPerChunk = chunks.map((c) => c.trim().split(/\s+/).length);
+  const totalWords = wordsPerChunk.reduce((a, b) => a + b, 0);
+  if (spans.length !== totalWords) return null; // chunking ≠ raw tokenization
+
+  // First word index of each chunk.
+  const firstWordIdx: number[] = [];
+  let acc = 0;
+  for (const n of wordsPerChunk) {
+    firstWordIdx.push(acc);
+    acc += n;
+  }
+
+  const endTimes: number[] = [];
+  for (let k = 0; k < chunks.length; k++) {
+    if (k === chunks.length - 1) {
+      endTimes.push(clip.durationSec); // final snaps to clip duration
+    } else {
+      const nextFirstChar = spans[firstWordIdx[k + 1]].start;
+      endTimes.push(ends[nextFirstChar - 1]);
+    }
+  }
+  return endTimes;
+}
+
+/**
+ * Group the words via splitCaptionText, then TIME each chunk.
+ *
+ * Preferred: if the clip carries real per-character end-times
+ * (`charEndTimesSec`, #742) that line up with the script, each caption is timed
+ * to the ACTUAL voice. Otherwise fall back to EVEN-SPLIT-BY-WORDS:
+ * seconds-per-word = clip.durationSec / totalWords. Either way captions run
+ * back-to-back with no gaps — the first starts at 0, the last's endSec snaps to
+ * clip.durationSec.
  */
 export function buildCaptions(
   script: string,
@@ -65,17 +133,21 @@ export function buildCaptions(
   const totalWords = chunks.flatMap((c) => c.trim().split(/\s+/)).length;
   const secPerWord = clip.durationSec / totalWords;
 
+  // Real voice timing when available; null → even-split fallback.
+  const realEnds = realChunkEndTimes(script, chunks, clip);
+
   const captions: Caption[] = [];
   let cursorSec = 0;
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
     const words = chunk.trim().split(/\s+/);
     const wordCount = words.length;
-    const duration = wordCount * secPerWord;
     const startSec = cursorSec;
-    const endSec = i === chunks.length - 1
-      ? clip.durationSec            // snap final end to clip duration (float drift)
-      : cursorSec + duration;       // back-to-back, no gap
+    const endSec = realEnds
+      ? realEnds[i]                                   // real per-character timing
+      : i === chunks.length - 1
+        ? clip.durationSec                            // snap final end to clip duration
+        : cursorSec + wordCount * secPerWord;         // even-split, back-to-back
     captions.push({ text: chunk, startSec, endSec, wordCount });
     cursorSec = endSec;
   }

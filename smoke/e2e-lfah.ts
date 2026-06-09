@@ -82,6 +82,7 @@ async function main() {
   fs.mkdirSync(reviewDir, { recursive: true });
 
   let realDurationSec: number | undefined;
+  let realCharEndTimesSec: number[] | undefined;
 
   const deps: PipelineDeps = {
     writeCopy: async (spec): Promise<CopyResult> => {
@@ -117,6 +118,7 @@ async function main() {
         outDir: path.join(reviewDir, "audio"),
       });
       realDurationSec = outcome.durationSec;
+      realCharEndTimesSec = outcome.charEndTimesSec; // #742 — sync captions to the real voice
       console.log(`  ${outcome.pathLine}`);
       return outcome.audioPath;
     },
@@ -126,6 +128,7 @@ async function main() {
       const p = await renderVideo(args, {
         aspectName: "9:16",
         durationSec: realDurationSec, // sync to the true ElevenLabs clip length
+        charEndTimesSec: realCharEndTimesSec, // #742 — sync captions to the real voice
         outDir: path.join(reviewDir, "video"),
       });
       console.log(`  video: ${p}`);
