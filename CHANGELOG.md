@@ -7,6 +7,31 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.4.2](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.1...v0.4.2) (2026-06-09)
+
+The animated demo gains a 6th scene — the lfah flow diagram — that SHOWS the loop
+(plan → fix → grade → tests, escalate only when stuck) right after the hook, and a
+matching narration segment. The voiced-duration clamp is fixed so the now-longer
+narration is never truncated: a voiced render uses the real audio length while the
+free/silent cut stays clamped to the 45–90s window.
+
+### Features
+
+- **video**: add a `pipeline` flow-diagram demo scene (#780) as the 2nd scene
+  (hook → pipeline → compare → costsplit → verdict → cta). `PipelineScene` renders the
+  timeline's nodes/edges as lane-colored cards (local = green with a `$0 · free` badge,
+  cloud = blue, test = amber) in a top-to-bottom flow, with the `fix → cloud` edge drawn
+  as a dashed "escalate — only when stuck" branch. Adds a FLOW-focused narration segment
+  (1:1 with scenes) and re-tunes scene weights so HOOK-FIRST still holds across [45,90].
+
+### Bug Fixes
+
+- **video**: fix the duration clamp (#777) so the longer 6-scene voiced narration isn't
+  truncated at 90s. `clampDemoDurationSec` gains a voiced mode — a voiced render (real
+  synth → `sceneEndTimesSec` present) is floored at MIN but not capped at MAX, so the
+  real audio length flows through and captions + scenes stay synced; the silent/free cut
+  stays clamped to [45,90].
+
 ## [0.4.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.0...v0.4.1) (2026-06-09)
 
 The demo's scene-sync, caption-sync, and parity invariants are now a CI gate, so
