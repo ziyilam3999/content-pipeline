@@ -19,7 +19,8 @@ async function main() {
   const reviewDir = path.join(process.cwd(), "out", "review", "lfah", "demo");
   fs.mkdirSync(reviewDir, { recursive: true });
 
-  const durationSec = Number(process.env.DEMO_DURATION_SEC ?? "18");
+  // Default to the 60s launch target; buildDemoTimeline hard-bounds to 45–90s regardless.
+  const durationSec = Number(process.env.DEMO_DURATION_SEC ?? "60");
 
   console.log(`\n=== #743 demo-video smoke — animated lfah product demo (${durationSec}s, silent/free) ===\n`);
   const t0 = Date.now();

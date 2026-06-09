@@ -65,6 +65,22 @@ export interface DemoTimeline {
   repoUrl?: string;
 }
 
+// ── Duration policy ─────────────────────────────────────────────────────────
+// A launch product-demo needs room to land its content (a 4-way comparison +
+// verdict) but must respect short-form attention spans. Research (2026): the
+// product-demo sweet spot is ~60–90s; X/Reels skew shorter. We hard-bound the
+// demo to 45–90s so an under-baked clip (e.g. the earlier 18s cut) can NEVER be
+// generated again — the lower bound is the load-bearing rule.
+export const MIN_DEMO_SEC = 45;
+export const MAX_DEMO_SEC = 90;
+export const DEFAULT_DEMO_SEC = 60;
+
+/** Clamp any requested duration into the [MIN, MAX] launch window; bad input → default. */
+export function clampDemoDurationSec(requested?: number): number {
+  if (requested === undefined || !Number.isFinite(requested)) return DEFAULT_DEMO_SEC;
+  return Math.min(MAX_DEMO_SEC, Math.max(MIN_DEMO_SEC, requested));
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────
 
 /** Relative scene weights; actual seconds scale these to fill `durationSec`. */
@@ -141,7 +157,8 @@ export function buildDemoTimeline(
   spec: ContentSpec,
   opts?: { durationSec?: number; fps?: number },
 ): DemoTimeline {
-  const durationSec = opts?.durationSec ?? 18;
+  // Hard-bound the duration to the 45–90s launch window (no more 18s clips).
+  const durationSec = clampDemoDurationSec(opts?.durationSec);
   const fps = opts?.fps ?? 30;
 
   const totalWeight = SCENE_WEIGHTS.reduce((a, s) => a + s.weight, 0);

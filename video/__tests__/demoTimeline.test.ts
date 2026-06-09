@@ -11,6 +11,10 @@ import {
   buildDemoTimeline,
   parseFactNumber,
   deriveTitle,
+  clampDemoDurationSec,
+  MIN_DEMO_SEC,
+  MAX_DEMO_SEC,
+  DEFAULT_DEMO_SEC,
 } from "../demoTimeline";
 import { type ContentSpec } from "../../inputs/contentspec";
 
@@ -50,7 +54,7 @@ describe("#743 demo timeline", () => {
   });
 
   test("scenes tile [0, durationSec) back-to-back with no gaps and end exactly at duration", () => {
-    const DUR = 18;
+    const DUR = 60; // in-range; below 45 would be clamped up
     const t = buildDemoTimeline(SPEC, { durationSec: DUR });
     expect(t.scenes[0].fromSec).toBe(0);
     for (let i = 0; i < t.scenes.length - 1; i++) {
@@ -63,8 +67,8 @@ describe("#743 demo timeline", () => {
   });
 
   test("scene durations rescale proportionally with total length", () => {
-    const a = buildDemoTimeline(SPEC, { durationSec: 18 });
-    const b = buildDemoTimeline(SPEC, { durationSec: 36 });
+    const a = buildDemoTimeline(SPEC, { durationSec: 45 }); // both in-range so the
+    const b = buildDemoTimeline(SPEC, { durationSec: 90 }); // clamp doesn't distort the ratio
     for (let i = 0; i < a.scenes.length; i++) {
       expect(b.scenes[i].durationSec).toBeCloseTo(a.scenes[i].durationSec * 2, 6);
     }
@@ -107,6 +111,37 @@ describe("#743 demo timeline", () => {
     const t = buildDemoTimeline(SPEC);
     expect(t.cta).toBe(SPEC.ctas[0]);
     expect(t.repoUrl).toBe(SPEC.product.repoUrl);
+  });
+
+  describe("duration is bounded to a launch-appropriate 45–90s (never an 18s clip again)", () => {
+    test("bounds are 45s..90s with a 60s default", () => {
+      expect(MIN_DEMO_SEC).toBe(45);
+      expect(MAX_DEMO_SEC).toBe(90);
+      expect(DEFAULT_DEMO_SEC).toBe(60);
+    });
+
+    test("clampDemoDurationSec floors below-min, caps above-max, keeps in-range, defaults bad input", () => {
+      expect(clampDemoDurationSec(18)).toBe(45); // the old too-short value is floored
+      expect(clampDemoDurationSec(10)).toBe(45);
+      expect(clampDemoDurationSec(120)).toBe(90);
+      expect(clampDemoDurationSec(60)).toBe(60);
+      expect(clampDemoDurationSec(45)).toBe(45);
+      expect(clampDemoDurationSec(90)).toBe(90);
+      expect(clampDemoDurationSec(undefined)).toBe(DEFAULT_DEMO_SEC);
+      expect(clampDemoDurationSec(NaN)).toBe(DEFAULT_DEMO_SEC);
+    });
+
+    test("buildDemoTimeline never produces a timeline shorter than 45s, even if asked for 18s", () => {
+      const t = buildDemoTimeline(SPEC, { durationSec: 18 });
+      expect(t.durationSec).toBe(45);
+      const last = t.scenes[t.scenes.length - 1];
+      expect(last.fromSec + last.durationSec).toBeCloseTo(45, 6);
+    });
+
+    test("buildDemoTimeline caps at 90s and defaults to 60s", () => {
+      expect(buildDemoTimeline(SPEC, { durationSec: 300 }).durationSec).toBe(90);
+      expect(buildDemoTimeline(SPEC).durationSec).toBe(DEFAULT_DEMO_SEC);
+    });
   });
 
   test("parseFactNumber handles %, $, plain, and rejects non-numeric", () => {

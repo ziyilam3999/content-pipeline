@@ -179,8 +179,10 @@ export interface RenderDemoOpts {
  */
 export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts): Promise<string> {
   const fps = opts?.fps ?? 30;
-  const durationSec = opts?.durationSec ?? 18;
-  const timeline = buildDemoTimeline(spec, { durationSec, fps });
+  // buildDemoTimeline hard-bounds the duration to the 45–90s launch window; read
+  // the clamped value back so the frame count matches the actual timeline.
+  const timeline = buildDemoTimeline(spec, { durationSec: opts?.durationSec, fps });
+  const durationSec = timeline.durationSec;
   const width = 1080;
   const height = 1920;
   const durationInFrames = Math.max(1, Math.round(durationSec * fps));
