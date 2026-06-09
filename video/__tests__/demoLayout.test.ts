@@ -79,11 +79,11 @@ describe("#765 demoLayout — per-aspect frame fill", () => {
       aspectRatio: 1920 / 1080,
       fill: true,
       justify: "space-between",
-      padTopFraction: 0.05,
-      padBottomFraction: 0.05,
-      typeScale: 1.18,
-      gapScale: 1.5,
-      usableSpanFraction: 0.9,
+      padTopFraction: 0.045,
+      padBottomFraction: 0.045,
+      typeScale: 1.34,
+      gapScale: 1.1,
+      usableSpanFraction: 1 - 2 * 0.045,
     });
   });
 });

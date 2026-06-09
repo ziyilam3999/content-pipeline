@@ -148,11 +148,11 @@ const DEFAULT_LAYOUT_9X16: DemoLayout = {
   aspectRatio: 1920 / 1080,
   fill: true,
   justify: "space-between",
-  padTopFraction: 0.05,
-  padBottomFraction: 0.05,
-  typeScale: 1.18,
-  gapScale: 1.5,
-  usableSpanFraction: 0.9,
+  padTopFraction: 0.045,
+  padBottomFraction: 0.045,
+  typeScale: 1.34,
+  gapScale: 1.1,
+  usableSpanFraction: 0.91,
 };
 
 interface DemoProps {
@@ -205,11 +205,13 @@ function entrance(frame: number, fps: number, delay = 0, rise = 36) {
  */
 const SceneShell: React.FC<{
   layout: DemoLayout;
+  header?: React.ReactNode; // a small section label that should NOT grow (flex:0)
   gap?: number;
   contentWidth?: number;
   children: React.ReactNode;
-}> = ({ layout, gap = 0, contentWidth, children }) => {
+}> = ({ layout, header, gap = 0, contentWidth, children }) => {
   const { width, height } = useVideoConfig();
+  const items = React.Children.toArray(children);
   return (
     <AbsoluteFill
       style={{
@@ -218,22 +220,39 @@ const SceneShell: React.FC<{
         justifyContent: "center",
         paddingTop: Math.round(layout.padTopFraction * height),
         paddingBottom: Math.round(layout.padBottomFraction * height),
-        paddingLeft: 60,
-        paddingRight: 60,
+        paddingLeft: 56,
+        paddingRight: 56,
       }}
     >
       <div
         style={{
-          width: contentWidth ?? Math.min(960, width - 120),
+          width: contentWidth ?? Math.min(984, width - 96),
           height: "100%",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          justifyContent: layout.fill ? layout.justify : "center",
+          justifyContent: layout.fill ? "flex-start" : "center",
           gap,
         }}
       >
-        {children}
+        {header ? <div style={{ width: "100%", flex: "0 0 auto" }}>{header}</div> : null}
+        {items.map((it, i) => (
+          <div
+            key={i}
+            style={{
+              width: "100%",
+              // #773 — in fill mode the body rows GROW to divide the height so the cards
+              // STRETCH to fill the frame (not stay small and get pushed apart). Centered
+              // so a row's own content sits in the middle of its grown slot.
+              flex: layout.fill ? "1 1 0" : "0 0 auto",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+            }}
+          >
+            {it}
+          </div>
+        ))}
       </div>
     </AbsoluteFill>
   );
@@ -307,10 +326,17 @@ const ArmRow: React.FC<{ arm: DemoArm; show: number; layout: DemoLayout }> = ({ 
       style={{
         ...entrance(frame, fps, show),
         width: "100%",
+        // #773 — in fill mode the card stretches to its grown slot (height 100%) and
+        // pushes its two rows to the top/bottom edges so the big card reads FULL, not empty.
+        height: layout.fill ? "100%" : undefined,
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: layout.fill ? "space-between" : "center",
         background: arm.isLfah ? "#0f2a22" : "#111a30",
         border: `3px solid ${accent}`,
         borderRadius: 18,
-        padding: "20px 26px",
+        padding: layout.fill ? "30px 30px" : "20px 26px",
         opacity: dim ? 0.62 : 1,
       }}
     >
@@ -326,9 +352,9 @@ const ArmRow: React.FC<{ arm: DemoArm; show: number; layout: DemoLayout }> = ({ 
           ) : null}
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
-        <div style={{ color: "#94a3b8", fontFamily: FONT, fontSize: f(26) }}>{arm.note}</div>
-        <div style={{ color: "#cbd5e1", fontFamily: FONT, fontSize: f(28) }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 24, marginTop: layout.fill ? 0 : 8 }}>
+        <div style={{ color: "#94a3b8", fontFamily: FONT, fontSize: f(26), maxWidth: "54%", lineHeight: 1.25 }}>{arm.note}</div>
+        <div style={{ color: "#cbd5e1", fontFamily: FONT, fontSize: f(28), flexShrink: 0, textAlign: "right" }}>
           {arm.totalCost} total · <span style={{ color: arm.isLfah ? LANE_COLOR.local : "#cbd5e1", fontWeight: 700 }}>{arm.perResolved}/fix</span>
         </div>
       </div>
@@ -340,12 +366,18 @@ const CompareScene: React.FC<{ arms: DemoArm[]; layout: DemoLayout }> = ({ arms,
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const f = scaler(layout);
-  // header + the 4 arm rows are direct children → on the tall cut they spread to fill.
+  // header (fixed) + the 4 arm rows GROW to fill the height on tall cuts.
   return (
-    <SceneShell layout={layout} gap={Math.round(18 * layout.gapScale)} contentWidth={960}>
-      <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4 }}>
-        ALL 4 WAYS, COMPARED — n=13
-      </div>
+    <SceneShell
+      layout={layout}
+      gap={Math.round(16 * layout.gapScale)}
+      contentWidth={984}
+      header={
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4, paddingBottom: 6 }}>
+          ALL 4 WAYS, COMPARED — n=13
+        </div>
+      }
+    >
       {arms.map((a, i) => (
         <ArmRow key={a.key} arm={a} show={10 + i * 12} layout={layout} />
       ))}
@@ -362,10 +394,16 @@ const CostSplitScene: React.FC<{ costSplit: DemoCostRole[]; layout: DemoLayout }
   const { fps } = useVideoConfig();
   const f = scaler(layout);
   return (
-    <SceneShell layout={layout} gap={Math.round(22 * layout.gapScale)} contentWidth={900}>
-      <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4 }}>
-        WHERE THE MONEY GOES
-      </div>
+    <SceneShell
+      layout={layout}
+      gap={Math.round(20 * layout.gapScale)}
+      contentWidth={920}
+      header={
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4, paddingBottom: 6 }}>
+          WHERE THE MONEY GOES
+        </div>
+      }
+    >
       {costSplit.map((r, i) => {
         const isFree = r.sharePct === 0;
         const accent = isFree ? LANE_COLOR.local : LANE_COLOR.cloud;
@@ -402,10 +440,16 @@ const VerdictScene: React.FC<{ verdict: DemoVerdict; layout: DemoLayout }> = ({ 
   const { fps } = useVideoConfig();
   const f = scaler(layout);
   return (
-    <SceneShell layout={layout} gap={Math.round(16 * layout.gapScale)} contentWidth={940}>
-      <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4 }}>
-        THE HONEST VERDICT
-      </div>
+    <SceneShell
+      layout={layout}
+      gap={Math.round(14 * layout.gapScale)}
+      contentWidth={952}
+      header={
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4, paddingBottom: 6 }}>
+          THE HONEST VERDICT
+        </div>
+      }
+    >
       {verdict.axes.map((ax, i) => {
         const hybridWins = /hybrid|local/i.test(ax.winner);
         return (

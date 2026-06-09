@@ -19,6 +19,7 @@ import { buildCaptionTrack } from "../video/captions";
 import { buildRenderSpecs, ASPECTS, type Aspect } from "../video/renderSpec";
 import { buildDemoTimeline } from "../video/demoTimeline";
 import { demoLayout } from "../video/demoLayout";
+import { assertAudioMatchesSync } from "../video/audioDuration";
 import { type ContentSpec } from "../inputs/contentspec";
 
 export interface RenderVideoOpts {
@@ -217,6 +218,13 @@ export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts):
     sceneEndTimesSec: opts?.sceneEndTimesSec, // #763 — scenes follow the narrator when present
   });
   const durationSec = timeline.durationSec;
+
+  // #774 — provenance guard: if a voiceover is paired with narration-derived scene
+  // timing, the audio MUST be the synth the alignment came from. Refuse a render whose
+  // audio length disagrees with the alignment (a wrong/old audio file → drift, #744).
+  if (opts?.audioPath && opts?.sceneEndTimesSec && opts.sceneEndTimesSec.length > 0) {
+    assertAudioMatchesSync(opts.audioPath, opts.sceneEndTimesSec);
+  }
 
   // #765 — resolve the requested aspect (default 9:16) and compute its per-aspect
   // layout so the composition fills the frame instead of centring a square island.

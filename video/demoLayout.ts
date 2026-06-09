@@ -83,22 +83,24 @@ export function demoLayout(width: number, height: number): DemoLayout {
     };
   }
 
-  // Taller than square: FILL. Interpolate from the 4:5 anchor (modest fill) to the
-  // 9:16 anchor (fullest, biggest type). t=0 at 4:5, t=1 at 9:16, clamped both ends.
+  // Taller than square: FILL by GROWING the content (#773). The body blocks flex-grow to
+  // divide the usable height so the cards STRETCH to fill instead of staying small and being
+  // pushed apart by space-between (which the operator called "just increased spacing"). Type
+  // also scales up the taller the frame, so the grown cards aren't mostly empty. Interpolate
+  // from the 4:5 anchor (modest) to the 9:16 anchor (fullest), clamped. justify is unused in
+  // fill mode (SceneShell uses flex-grow), kept only for completeness.
   const t = clamp((aspectRatio - RATIO_45) / (RATIO_916 - RATIO_45), 0, 1);
-  const pad = lerp(0.07, 0.05, t); // 4:5 → 0.07 each; 9:16 → 0.05 each
-  const typeScale = lerp(1.08, 1.18, t);
-  const gapScale = lerp(1.2, 1.5, t);
+  const pad = lerp(0.06, 0.045, t); // 4:5 → 0.06 each; 9:16 → 0.045 each
+  const typeScale = lerp(1.18, 1.34, t); // bigger so grown cards read full (was 1.08→1.18)
+  const gapScale = lerp(0.9, 1.1, t); // modest gaps — the grow does the filling, not the gap
   return {
     aspectRatio,
     fill: true,
-    // Tall enough (≥ ~16:10) → push the first/last block to the safe edges
-    // (space-between); the middling 4:5 → space-evenly so it doesn't look stretched.
-    justify: aspectRatio >= 1.55 ? "space-between" : "space-evenly",
+    justify: "space-between",
     padTopFraction: pad,
     padBottomFraction: pad,
     typeScale,
     gapScale,
-    usableSpanFraction: 1 - 2 * pad, // 4:5 → 0.86 ; 9:16 → 0.90
+    usableSpanFraction: 1 - 2 * pad, // 4:5 → 0.88 ; 9:16 → 0.91
   };
 }
