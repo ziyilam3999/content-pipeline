@@ -18,6 +18,7 @@ import { type CopyResult } from "../pipeline/run";
 import { buildCaptionTrack } from "../video/captions";
 import { buildRenderSpecs, ASPECTS, type Aspect } from "../video/renderSpec";
 import { buildDemoTimeline } from "../video/demoTimeline";
+import { demoLayout } from "../video/demoLayout";
 import { type ContentSpec } from "../inputs/contentspec";
 
 export interface RenderVideoOpts {
@@ -177,6 +178,13 @@ async function renderRemotion(args: {
 export interface RenderDemoOpts {
   outDir?: string;
   fileName?: string;
+  /**
+   * #765 — which frame shape to render: "1:1" | "9:16" | "4:5" (default "9:16").
+   * Resolved via `ASPECTS`; an unknown name throws (mirrors `renderVideo`). The
+   * composition fills the frame per-aspect via `demoLayout` (tall cuts spread to
+   * full height; the square cut stays centered).
+   */
+  aspectName?: string;
   durationSec?: number; // default 18 (the free cut); set to the voiceover length for the paid cut
   fps?: number; // default 30
   audioPath?: string; // optional voiceover; omitted → silent (free)
@@ -209,8 +217,15 @@ export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts):
     sceneEndTimesSec: opts?.sceneEndTimesSec, // #763 — scenes follow the narrator when present
   });
   const durationSec = timeline.durationSec;
-  const width = 1080;
-  const height = 1920;
+
+  // #765 — resolve the requested aspect (default 9:16) and compute its per-aspect
+  // layout so the composition fills the frame instead of centring a square island.
+  const aspectName = opts?.aspectName ?? "9:16";
+  const aspect: Aspect | undefined = ASPECTS.find((a) => a.name === aspectName);
+  if (!aspect) throw new Error(`unknown aspect "${aspectName}"`);
+  const width = aspect.width;
+  const height = aspect.height;
+  const layout = demoLayout(width, height);
   const durationInFrames = Math.max(1, Math.round(durationSec * fps));
 
   const inputProps = {
@@ -226,6 +241,7 @@ export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts):
     cta: timeline.cta,
     repoUrl: timeline.repoUrl,
     audioSrc: opts?.audioPath ? toDataUri(opts.audioPath) : undefined,
+    layout,
     width,
     height,
     fps,
@@ -234,7 +250,7 @@ export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts):
 
   const outDir = opts?.outDir ?? path.join(process.cwd(), "out", "video");
   fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(outDir, opts?.fileName ?? "demo-9x16.mp4");
+  const outPath = path.join(outDir, opts?.fileName ?? `demo-${aspectName.replace(":", "x")}.mp4`);
 
   const entryPoint = path.join(__dirname, "..", "remotion", "index.tsx");
   return renderRemotion({
