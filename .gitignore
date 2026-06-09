@@ -8,5 +8,8 @@ coverage/
 tmp/
 out/
 
-# local agent scratch (hooks)
-.ai-workspace/
+# local agent scratch (hooks) — but TRACK the generated project index so other
+# clones / CI / future sessions get project-relevant SessionStart grounding (#772).
+.ai-workspace/*
+!.ai-workspace/PROJECT-INDEX.md
+!.ai-workspace/PROJECT-INDEX-reference.md
