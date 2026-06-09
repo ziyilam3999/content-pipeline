@@ -7,7 +7,7 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
-## Unreleased
+## [0.3.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.2.0...v0.3.0) (2026-06-09)
 
 The launch demo video is now a moving, honest product walkthrough whose on-screen
 scenes follow the narrator, and the narration introduces the project by name and
