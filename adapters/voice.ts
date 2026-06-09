@@ -18,6 +18,7 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
+import { CONFIG } from "../config";
 import {
   synthesizeVoiceover,
   buildSpeechRequest,
@@ -30,10 +31,15 @@ import {
 } from "../audio/voiceover";
 
 // ── Defaults (all overridable via opts/env) ────────────────────────────
-/** "Rachel" — a long-standing ElevenLabs stock voice. Override via opts.voiceId / $ELEVENLABS_VOICE_ID. */
-export const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM";
-export const DEFAULT_MODEL_ID = "eleven_multilingual_v2";
-export const DEFAULT_OUTPUT_FORMAT = "mp3_44100_128";
+/**
+ * The LOCKED MALE channel voice ("Adam"), sourced from the config SSOT
+ * (CONFIG.voice) so every piece of channel content uses one recognizable
+ * voice. Do not change here — change CONFIG.voice (needs operator sign-off).
+ * A one-off run may still override via opts.voiceId / $ELEVENLABS_VOICE_ID.
+ */
+export const DEFAULT_VOICE_ID = CONFIG.voice.channelVoiceId;
+export const DEFAULT_MODEL_ID = CONFIG.voice.modelId;
+export const DEFAULT_OUTPUT_FORMAT = CONFIG.voice.outputFormat;
 
 export type VoicePath = "elevenlabs" | "kokoro" | "injected";
 
