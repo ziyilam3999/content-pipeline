@@ -26,6 +26,14 @@ one adding a piece.
 
 One piece is not here yet: a **weekly schedule** that regenerates content on its own.
 
+### Promo-post media rule (every launch post = text + card-over-art + video)
+
+Every launch / promo post must carry **all three** media types: the written **text**, at least
+one **card-over-art still** (the result-card over a generated background), and at least one
+**video**. A post missing any one is incomplete and must not go out — the operator once caught a
+dropped card-over-art still, so this is baked as a hard gate (`publish/promoMedia.ts` →
+`assertPromoMediaComplete`, which throws naming whatever is missing) rather than left as a habit.
+
 ## How it's built
 
 Each stage was built test-first: a test describing what the stage must do was
