@@ -247,6 +247,10 @@ export async function synthesizeVoiceToFile(
 /**
  * The orchestrator's injected `synthVoice` slot — returns just the audio file path.
  * Production default: the paid ElevenLabs voice, primary-only.
+ *
+ * NOTE: this bare-path return DROPS the real per-character alignment. For the
+ * live pipeline use `synthVoiceStage` (below), which the conductor threads into
+ * the video stage so captions sync to the actual voice (#742).
  */
 export async function synthVoice(
   args: { script: string },
@@ -255,4 +259,19 @@ export async function synthVoice(
 ): Promise<string> {
   const outcome = await synthesizeVoiceToFile(args, deps, opts);
   return outcome.audioPath;
+}
+
+/**
+ * #742 — the LIVE `synthVoice` slot for the conductor. Returns the audio path
+ * AND the real per-character end-times so `runPipeline` can thread the alignment
+ * into the video stage — guaranteeing real caption sync on the production path
+ * (no closure smuggle). Wire this (not `synthVoice`) as `deps.synthVoice`.
+ */
+export async function synthVoiceStage(
+  args: { script: string },
+  deps?: SynthVoiceDeps,
+  opts?: SynthVoiceOpts,
+): Promise<{ audioPath: string; charEndTimesSec?: number[] }> {
+  const outcome = await synthesizeVoiceToFile(args, deps, opts);
+  return { audioPath: outcome.audioPath, charEndTimesSec: outcome.charEndTimesSec };
 }
