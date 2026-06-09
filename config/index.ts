@@ -21,4 +21,13 @@ export const CONFIG = {
     dryRunDefault: true,
     socialSetIdEnv: "TYPEFULLY_SOCIAL_SET_ID",
   },
+  voice: {
+    // CHANNEL VOICE — locked MALE voice for consistency across ALL content.
+    // Do not change without operator sign-off (a channel needs one recognizable voice).
+    channelVoiceId: "pNInz6obpgDQGcFmaJgB", // ElevenLabs "Adam" — male, deep professional narration (stable stock voice)
+    channelVoiceName: "Adam",
+    channelVoiceGender: "male",
+    modelId: "eleven_multilingual_v2",
+    outputFormat: "mp3_44100_128",
+  },
 } as const;
