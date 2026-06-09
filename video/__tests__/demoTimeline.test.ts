@@ -12,6 +12,7 @@
 
 import {
   buildDemoTimeline,
+  narrationSceneEndTimes,
   parseFactNumber,
   deriveTitle,
   buildArms,
@@ -21,6 +22,7 @@ import {
   DEFAULT_DEMO_SEC,
   HOOK_WINDOW_SEC,
 } from "../demoTimeline";
+import { DEMO_NARRATION, narrationScript, type NarrationSegment } from "../demoNarration";
 import { lfahSpec } from "../../smoke/lfahSpec";
 import { type ContentSpec } from "../../inputs/contentspec";
 
@@ -235,6 +237,133 @@ describe("#748 demo timeline — duration bounded to a launch-appropriate 45–9
     const t = buildDemoTimeline(SPEC);
     expect(t.durationSec).toBeGreaterThanOrEqual(45);
     expect(t.durationSec).toBeLessThanOrEqual(90);
+  });
+});
+
+describe("#763 demo timeline — scenes follow the narration (sceneEndTimesSec)", () => {
+  const SCENE_COUNT = 5; // hook, compare, costsplit, verdict, cta
+
+  test("narrationSceneEndTimes maps a known char-aligned fixture to the right per-scene end-times", () => {
+    // Two tiny segments joined by a single space: "ab cd" (5 chars).
+    // char idx: a=0 b=1 (space)=2 c=3 d=4. Segment 0 ends at the char BEFORE
+    // segment 1's first char (idx 3) → idx 2 (the separator space). Segment 1
+    // (last) ends at the final char (idx 4).
+    const segs: NarrationSegment[] = [
+      { sceneId: "hook", text: "ab" },
+      { sceneId: "cta", text: "cd" },
+    ];
+    const charEnds = [0.1, 0.2, 0.3, 0.4, 0.5]; // one per char of "ab cd"
+    expect(narrationSceneEndTimes(segs, charEnds)).toEqual([0.3, 0.5]);
+  });
+
+  test("narrationSceneEndTimes returns null on a length mismatch (alignment ≠ script)", () => {
+    const segs: NarrationSegment[] = [{ sceneId: "hook", text: "ab" }];
+    expect(narrationSceneEndTimes(segs, [0.1, 0.2, 0.3])).toBeNull(); // 3 ≠ 2 chars
+    expect(narrationSceneEndTimes(segs, undefined)).toBeNull();
+    expect(narrationSceneEndTimes([], [])).toBeNull();
+  });
+
+  test("narrationSceneEndTimes returns null on a non-monotonic / non-finite alignment", () => {
+    const segs: NarrationSegment[] = [{ sceneId: "hook", text: "ab" }];
+    expect(narrationSceneEndTimes(segs, [0.2, 0.1])).toBeNull(); // goes backwards
+    expect(narrationSceneEndTimes(segs, [0.1, Number.NaN])).toBeNull();
+  });
+
+  test("on the real 5-segment narration, end-times line up with each scene and are ascending", () => {
+    const script = narrationScript(DEMO_NARRATION);
+    expect(DEMO_NARRATION.length).toBe(SCENE_COUNT);
+    // Synthetic monotone alignment: one entry per character, last ≈ a realistic ~65s.
+    const DUR = 65;
+    const charEnds = Array.from({ length: script.length }, (_, i) =>
+      ((i + 1) / script.length) * DUR,
+    );
+    const ends = narrationSceneEndTimes(DEMO_NARRATION, charEnds)!;
+    expect(ends).not.toBeNull();
+    expect(ends.length).toBe(SCENE_COUNT);
+    for (let i = 1; i < ends.length; i++) expect(ends[i]).toBeGreaterThan(ends[i - 1]);
+    expect(ends[ends.length - 1]).toBeCloseTo(DUR, 6);
+  });
+
+  test("#13 parity: narrationSceneEndTimes rejects a MIS-SCALED alignment when durationSec is known", () => {
+    const script = narrationScript(DEMO_NARRATION);
+    const DUR = 65;
+    // Alignment scaled to only 30s for a 65s clip — ascending + in-range, but mis-synced.
+    const underscaled = Array.from({ length: script.length }, (_, i) => ((i + 1) / script.length) * 30);
+    // Without durationSec the helper can't know it's wrong (back-compat) → returns times.
+    expect(narrationSceneEndTimes(DEMO_NARRATION, underscaled)).not.toBeNull();
+    // With durationSec it catches the mis-scale (final 30s ≉ 65s) → null → weight-tiling fallback.
+    expect(narrationSceneEndTimes(DEMO_NARRATION, underscaled, DUR)).toBeNull();
+    // A well-scaled alignment (final ≈ duration) still passes with durationSec.
+    const wellScaled = Array.from({ length: script.length }, (_, i) => ((i + 1) / script.length) * DUR);
+    expect(narrationSceneEndTimes(DEMO_NARRATION, wellScaled, DUR)).not.toBeNull();
+  });
+
+  test("when sceneEndTimesSec is provided, scene boundaries equal those values (NOT weight-tiling)", () => {
+    const DUR = 65;
+    const sceneEndTimesSec = [12, 34, 44, 58, DUR]; // ascending, last = duration
+    const t = buildDemoTimeline(SPEC, { durationSec: DUR, sceneEndTimesSec });
+    const weight = buildDemoTimeline(SPEC, { durationSec: DUR }); // fallback for comparison
+
+    expect(t.scenes[0].fromSec).toBe(0);
+    for (let i = 0; i < t.scenes.length; i++) {
+      const end = t.scenes[i].fromSec + t.scenes[i].durationSec;
+      expect(end).toBeCloseTo(sceneEndTimesSec[i], 6); // each scene ends at the narration time
+      expect(t.scenes[i].durationSec).toBeGreaterThan(0);
+    }
+    // Back-to-back, no gaps.
+    for (let i = 0; i < t.scenes.length - 1; i++) {
+      const end = t.scenes[i].fromSec + t.scenes[i].durationSec;
+      expect(end).toBeCloseTo(t.scenes[i + 1].fromSec, 6);
+    }
+    // Proves the narration actually drove it: boundaries DIFFER from weight-tiling.
+    const differs = t.scenes.some(
+      (s, i) => Math.abs(s.durationSec - weight.scenes[i].durationSec) > 1e-3,
+    );
+    expect(differs).toBe(true);
+  });
+
+  test("the realistic ~65s narration timings keep the HOOK-FIRST invariants", () => {
+    const DUR = 65;
+    const sceneEndTimesSec = [22, 47, 53, 62, DUR]; // realistic-ish narration spans
+    const t = buildDemoTimeline(SPEC, { durationSec: DUR, sceneEndTimesSec });
+    const hook = t.scenes.find((s) => s.id === "hook")!;
+    const verdict = t.scenes.find((s) => s.id === "verdict")!;
+    expect(hook.fromSec + hook.durationSec).toBeLessThanOrEqual(HOOK_WINDOW_SEC);
+    expect(verdict.fromSec).toBeGreaterThanOrEqual(HOOK_WINDOW_SEC);
+  });
+
+  test("an INVALID sceneEndTimesSec silently falls back to weight-tiling (unchanged)", () => {
+    const DUR = 60;
+    const weight = buildDemoTimeline(SPEC, { durationSec: DUR });
+    const cases: number[][] = [
+      [10, 20, 30, 40], // wrong length (4 ≠ 5)
+      [10, 20, 15, 40, DUR], // not ascending
+      [10, 20, 30, 40, DUR + 5], // last out of range
+      [0, 20, 30, 40, DUR], // zero-length first scene
+    ];
+    for (const sceneEndTimesSec of cases) {
+      const t = buildDemoTimeline(SPEC, { durationSec: DUR, sceneEndTimesSec });
+      for (let i = 0; i < t.scenes.length; i++) {
+        expect(t.scenes[i].fromSec).toBeCloseTo(weight.scenes[i].fromSec, 9);
+        expect(t.scenes[i].durationSec).toBeCloseTo(weight.scenes[i].durationSec, 9);
+      }
+    }
+  });
+
+  test("when sceneEndTimesSec is ABSENT, weight-tiling is used (existing behavior preserved)", () => {
+    const DUR = 60;
+    const t = buildDemoTimeline(SPEC, { durationSec: DUR });
+    // Match the documented weight-tiling math exactly.
+    const weights = [4, 6, 4, 4, 2.5];
+    const total = weights.reduce((a, b) => a + b, 0);
+    let cursor = 0;
+    for (let i = 0; i < t.scenes.length; i++) {
+      const expectedDur =
+        i === t.scenes.length - 1 ? DUR - cursor : (weights[i] / total) * DUR;
+      expect(t.scenes[i].fromSec).toBeCloseTo(cursor, 9);
+      expect(t.scenes[i].durationSec).toBeCloseTo(expectedDur, 9);
+      cursor += expectedDur;
+    }
   });
 });
 
