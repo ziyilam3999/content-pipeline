@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.4.5](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.4...v0.4.5) (2026-06-09)
+
+### Features
+
+* **launch:** card-over-art promo still + promo-media completeness gate (#787) (#35) — `smoke/launch-card.ts` generates the lfah launch hero still as a card-over-art composite (real nano-banana generative background + result-card overlay) in 1:1 and 4:5, driven by the locked n=13 facts in `lfahSpec()` (13 / 54% / 62% / 77% / $15.7 / $35.0 / 55%). SAFE by default (no spend); the PAID real-art path is behind `LAUNCH_CARD_PAID=1` and makes exactly one nano-banana gen reused for both aspects. Primary-only (a failed gen throws; the key is never logged). Adds `publish/promoMedia.ts` → `assertPromoMediaComplete`, a both-ends gate that throws unless a post carries text + a card-over-art still + a video (a plain card or bare-art still does not satisfy the still requirement), with its own test and a README doctrine note. New scripts `smoke:launch-card` / `:paid`.
+
 ## [0.4.4](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.3...v0.4.4) (2026-06-09)
 
 ### Features
