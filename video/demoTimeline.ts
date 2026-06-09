@@ -318,10 +318,15 @@ export function buildVerdict(spec: ContentSpec): DemoVerdict {
 /** The HONEST cost-efficiency hook line (free local executor) — shown in the first 30s. */
 export function buildHookHeadline(spec: ContentSpec): string {
   const hybridPerResolved = factValue(spec, "local-first hybrid per resolved"); // "$2.24"
-  const cloudPerResolved = factValue(spec, "full-cloud relay per resolved"); // "$3.50"
+  const hybridTotal = factValue(spec, "local-first hybrid total cost"); // "$15.7"
+  const cloudTotal = factValue(spec, "full-cloud relay total cost"); // "$35.0"
+  const saving = factValue(spec, "cost saving vs full-cloud (same chain)"); // "55%"
+  // Anchor the "cheaper" claim on TOTAL cost, where 55%-less is arithmetically true
+  // ($15.7 vs $35.0). The per-fix figure ($2.24) is a concrete number, NOT "half" of
+  // $3.50 (~2/3), so it is stated as a flat per-fix price, not a ratio.
   return (
-    `Fixes real bugs at ${hybridPerResolved} each — roughly half the cloud relay's ` +
-    `${cloudPerResolved} — because the heavy work runs FREE on a local model.`
+    `Fixes real bugs at ${hybridPerResolved} each — and ${saving} less total cost than the ` +
+    `cloud relay (${hybridTotal} vs ${cloudTotal}) — because the heavy work runs FREE on a local model.`
   );
 }
 

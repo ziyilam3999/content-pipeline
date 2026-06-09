@@ -76,10 +76,20 @@ describe("#748 demo timeline — HOOK-FIRST (cost-efficiency, free local executo
     const t = buildDemoTimeline(SPEC, { durationSec: 60 });
     const h = t.hookHeadline.toLowerCase();
     // Cost-efficiency, not raw resolve %, is the honest hook.
-    expect(h).toMatch(/cost|half|cheaper|value|\$/);
+    expect(h).toMatch(/cost|cheaper|value|\$/);
     expect(h).toMatch(/local|free/);
     // Must NOT overclaim being the best/highest on resolve rate.
     expect(h).not.toMatch(/best at everything|highest resolve|most bugs/);
+    // HONESTY: any "half"/"55%"-style cheaper claim must be anchored on TOTAL cost
+    // ($15.7 vs $35.0 = 55% less), never mis-applied to the per-fix figure
+    // ($2.24 vs $3.50 ≈ 2/3, NOT half). If "half" appears it must sit next to a total.
+    expect(h).toContain("total cost");
+    expect(h).toContain("$15.7");
+    expect(h).toContain("$35.0");
+    if (/\bhalf\b/.test(h)) {
+      // "half" is only honest about total cost — guard against the per-fix mis-anchor.
+      expect(h).not.toMatch(/half[^.]*each|each[^.]*half/);
+    }
   });
 
   test("every count-up number is sourced verbatim from a real fact (no invented values)", () => {
