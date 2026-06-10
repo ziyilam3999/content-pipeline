@@ -10,12 +10,16 @@
 import {
   PromoMediaSet,
   PromoThread,
+  PlatformPrimaryPost,
   REQUIRED_PROMO_MEDIA,
   missingPromoMedia,
   missingPromoThreadMedia,
+  missingPlatformPrimaryMedia,
   isPromoMediaComplete,
   isPromoThreadComplete,
+  isPlatformPrimaryComplete,
   assertPromoMediaComplete,
+  assertPlatformPrimaryLeadsWithVideo,
   checkVideoFirst,
 } from "../promoMedia";
 
@@ -156,6 +160,90 @@ describe("assertPromoMediaComplete (thread — CANONICAL X-launch layout)", () =
     };
     expect(() => assertPromoMediaComplete(t)).not.toThrow();
     expect(missingPromoThreadMedia(t)).toEqual([]);
+  });
+});
+
+// ── Per-platform video-first gate (#792 — the Threads regression) ──────────
+// The bug the operator caught: a video-LESS Threads post passed the old AGGREGATE check because
+// X carried the only video. The gate is now PER-PLATFORM: each video-capable platform's primary
+// worded post must ITSELF lead with video. Threads allows a mixed carousel (video + image in one
+// post), so the correct Threads post is [video (lead), card-over-art (second)].
+const DEMO_4X5 = "out/review/lfah/demo-multi-aspect/demo-4x5.mp4";
+const CARD_4X5 = "out/review/lfah/image/card-over-art-4x5.png";
+
+/** A correctly-assembled Threads post: video leads, card present, mixing allowed. */
+const threadsVideoLed: PlatformPrimaryPost = {
+  label: "Threads",
+  text: ["We moved the heavy file-editing role onto a LOCAL model — here's the launch data."],
+  media: [
+    { path: DEMO_4X5, kind: "video" },
+    { path: CARD_4X5, kind: "card-over-art" },
+  ],
+  mixAllowed: true,
+};
+
+describe("assertPromoMediaComplete (platform primary post — #792 per-platform video-first)", () => {
+  it("(vi) REJECTS a video-less Threads post (the exact regression operator caught)", () => {
+    // The old broken Threads assembly: card ONLY, no video — passed the old aggregate gate.
+    const videoLessThreads: PlatformPrimaryPost = {
+      label: "Threads",
+      text: ["We moved the heavy file-editing role onto a LOCAL model — here's the launch data."],
+      media: [{ path: CARD_4X5, kind: "card-over-art" }],
+      mixAllowed: true,
+    };
+    expect(() => assertPromoMediaComplete(videoLessThreads)).toThrow(/Threads does not lead with video/);
+    expect(() => assertPlatformPrimaryLeadsWithVideo(videoLessThreads)).toThrow(/lead with video/i);
+    expect(missingPlatformPrimaryMedia(videoLessThreads)).toContain(
+      'Threads does not lead with video (first media is "card-over-art")',
+    );
+    expect(isPlatformPrimaryComplete(videoLessThreads)).toBe(false);
+  });
+
+  it("(vii) PASSES a correctly-assembled video-led Threads post (video first + card present)", () => {
+    expect(() => assertPromoMediaComplete(threadsVideoLed)).not.toThrow();
+    expect(() => assertPlatformPrimaryLeadsWithVideo(threadsVideoLed)).not.toThrow();
+    expect(missingPlatformPrimaryMedia(threadsVideoLed)).toEqual([]);
+    expect(isPlatformPrimaryComplete(threadsVideoLed)).toBe(true);
+    // The lead media item is the video, not the still.
+    expect(threadsVideoLed.media[0].kind).toBe("video");
+  });
+
+  it("REJECTS a video-bearing Threads post where the CARD leads (video not first)", () => {
+    const cardLeads: PlatformPrimaryPost = {
+      ...threadsVideoLed,
+      media: [
+        { path: CARD_4X5, kind: "card-over-art" },
+        { path: DEMO_4X5, kind: "video" },
+      ],
+    };
+    expect(() => assertPromoMediaComplete(cardLeads)).toThrow(/does not lead with video/);
+  });
+
+  it("REJECTS a worded video-only Threads post carrying NO card-over-art still", () => {
+    const noCard: PlatformPrimaryPost = {
+      ...threadsVideoLed,
+      media: [{ path: DEMO_4X5, kind: "video" }],
+    };
+    expect(() => assertPromoMediaComplete(noCard)).toThrow(/carries no card-over-art still/);
+  });
+
+  it("REJECTS an empty (no-media) platform post", () => {
+    const empty: PlatformPrimaryPost = { ...threadsVideoLed, media: [] };
+    expect(() => assertPromoMediaComplete(empty)).toThrow(/Threads has no media/);
+    expect(missingPlatformPrimaryMedia(empty)).toContain("Threads has no media");
+  });
+
+  it("REJECTS a no-mix (X-like) platform post that mixes image+video in one post", () => {
+    const xLikeMixed: PlatformPrimaryPost = {
+      label: "X",
+      text: ["Hook tweet illegally carrying both."],
+      media: [
+        { path: DEMO_4X5, kind: "video" },
+        { path: CARD_4X5, kind: "card-over-art" },
+      ],
+      mixAllowed: false,
+    };
+    expect(() => assertPromoMediaComplete(xLikeMixed)).toThrow(/X mixes image\+video in one post/);
   });
 });
 

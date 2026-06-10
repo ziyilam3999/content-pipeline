@@ -1,36 +1,54 @@
 /**
- * Promo-media completeness gate (#787 → #789 CANONICAL X-LAUNCH-THREAD invariant).
+ * Promo-media completeness gate (#787 → #789 → #792 PLATFORM-AGNOSTIC video-first PRINCIPLE).
  *
- * Researched best-practice layout for an X (Twitter) LAUNCH THREAD (#789):
- *  1. The HOOK / lead tweet leads with the VIDEO — native video earns ~10x the engagement
- *     (1.9x favorites, 2.5x replies, 2.8x retweets vs avg) and tweet 1 is the highest-impression
- *     slot, so the strongest stop-power media goes there.
- *  2. Every OTHER worded tweet carries its OWN infographic CARD-over-art — cards/infographics are
- *     best for simplifying data in the body.
- *  3. CTA (and any hashtags) live in the LAST tweet.
- *  4. X PLATFORM CONSTRAINT: a single tweet carries EITHER images OR one video — NEVER both. So no
- *     post unit may mix an image and a video.
+ * THE DURABLE PRINCIPLE (#792 — generalized from the X-thread SHAPE that #789 over-fitted to):
+ *   EVERY platform's PRIMARY worded post LEADS WITH VIDEO. Native video is the highest-attention
+ *   medium (~10x engagement) and is native on X, Threads, and LinkedIn — so the strongest stop-power
+ *   media goes FIRST on the lead post. AND every worded unit ALSO carries its own card-over-art
+ *   infographic (cards best simplify data in the body). This is platform-agnostic: it is NOT "tweet1
+ *   = video, tweets2-5 = cards" — that is merely the X-specific CONSEQUENCE of the principle under
+ *   the X constraint below.
+ *
+ *   X-specific CONSEQUENCE: a single X tweet carries EITHER images OR one video — NEVER both. So on
+ *   X the principle is realized by SPLITTING the lead into a video-hook tweet + separate card body
+ *   tweets (hook=video, body=cards, CTA last, no unit mixes image+video).
+ *
+ *   Threads/LinkedIn CONSEQUENCE: these platforms allow a MIXED-MEDIA carousel (a video AND an image
+ *   in one post — Threads API supports 2-20 mixed items, verified 2026-06-10). So the principle is
+ *   realized in a SINGLE post whose FIRST media item is the video and which also carries the card.
+ *
  *  Sources: https://avenuez.com/blog/2025-2026-x-twitter-organic-social-media-guide-for-brands/ ,
  *  https://business.twitter.com/en/blog/4-ways-to-use-video-during-product-launches-on-twitter.html ,
  *  https://usevisuals.com/blog/writing-effective-twitter-threads-2025 ,
- *  https://buffer.com/library/twitter-video/amp
+ *  https://buffer.com/library/twitter-video/amp ,
+ *  https://www.threads.com/@threadsapi.changelog/post/DAWFiK2BE6m (Threads mixed-media carousel)
  *
- * Two shapes are supported:
- *  - A single post (`PromoMediaSet`): text + a card-over-art still + a video, all on the one post.
- *    Back-compat with #787 — unchanged.
- *  - A thread (`PromoThread`): an ordered array of post units, each `{ text, stills, videos? }`. The
- *    canonical thread invariant (HARD — `assertPromoMediaComplete` THROWS unless ALL hold):
+ * Three shapes are supported:
+ *  - A single post (`PromoMediaSet`): text + a card-over-art still + a video. Back-compat with #787.
+ *  - A thread (`PromoThread`): the X-launch realization — an ordered array of post units, each
+ *    `{ text, stills, videos? }`. The canonical thread invariant (HARD — `assertPromoMediaComplete`
+ *    THROWS unless ALL hold):
  *      (a) NO worded unit is media-less (every worded tweet carries its own image OR a video);
  *      (b) at least one unit carries a VIDEO (the hook leads with it);
  *      (c) at least one unit carries a card-over-art still (the body cards);
  *      (d) NO unit mixes an image AND a video (the X EITHER/OR constraint).
- *    Plus a SOFT best-practice check (a returned/exposed boolean — NEVER a throw): the video unit
- *    SHOULD be the FIRST media-bearing unit. Callers log it; the assembly is not blocked on it.
+ *    Plus a SOFT best-practice check (`checkVideoFirst`, NEVER a throw): the video unit SHOULD be the
+ *    FIRST media-bearing unit.
+ *  - A platform primary post with ORDERED media (`PlatformPrimaryPost`, #792): the Threads/LinkedIn
+ *    realization — a single worded post carrying an ORDERED media list. The PER-PLATFORM invariant
+ *    (HARD — `assertPlatformPrimaryLeadsWithVideo` / `assertPromoMediaComplete` THROWS unless ALL hold):
+ *      (a) the post carries at least one media item;
+ *      (b) the post's FIRST media item is a VIDEO (lead with video);
+ *      (c) if the post is WORDED, it ALSO carries a card-over-art still;
+ *      (d) if the platform does NOT allow mixing (`mixAllowed:false`), the post carries at most one
+ *          media of image-or-video, never both (the X EITHER/OR constraint).
  *
- * This is a both-ends boolean gate: `assertPromoMediaComplete` THROWS on an incomplete set/thread
- * and is a no-op on a complete one. Wire it at the publish-assembly boundary so a layout violation
- * (the exact miss the operator catches) is mechanically impossible to ship silently — prose doctrine
- * alone is ~17% compliant; a hard throw is the backstop.
+ * This is a both-ends boolean gate: the assert THROWS on an incomplete set/thread/post and is a no-op
+ * on a complete one. Wire it at the publish-assembly boundary so a layout violation (the exact miss
+ * the operator caught — a video-LESS Threads post passing the old AGGREGATE check because X carried
+ * the only video) is mechanically impossible to ship silently. The fix makes the check PER-PLATFORM:
+ * an aggregate "≥1 video anywhere" is NOT enough — each video-capable platform's lead post must itself
+ * lead with video.
  *
  * Why a dedicated still TYPE (not just "an image"): a deterministic gradient card or a bare
  * background does not count as the promo hero — the rule is specifically about the card-OVER-ART
@@ -78,6 +96,35 @@ export interface PromoPostUnit {
  */
 export interface PromoThread {
   units: PromoPostUnit[];
+}
+
+/**
+ * One ORDERED media item on a platform primary post (#792). `kind` distinguishes the video hero
+ * from the card-over-art infographic; `path` is informational. Order is significant — index 0 is the
+ * lead, which MUST be the video on a video-capable platform.
+ */
+export interface OrderedMediaItem {
+  path: string;
+  kind: StillKind | "video";
+}
+
+/**
+ * A single platform's PRIMARY worded post with ORDERED media (#792) — the Threads/LinkedIn
+ * realization of the video-first principle. Unlike `PromoMediaSet` (which splits stills/videos and
+ * loses order), `media` is an ORDERED list so the gate can require the LEAD item to be the video.
+ *
+ *  - `label`: a human name for the platform/post (used in error messages, e.g. "Threads").
+ *  - `text`: the post copy lines.
+ *  - `media`: the ordered media list; `media[0]` is the lead.
+ *  - `mixAllowed`: true on platforms that allow a video AND an image in ONE post (Threads/LinkedIn);
+ *    false on X (a single tweet is image-only OR video-only). When false, the gate forbids the post
+ *    carrying both an image and a video.
+ */
+export interface PlatformPrimaryPost {
+  label: string;
+  text: string[];
+  media: OrderedMediaItem[];
+  mixAllowed: boolean;
 }
 
 /** The three media kinds a complete single promo post must carry. */
@@ -150,6 +197,61 @@ export function missingPromoThreadMedia(thread: PromoThread): string[] {
   return missing;
 }
 
+/** Type guard: is this a platform primary post (ordered-media, #792) shape? */
+export function isPlatformPrimaryPost(
+  media: PromoMediaSet | PromoThread | PlatformPrimaryPost,
+): media is PlatformPrimaryPost {
+  return (
+    Array.isArray((media as PlatformPrimaryPost).media) &&
+    typeof (media as PlatformPrimaryPost).mixAllowed === "boolean"
+  );
+}
+
+/**
+ * Return the human-readable list of PER-PLATFORM video-first violations for a `PlatformPrimaryPost`
+ * (empty ⇒ complete). The post's `label` prefixes each violation so the caller/CI log is actionable:
+ *   - `<label> has no media` if the post carries no media item at all (violates (a));
+ *   - `<label> does not lead with video (first media is "<kind>")` if media[0] is not a video (b);
+ *   - `<label> is worded but carries no card-over-art still` if worded but no card present (c);
+ *   - `<label> mixes image+video in one post` if `mixAllowed` is false yet the post holds both (d).
+ */
+export function missingPlatformPrimaryMedia(post: PlatformPrimaryPost): string[] {
+  const missing: string[] = [];
+  const label = post?.label ?? "platform post";
+  const media = Array.isArray(post?.media) ? post.media : [];
+
+  // (a) the post must carry at least one media item.
+  if (media.length === 0) {
+    missing.push(`${label} has no media`);
+    return missing; // the rest can't be evaluated without media
+  }
+
+  const hasVid = media.some((m) => m?.kind === "video");
+  const hasImg = media.some((m) => m?.kind !== "video");
+
+  // (b) the lead media item must be the VIDEO (lead with video).
+  if (media[0]?.kind !== "video") {
+    missing.push(`${label} does not lead with video (first media is "${media[0]?.kind ?? "none"}")`);
+  }
+
+  // (c) a WORDED post must ALSO carry a card-over-art still.
+  if (hasNonEmptyText(post?.text) && !media.some((m) => m?.kind === "card-over-art")) {
+    missing.push(`${label} is worded but carries no card-over-art still`);
+  }
+
+  // (d) on a no-mix platform, the post may carry image XOR video, never both.
+  if (post?.mixAllowed === false && hasVid && hasImg) {
+    missing.push(`${label} mixes image+video in one post`);
+  }
+
+  return missing;
+}
+
+/** True iff the platform primary post satisfies the per-platform video-first invariant (#792). */
+export function isPlatformPrimaryComplete(post: PlatformPrimaryPost): boolean {
+  return missingPlatformPrimaryMedia(post).length === 0;
+}
+
 /** True iff the single post carries all three required media types. */
 export function isPromoMediaComplete(media: PromoMediaSet): boolean {
   return missingPromoMedia(media).length === 0;
@@ -203,14 +305,41 @@ export function checkVideoFirst(thread: PromoThread): VideoFirstCheck {
 }
 
 /**
- * Throw unless the post/thread is complete.
- *  - Single post (`PromoMediaSet`): needs text + a card-over-art still + a video. (Back-compat.)
- *  - Thread (`PromoThread`): the canonical X-launch-thread invariant — (a) no worded unit is
- *    media-less, (b) ≥1 unit carries a video, (c) ≥1 unit carries a card-over-art still, (d) no unit
- *    mixes an image AND a video. Names the offending unit(s)/kind(s) so the caller (or CI log) is
- *    actionable. The SOFT video-first ordering rule is NOT enforced here — use `checkVideoFirst`.
+ * Throw unless a single platform PRIMARY post (#792) leads with video. PER-PLATFORM enforcement —
+ * this is the gate that the AGGREGATE `assertPromoMediaComplete(PromoThread)` could NOT provide:
+ * each video-capable platform's lead post must ITSELF lead with video, not merely have a video
+ * somewhere in the batch. (a) carries media, (b) media[0] is the video, (c) worded ⇒ has a
+ * card-over-art still, (d) no-mix platform ⇒ image XOR video. Names the offending platform so the
+ * caller/CI log is actionable.
  */
-export function assertPromoMediaComplete(media: PromoMediaSet | PromoThread): void {
+export function assertPlatformPrimaryLeadsWithVideo(post: PlatformPrimaryPost): void {
+  const missing = missingPlatformPrimaryMedia(post);
+  if (missing.length > 0) {
+    throw new Error(
+      `Platform primary post violates the video-first principle — every platform's primary worded ` +
+        `post must LEAD WITH VIDEO (media[0] is the video) and, if worded, also carry a card-over-art ` +
+        `still. Violations: ${missing.join(", ")}.`,
+    );
+  }
+}
+
+/**
+ * Throw unless the post/thread/platform-post is complete.
+ *  - Single post (`PromoMediaSet`): needs text + a card-over-art still + a video. (Back-compat.)
+ *  - Thread (`PromoThread`): the X-launch-thread invariant — (a) no worded unit is media-less,
+ *    (b) ≥1 unit carries a video, (c) ≥1 unit carries a card-over-art still, (d) no unit mixes an
+ *    image AND a video. The SOFT video-first ordering rule is NOT enforced here — use `checkVideoFirst`.
+ *  - Platform primary post (`PlatformPrimaryPost`, #792): the per-platform video-first invariant —
+ *    media[0] is the video, worded ⇒ also a card-over-art still, no-mix platform ⇒ image XOR video.
+ *  Names the offending unit(s)/kind(s)/platform so the caller (or CI log) is actionable.
+ */
+export function assertPromoMediaComplete(
+  media: PromoMediaSet | PromoThread | PlatformPrimaryPost,
+): void {
+  if (isPlatformPrimaryPost(media)) {
+    assertPlatformPrimaryLeadsWithVideo(media);
+    return;
+  }
   if (isPromoThread(media)) {
     const missing = missingPromoThreadMedia(media);
     if (missing.length > 0) {
