@@ -26,13 +26,16 @@ one adding a piece.
 
 One piece is not here yet: a **weekly schedule** that regenerates content on its own.
 
-### Promo-post media rule (every launch post = text + card-over-art + video)
+### Promo-post media rule (every *worded post unit* = text + its OWN card-over-art + video)
 
-Every launch / promo post must carry **all three** media types: the written **text**, at least
-one **card-over-art still** (the result-card over a generated background), and at least one
-**video**. A post missing any one is incomplete and must not go out — the operator once caught a
-dropped card-over-art still, so this is baked as a hard gate (`publish/promoMedia.ts` →
-`assertPromoMediaComplete`, which throws naming whatever is missing) rather than left as a habit.
+Every **worded post unit** carries its OWN card-over-art infographic — so for an X **thread**,
+**each tweet** gets its own distinct card-over-art still (not one shared hero card for the whole
+thread), and the set as a whole still ships a **video**. The why: infographics are more attractive,
+and a thread of bare tweets reads as incomplete. A thread where any worded tweet lacks its own card
+must not go out — the operator caught a dropped card-over-art still, so this is baked as a hard gate
+(`publish/promoMedia.ts` → `assertPromoMediaComplete`, which throws naming the missing unit/kind)
+rather than left as a habit. The per-tweet card set is rendered by `smoke/launch-card.ts`
+(`launchCardSet()`), which fans ONE generated background out behind all the distinct info-cards.
 
 ## How it's built
 
