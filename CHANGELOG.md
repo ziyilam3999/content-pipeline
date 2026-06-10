@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.4.10](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.9...v0.4.10) (2026-06-10)
+
+### Bug Fixes
+
+* **publish:** lead with the 9:16 full-bleed hero video everywhere (#794) ([#45](https://github.com/ziyilam3999/content-pipeline/pull/45))
+
 ## [0.4.9](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.8...v0.4.9) (2026-06-10)
 
 ### Features
