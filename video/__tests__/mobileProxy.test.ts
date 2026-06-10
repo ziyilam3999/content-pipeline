@@ -117,8 +117,12 @@ describe("#808 hasFaststartMoov", () => {
 
 describe("#808 mobileProxyPathFor", () => {
   it("names the sibling <base>-mobile.mp4 next to the master", () => {
-    expect(mobileProxyPathFor("/out/review/builder-demo-9x16.mp4")).toBe(
-      "/out/review/builder-demo-9x16-mobile.mp4",
-    );
+    const master = path.join("out", "review", "builder-demo-9x16.mp4");
+    const expected = path.join("out", "review", "builder-demo-9x16-mobile.mp4");
+    // OS-separator-agnostic (Windows uses "\\", POSIX uses "/") — compare via path.join, not literals.
+    expect(mobileProxyPathFor(master)).toBe(expected);
+    // the sibling is in the SAME directory as the master, with the -mobile.mp4 suffix.
+    expect(path.dirname(mobileProxyPathFor(master))).toBe(path.dirname(master));
+    expect(path.basename(mobileProxyPathFor(master))).toBe("builder-demo-9x16-mobile.mp4");
   });
 });
