@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.4.6](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.5...v0.4.6) (2026-06-10)
+
+### Features
+
+* **launch:** per-tweet card-over-art infographic SET + per-post-unit promo-media gate (#787-followup) (#37) — bakes the operator rule that EVERY worded post unit carries its OWN distinct card-over-art infographic. For an X thread, EACH tweet now gets its own card-over-art ("infographic is more attractive"; a thread of bare tweets reads as incomplete), not one shared hero. `smoke/launch-card.ts` adds `launchCardSet()`, which derives one `ContentSpec` slice per worded tweet (a curated n=13 fact subset + a tweet headline) and renders `card-tweet-{1..5}.png` (1:1) plus the 4:5 Threads hero. `generateArtOnce()` generates the nano-banana background ONCE and fans the same `backgroundDataUri` behind all the distinct info-cards — one paid gen reused, not one per card; the default unpaid deterministic path keeps CI + proof at $0 (`LAUNCH_CARD_PAID=1` for the real art). The n=13 anti-stale guard is preserved per-card. `publish/promoMedia.ts` `assertPromoMediaComplete` is now PER-UNIT: given a thread it throws unless EVERY worded unit carries its own card-over-art still AND the set carries a video (a thread where only tweet 1 has a card FAILS); the single-post shape is preserved for back-compat. README doctrine note upgraded; a lost-PNG caution (paid renders land in gitignored `out/` — copy before cleaning a worktree) added.
+
 ## [0.4.5](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.4...v0.4.5) (2026-06-09)
 
 ### Features
