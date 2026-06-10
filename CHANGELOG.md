@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.9.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.9.0...v0.9.1) (2026-06-10)
+
+### Bug Fixes
+
+* **video:** perceptible oscillating motion for the Post #2 builder-demo background (#807) — the #805 animated generative-art background used a single-span Ken-Burns (scale 1.0→1.12 + pan ±2.2%/±1.6% spread over the whole ~99s clip) ≈ 0.12% zoom per second, ~10x below the rate a human reads as motion, so it looked like a STILL IMAGE under the dark scrim. Replace it with a deterministic, unit-tested OSCILLATING motion curve in a pure helper (`video/artBackgroundMotion.ts`, since `remotion/index.tsx` is outside the tsc/jest gate): sine pan ±6% (periods ~22s X / ~26s Y, quarter-phase Lissajous so it never drifts off-frame) plus a breathing zoom 1.15↔1.25 over ~24s. Min scale 1.15 keeps the ±6% pan edge-safe (`objectFit: cover`) on all 3 aspects (overhang/side 7.5% > worst-case pan shift 6.9%, ~0.6% margin). A both-ends prevention test asserts the shipped config is perceptible over EVERY 1s window (≥0.5%/frame) AND the old 0.12%/s config FAILS the same gate. Re-rendered builder-demo-{9x16,1x1,4x5}.mp4 FREE (reused the paid Adam narration + alignment; NO paid call; scene content, timing, captions, and the sync/parity gates unchanged). Measured background-only mean-abs pixel delta over 1.5s = 4.24 on 0-255 (vs near-0 for the old still image); text stays crisp; zero uncovered edges at the tightest-margin frame on every aspect ([#59](https://github.com/ziyilam3999/content-pipeline/pull/59))
+
 ## [0.9.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.8.0...v0.9.0) (2026-06-10)
 
 ### Features
