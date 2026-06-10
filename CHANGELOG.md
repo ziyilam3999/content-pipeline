@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.5.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.10...v0.5.0) (2026-06-10)
+
+### Features
+
+* **publish:** consolidate publish-assembly fidelity checks into one `assertPostAssemblyFidelity` gate so a caller can never forget one — funnels video-leads + per-unit cards + no-mixing (#792), hero-aspect (#794), and submitted-order-intent (#793) into a single call ([#47](https://github.com/ziyilam3999/content-pipeline/pull/47))
+
 ## [0.4.10](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.9...v0.4.10) (2026-06-10)
 
 ### Bug Fixes
