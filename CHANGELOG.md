@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.4.7](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.6...v0.4.7) (2026-06-10)
+
+### Features
+
+* **publish:** bake canonical X-launch-thread media layout as a durable rule (#789) (#39) — encode the researched best-practice X (Twitter) launch-thread media layout across the gate, the README doctrine, and the publish-typefully assembly. The canonical layout: the hook / lead tweet leads with the VIDEO (native video earns ~10x engagement and tweet 1 is the highest-impression slot); every other worded tweet carries its own infographic card-over-art still (cards best simplify body data); the CTA and any hashtags go in the last tweet; and because a single X tweet carries EITHER images OR one video — never both — no post unit may mix an image and a video. `publish/promoMedia.ts` `assertPromoMediaComplete` now enforces the canonical thread invariant: it THROWS unless (a) no worded unit is media-less, (b) ≥1 unit carries a video, (c) ≥1 unit carries a card-over-art still, (d) no unit mixes image+video. A new SOFT `checkVideoFirst` returns a boolean + warning (never throws) so callers can log that the video should lead. `PromoPostUnit` gains an optional per-unit `videos` field (a unit carries EITHER stills OR a video); the single-post `PromoMediaSet` shape stays back-compat. `smoke/publish-typefully.ts` assembles the canonical layout (tweet 1 = video hook, tweets 2-5 = per-tweet cards, Threads = full 4:5 infographic), runs `assertPromoMediaComplete` on the assembled draft, and logs the video-first soft-check; dry-run makes ZERO network calls. README doctrine block updated with the layout, the why, and 4 source URLs.
+
 ## [0.4.6](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.5...v0.4.6) (2026-06-10)
 
 ### Features
