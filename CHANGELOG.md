@@ -7,6 +7,13 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.6.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.5.0...v0.6.0) (2026-06-10)
+
+### Features
+
+* **video:** Post #2 builder demo — "lfah builds an app, test-first" — a NEW 8-scene animated demo distinct from Post #1's 4-way comparison, rendered in 3 frame-filling aspects (1:1 / 9:16 full-bleed / 4:5) with an Adam male voiceover, captions, and scene transitions driven by the REAL audio alignment (provenance-bound). Parallel builder modules reuse all shared render infrastructure and the single-sourced narration-sync algorithm (no divergent copies); the pinned 6-scene Post #1 CI gate is untouched and a new 8-scene sync/parity integration test is a CI gate. Numbers verbatim from the dogfood metrics ([#50](https://github.com/ziyilam3999/content-pipeline/pull/50))
+* **launch:** Post #2 "lfah is a BUILDER" card-over-art SET — three X-aspect (1:1) infographics (`card-post2-A/B/C.png`) for the dogfood/build story, reusing the cached nano-banana art (zero paid spend) and the #790 auto-fit card machinery (no composition fork). Card words are verbatim from the number-verified `card_labels`, carried into the repo as a committed fixture so CI works without the gitignored authored source ([#49](https://github.com/ziyilam3999/content-pipeline/pull/49))
+
 ## [0.5.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.10...v0.5.0) (2026-06-10)
 
 ### Features
