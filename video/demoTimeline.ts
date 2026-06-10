@@ -19,6 +19,7 @@
 
 import { type ContentSpec, type Fact } from "../inputs/contentspec";
 import { narrationScript } from "./demoNarration";
+import { CONFIG } from "../config";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -166,6 +167,42 @@ export function clampDemoDurationSec(requested?: number, opts?: { voiced?: boole
   const floored = Math.max(MIN_DEMO_SEC, requested);
   // Voiced: real narration may exceed MAX — keep the full length so captions/scenes stay synced.
   return opts?.voiced ? floored : Math.min(MAX_DEMO_SEC, floored);
+}
+
+// ── #808 RULE 3: ~90s target + acceptance window (config-SSOT, never truncate the voiced cut) ──
+//
+// The operator confirmed "~90s is just nice". The good Post #2 voiced cut is ~99s; the voiced clamp
+// above is floor-only (no MAX cap), so a ~90–100s voiced narration already flows through UNTRUNCATED
+// — real audio alignment drives scene timing and must not be broken
+// (feedback_real_audio_alignment_drives_all_timed_visual_tracks). What #808 adds is an ASSERTION
+// guard: bake the target + acceptance window in the config SSOT, and fail a future demo whose FINAL
+// COMPOSED duration silently drifts outside it (e.g. a 40s under-bake or a 130s over-run). The guard
+// checks the window; it does NOT hard-set the length.
+export const DEMO_DURATION_TARGET_SEC = CONFIG.demo.durationTargetSec; // 90
+export const DEMO_ACCEPTANCE_MIN_SEC = CONFIG.demo.durationAcceptanceMinSec; // 80
+export const DEMO_ACCEPTANCE_MAX_SEC = CONFIG.demo.durationAcceptanceMaxSec; // 100
+
+/**
+ * #808 — assert the FINAL composed demo duration falls within the config acceptance window
+ * [DEMO_ACCEPTANCE_MIN_SEC, DEMO_ACCEPTANCE_MAX_SEC]. Throws (loud, smoke/test fail) when a demo
+ * drifts outside it. The window is intentionally generous (the real voiced cut is ~99s) — it is a
+ * drift guard, NOT a length setter. Apply this to the VOICED deliverable; the free/silent CI cut
+ * clamps to [45,90] and is exempt (pass `{ voiced: false }` or simply do not call it).
+ */
+export function assertDemoDurationInWindow(
+  durationSec: number,
+  opts?: { label?: string },
+): void {
+  const min = DEMO_ACCEPTANCE_MIN_SEC;
+  const max = DEMO_ACCEPTANCE_MAX_SEC;
+  if (!Number.isFinite(durationSec) || durationSec < min || durationSec > max) {
+    const where = opts?.label ? ` (${opts.label})` : "";
+    throw new Error(
+      `#808 demo duration out of acceptance window${where}: ${Number.isFinite(durationSec) ? durationSec.toFixed(2) : durationSec}s ` +
+        `is not within [${min}, ${max}]s (target ~${DEMO_DURATION_TARGET_SEC}s). A demo this far off means it either ` +
+        `under-baked (truncated voiced cut) or over-ran — neither matches the confirmed ~90s shape.`,
+    );
+  }
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
