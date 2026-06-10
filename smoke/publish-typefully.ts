@@ -53,6 +53,7 @@ import {
   type PromoThread,
   type PlatformPrimaryPost,
 } from "../publish/promoMedia";
+import { assertCopyWithinPlatformLimits, heroVideoAdvisory } from "../publish/copyLimits";
 import { CONFIG } from "../config";
 
 // ── Sources ────────────────────────────────────────────────────────────
@@ -229,6 +230,24 @@ async function main() {
   const live = process.env.TYPEFULLY_LIVE === "1";
   const xThread = readXThread();
   const slots = xThreadSlots();
+
+  // ── #809 COPY-LENGTH GATE — runs in BOTH dry-run and live, BEFORE any assembly/upload, so an
+  // over-limit post can NEVER reach a live Typefully draft (the Post #2 incident). Each X tweet
+  // ≤280 X-weighted (URLs count as 23 — t.co); the Threads post ≤500 codepoints. Throws a clear
+  // per-unit message; no-op when within limits.
+  assertCopyWithinPlatformLimits({ xThread, threadsText: THREADS_TEXT });
+  console.log(
+    `COPY-LIMITS: PASS — ${xThread.length} X tweets ≤${CONFIG.publish.copyLimits.xTweet} weighted ` +
+      `(URLs=23), Threads post ≤${CONFIG.publish.copyLimits.threads} chars (#809)`,
+  );
+
+  // ── #809 VIDEO-DIMENSION ADVISORY (NON-FATAL) for the 9:16 phone HERO. Keyed on the config hero
+  // aspect's canonical dimensions (the MP4 is gitignored / absent in CI). X applies extra
+  // compression beyond 1920×1080 landscape, so we surface the deliberate 9:16 tradeoff here. NEVER
+  // fails the build.
+  const heroDims = CONFIG.aspects[CONFIG.publish.heroVideoAspect];
+  const advisory = heroVideoAdvisory(heroDims);
+  if (advisory.flagged) console.log(advisory.message);
 
   // Assert every media file exists + print the per-tweet media map (both modes — what we'd upload).
   console.log("X-launch-thread media map (hook=video, body=cards):");

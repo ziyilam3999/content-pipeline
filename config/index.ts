@@ -63,6 +63,17 @@ export const CONFIG = {
     // Do NOT change without operator sign-off — leading with the square (1:1) was the
     // #794 bug (the full-screen 9:16 hero we built got posted nowhere).
     heroVideoAspect: "9:16",
+    // #809 — PER-PLATFORM copy-length limits (SSOT). The copy verifier checked numbers +
+    // superlatives but NEVER character limits, so Post #2's hand-authored copy reached a LIVE
+    // Typefully draft over-limit (X tweet 4 = 282 X-weighted chars vs 280; Threads = 524 vs 500).
+    // `publish/copyLimits.ts` reads these — never a magic constant. X counts every URL as 23
+    // (t.co wrapping); Threads counts plain Unicode codepoints.
+    copyLimits: {
+      xTweet: 280, // max X-weighted chars per tweet (URLs discounted to 23 each)
+      threads: 500, // max Unicode codepoints per Threads post
+      // X discounts every URL to a FIXED weight regardless of real length (t.co shortener).
+      xUrlWeight: 23,
+    },
   },
   voice: {
     // CHANNEL VOICE — locked MALE voice for consistency across ALL content.

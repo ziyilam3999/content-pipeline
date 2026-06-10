@@ -15,6 +15,7 @@ import { spawn } from "child_process";
 import { type ContentSpec } from "../inputs/contentspec";
 import { buildCopyPrompt, parseCopyResponse, draftText } from "../copy/generate";
 import { verifyDraft } from "../copy/verifier";
+import { assertCopyWithinPlatformLimits } from "../publish/copyLimits";
 import { type CopyResult } from "../pipeline/run";
 
 export type CopyPath = "claude" | "injected";
@@ -96,6 +97,12 @@ export async function writeCopy(
     ({ parsed, verify } = await callOnce());
     attempts = 2;
   }
+
+  // #809 — FAIL FAST AT THE SOURCE: generated copy must be within the per-platform char limits
+  // before it can flow downstream into assembly/upload. The Threads post text is assembled later
+  // (it is not part of the copy stage's output), so we validate the X thread here; the publish
+  // smokes additionally validate the assembled Threads post before any network call.
+  assertCopyWithinPlatformLimits({ xThread: parsed.x_thread, threadsText: "" });
 
   return {
     thread: parsed.x_thread,
