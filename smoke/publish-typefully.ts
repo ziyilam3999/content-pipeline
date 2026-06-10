@@ -1,18 +1,20 @@
 /**
- * Publish-to-Typefully smoke (#786 → #789 CANONICAL X-launch-thread layout) — assembles the lfah
- * launch DRAFT and either prints it (DRY-RUN, default) or actually creates it (LIVE, env-gated).
+ * Publish-to-Typefully smoke (#786 → #789 → #792 PLATFORM-AGNOSTIC video-first layout) — assembles
+ * the lfah launch DRAFT and either prints it (DRY-RUN, default) or actually creates it (LIVE, gated).
  *
- * Canonical X-launch-thread layout (baked in publish/promoMedia.ts, doctrine in README):
- *   - Tweet 1 (HOOK) leads with the VIDEO (demo-1x1.mp4) — highest-impression slot, ~10x engagement.
- *   - Tweets 2..5 each carry their OWN infographic card-over-art still (card-tweet-{2..5}.png).
- *   - The CTA lives in the last tweet (tweet 5, from the source copy).
- *   - X constraint: no tweet mixes an image and a video — the hook is video-only, the body is
- *     image-only.
- *   - Threads (single static post) carries the FULL 4:5 infographic (card-over-art-4x5.png).
+ * THE PRINCIPLE (#792, baked in publish/promoMedia.ts, doctrine in README): EVERY platform's primary
+ * worded post LEADS WITH VIDEO (highest-attention medium, ~10x engagement) and every worded unit ALSO
+ * carries its card-over-art infographic. Per-platform realization:
+ *   - X (no image+video mixing in one tweet): SPLIT into a video HOOK tweet (demo-1x1.mp4) + card
+ *     body tweets (card-tweet-{2..5}.png), CTA last. Modeled as a PromoThread.
+ *   - Threads (mixed-media carousel SUPPORTED — verified 2026-06-10): a SINGLE post whose media is
+ *     ORDERED [demo-4x5.mp4 (HERO/lead), card-over-art-4x5.png (second)]. VIDEO LEADS, CARD PRESENT.
+ *     Modeled as a PlatformPrimaryPost so the gate can require media[0] to be the video.
  *
- * The assembled draft is checked through `assertPromoMediaComplete` (the hard canonical invariant)
- * and the SOFT `checkVideoFirst` ordering rule is logged — so the dry-run asserts the layout holds
- * before any upload.
+ * The REAL assembled draft is checked through `assertPromoMediaComplete` (the hard invariant) — for
+ * X the thread invariant, for Threads the PER-PLATFORM video-first invariant — and the SOFT
+ * `checkVideoFirst` ordering rule is logged. So the dry-run asserts the layout holds before any upload,
+ * and a video-LESS Threads post (the #792 regression) is mechanically rejected.
  *
  * DRY-RUN (default): print the per-tweet media map + the full draft JSON body (media ids shown as
  * placeholders like `<upload:demo-1x1.mp4>`), assert every media file exists + print sizes, run the
@@ -42,7 +44,7 @@ import {
   assertPromoMediaComplete,
   checkVideoFirst,
   type PromoThread,
-  type PromoMediaSet,
+  type PlatformPrimaryPost,
 } from "../publish/promoMedia";
 
 // ── Sources ────────────────────────────────────────────────────────────
@@ -60,9 +62,10 @@ const IMAGE_DIR = path.join(PRIMARY_ROOT, "out", "review", "lfah", "image");
 const DEMO_DIR = path.join(PRIMARY_ROOT, "out", "review", "lfah", "demo-multi-aspect");
 
 // Tweet 1 (hook) = video; tweets 2..5 = their own card-over-art still.
-const DEMO_1X1 = path.join(DEMO_DIR, "demo-1x1.mp4"); // X tweet[0] HOOK video
+const DEMO_1X1 = path.join(DEMO_DIR, "demo-1x1.mp4"); // X tweet[0] HOOK video (1:1)
+const DEMO_4X5 = path.join(DEMO_DIR, "demo-4x5.mp4"); // Threads HERO/lead video (4:5 phone-native)
 const CARD_TWEET = (i: number) => path.join(IMAGE_DIR, `card-tweet-${i}.png`); // X tweet[i-1] body card
-const CARD_OVER_ART_4X5 = path.join(IMAGE_DIR, "card-over-art-4x5.png"); // Threads full infographic
+const CARD_OVER_ART_4X5 = path.join(IMAGE_DIR, "card-over-art-4x5.png"); // Threads infographic card
 
 const SOCIAL_SET_ID = process.env.TYPEFULLY_SOCIAL_SET_ID ?? "312308";
 const DRAFT_TITLE = "lfah launch";
@@ -154,30 +157,47 @@ function buildPromoThread(xThread: string[], slots: MediaSlot[]): PromoThread {
   };
 }
 
-/** The Threads single post as a PromoMediaSet (it carries the full 4:5 infographic + the video reused as the hero motion). */
-function buildThreadsMediaSet(): PromoMediaSet {
+/**
+ * The ORDERED Threads media list — THE single source of truth for both the gate and the draft body
+ * (so the gate runs on the EXACT media we upload, not an idealized set). Threads supports a
+ * mixed-media carousel, so the post leads with the 4:5 HERO video then carries the infographic card.
+ * Order is significant: index 0 is the lead and MUST be the video (#792 per-platform video-first).
+ */
+const THREADS_ORDERED_MEDIA: { path: string; kind: "video" | "card-over-art" }[] = [
+  { path: DEMO_4X5, kind: "video" }, // HERO / lead — video leads
+  { path: CARD_OVER_ART_4X5, kind: "card-over-art" }, // second — the infographic card
+];
+
+/**
+ * The Threads single post as a PlatformPrimaryPost (#792) — ORDERED media so the gate can require
+ * media[0] to be the video. `mixAllowed:true` because Threads supports a video AND an image in one
+ * post (the mixed-media carousel verified 2026-06-10).
+ */
+function buildThreadsPrimaryPost(): PlatformPrimaryPost {
   return {
+    label: "Threads",
     text: [THREADS_TEXT],
-    stills: [{ path: CARD_OVER_ART_4X5, kind: "card-over-art" }],
-    videos: [{ path: DEMO_1X1 }],
+    media: THREADS_ORDERED_MEDIA.map((m) => ({ path: m.path, kind: m.kind })),
+    mixAllowed: true,
   };
 }
 
 /**
- * Build the Typefully draft body. `mediaIds` maps each MediaSlot path → the media-id string to embed
- * (placeholders in dry-run, real uploaded ids in live). `threadsMediaId` is the Threads still.
+ * Build the Typefully draft body. `mediaIds` maps each media path → the media-id string to embed
+ * (placeholders in dry-run, real uploaded ids in live). `threadsMediaIds` is the ORDERED Threads
+ * carousel — index 0 (the lead) is the HERO video, so the Threads post LEADS WITH VIDEO (#792).
  */
 function buildDraftBody(
   xThread: string[],
   slots: MediaSlot[],
   mediaIds: Map<string, string>,
-  threadsMediaId: string,
+  threadsMediaIds: string[],
 ): CreateDraftBody {
   const xPosts: DraftPost[] = xThread.map((text, i) => ({
     text,
     media_ids: [mediaIds.get(slots[i].path)!],
   }));
-  const threadsPosts: DraftPost[] = [{ text: THREADS_TEXT, media_ids: [threadsMediaId] }];
+  const threadsPosts: DraftPost[] = [{ text: THREADS_TEXT, media_ids: threadsMediaIds }];
 
   // NOTE: publish_at is intentionally omitted ⇒ Typefully saves this as a DRAFT.
   return {
@@ -198,24 +218,33 @@ async function main() {
   const slots = xThreadSlots();
 
   // Assert every media file exists + print the per-tweet media map (both modes — what we'd upload).
-  console.log("canonical X-launch-thread media map:");
+  console.log("X-launch-thread media map (hook=video, body=cards):");
   for (const slot of slots) {
     const size = assertFile(slot.label, slot.path);
     console.log(
       `  • ${slot.label.padEnd(16)} ${slot.kind.padEnd(13)} ${path.basename(slot.path)}  (${(size / 1024 / 1024).toFixed(2)} MB)`,
     );
   }
-  const t4x5Size = assertFile("Threads infographic", CARD_OVER_ART_4X5);
-  console.log(
-    `  • ${"Threads post".padEnd(16)} ${"card-over-art".padEnd(13)} ${path.basename(CARD_OVER_ART_4X5)}  (${(t4x5Size / 1024 / 1024).toFixed(2)} MB)`,
-  );
+  // Threads is an ORDERED mixed-media post — video LEADS, card second.
+  console.log("Threads post media map (mixed carousel — VIDEO LEADS, card second):");
+  THREADS_ORDERED_MEDIA.forEach((m, i) => {
+    const size = assertFile(`Threads media[${i}]`, m.path);
+    console.log(
+      `  • ${`Threads media[${i}]`.padEnd(16)} ${m.kind.padEnd(13)} ${path.basename(m.path)}  (${(size / 1024 / 1024).toFixed(2)} MB)`,
+    );
+  });
 
-  // ── Run the canonical-layout gate on the assembled draft (both modes, before any network) ──
+  // ── Run the layout gate on the REAL assembled draft (both modes, before any network) ──
   const promoThread = buildPromoThread(xThread, slots);
-  const threadsSet = buildThreadsMediaSet();
+  const threadsPost = buildThreadsPrimaryPost();
   assertPromoMediaComplete(promoThread); // throws if the X thread violates the canonical layout
-  assertPromoMediaComplete(threadsSet); // throws if the Threads post is incomplete
-  console.log("\nassertPromoMediaComplete: PASS (X thread + Threads post satisfy the canonical layout)");
+  assertPromoMediaComplete(threadsPost); // throws unless the Threads post LEADS WITH VIDEO + has a card
+  console.log(
+    "\nassertPromoMediaComplete: PASS (X thread + Threads post satisfy the video-first principle)",
+  );
+  console.log(
+    `Threads lead media: ${threadsPost.media[0].kind} (${path.basename(threadsPost.media[0].path)}) — video leads ✓`,
+  );
 
   const vf = checkVideoFirst(promoThread);
   console.log(
@@ -224,24 +253,29 @@ async function main() {
   );
   if (!vf.videoUnitIsFirst && vf.message) console.warn(vf.message);
 
+  // The ORDERED Threads carousel media-id list (index 0 = the lead HERO video).
+  const threadsMediaPaths = THREADS_ORDERED_MEDIA.map((m) => m.path);
+
   if (!live) {
     // DRY-RUN: print the exact draft body with placeholder media ids; ZERO network calls.
     const mediaIds = new Map<string, string>(
-      slots.map((s) => [s.path, `<upload:${path.basename(s.path)}>`]),
+      [...slots.map((s) => s.path), ...threadsMediaPaths].map((p) => [
+        p,
+        `<upload:${path.basename(p)}>`,
+      ]),
     );
-    const body = buildDraftBody(
-      xThread,
-      slots,
-      mediaIds,
-      `<upload:${path.basename(CARD_OVER_ART_4X5)}>`,
-    );
+    const threadsMediaIds = threadsMediaPaths.map((p) => mediaIds.get(p)!);
+    const body = buildDraftBody(xThread, slots, mediaIds, threadsMediaIds);
     console.log(`\nsocial_set_id: ${SOCIAL_SET_ID}`);
     console.log("draft body (DRY-RUN — placeholders for media ids, no publish_at ⇒ DRAFT):");
     console.log(JSON.stringify(body, null, 2));
 
     const xCount = body.platforms.x?.posts.length ?? 0;
     const tCount = body.platforms.threads?.posts.length ?? 0;
-    const mediaCount = slots.length + 1; // 5 X media + 1 Threads media
+    const mediaCount = slots.length + threadsMediaPaths.length; // 5 X media + 2 Threads media
+    console.log(
+      `\nThreads post[0].media_ids[0] = ${threadsMediaIds[0]}  (the HERO video leads)`,
+    );
     console.log(
       `\nPUBLISH-TYPEFULLY: mode=dry-run posts=x:${xCount},threads:${tCount} media=${mediaCount}`,
     );
@@ -257,12 +291,16 @@ async function main() {
   for (const slot of slots) {
     mediaIds.set(slot.path, await client.uploadMedia(SOCIAL_SET_ID, slot.path));
   }
-  const threadsMediaId = await client.uploadMedia(SOCIAL_SET_ID, CARD_OVER_ART_4X5);
+  // Upload the ordered Threads carousel media (video first), preserving order.
+  const threadsMediaIds: string[] = [];
+  for (const p of threadsMediaPaths) {
+    threadsMediaIds.push(await client.uploadMedia(SOCIAL_SET_ID, p));
+  }
 
-  const body = buildDraftBody(xThread, slots, mediaIds, threadsMediaId);
+  const body = buildDraftBody(xThread, slots, mediaIds, threadsMediaIds);
   const res = await client.createDraft(SOCIAL_SET_ID, body);
   console.log(
-    `\nPUBLISH-TYPEFULLY: mode=live draft_id=${res.id} status=${res.status} posts=x:5,threads:1 media=6`,
+    `\nPUBLISH-TYPEFULLY: mode=live draft_id=${res.id} status=${res.status} posts=x:5,threads:1 media=${slots.length + threadsMediaPaths.length}`,
   );
   process.exit(0);
 }

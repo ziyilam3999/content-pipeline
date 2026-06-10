@@ -26,23 +26,38 @@ one adding a piece.
 
 One piece is not here yet: a **weekly schedule** that regenerates content on its own.
 
-### Canonical X-launch-thread media layout (hook = video, body = cards, CTA last, no mixing)
+### Media layout doctrine: every platform's primary worded post LEADS WITH VIDEO
 
-The durable rule for an X (Twitter) **launch thread**: the **hook / lead tweet leads with the
-VIDEO** (native video earns ~10x the engagement and tweet 1 is the highest-impression slot, so the
-strongest stop-power media goes first); **every other worded tweet carries its own infographic
-card-over-art still** (cards best simplify the data in the body); the **CTA and any hashtags go in
-the last tweet**; and because **a single X tweet carries EITHER images OR one video — never both**,
-no post unit may mix an image and a video. This is baked as a hard gate
-(`publish/promoMedia.ts` → `assertPromoMediaComplete`, which throws naming the offending unit/kind:
-no worded unit may be media-less, the set needs a video AND a card-over-art still, and no unit may
-mix image+video) plus a soft `checkVideoFirst` warning that the video should lead. Sources:
+**The durable principle (platform-agnostic):** **every platform's primary worded post LEADS WITH
+VIDEO** — native video is the highest-attention medium (it earns ~10x the engagement and is native
+on X, Threads, and LinkedIn), so the strongest stop-power media goes FIRST on the lead post. AND
+**every worded unit ALSO carries its own card-over-art infographic** (cards best simplify the data).
+This is NOT "tweet 1 = video, tweets 2-5 = cards" — that is merely the *X-specific consequence* of
+the principle under the X constraint below.
+
+How the principle is realized per platform:
+
+- **X (Twitter)** — a single X tweet carries **EITHER images OR one video, never both**. So the lead
+  is **split** into a video **hook** tweet (the highest-impression slot) + separate **card** body
+  tweets; the **CTA and any hashtags go in the last tweet**; no tweet mixes image+video.
+- **Threads / LinkedIn** — these platforms support a **mixed-media carousel** (a video AND an image
+  in one post — the Threads API allows 2-20 mixed items, verified 2026-06-10). So the lead is a
+  **single post whose first media item is the video** (it leads) and which also carries the
+  card-over-art infographic.
+
+This is baked as a **per-platform hard gate** in `publish/promoMedia.ts` → `assertPromoMediaComplete`
+(it throws naming the offending platform/unit/kind). The gate is **per-platform, not aggregate**:
+it is not enough for a video to exist *somewhere* in the batch — each video-capable platform's lead
+post must ITSELF lead with video (the `PlatformPrimaryPost` shape requires `media[0]` to be the
+video). On X the `PromoThread` invariant requires the hook to carry the video and no unit to mix
+image+video; a soft `checkVideoFirst` warning flags when the video does not lead. Sources:
 [avenuez 2025-2026 X guide](https://avenuez.com/blog/2025-2026-x-twitter-organic-social-media-guide-for-brands/),
 [business.twitter video during launches](https://business.twitter.com/en/blog/4-ways-to-use-video-during-product-launches-on-twitter.html),
 [usevisuals twitter threads 2025](https://usevisuals.com/blog/writing-effective-twitter-threads-2025),
-[buffer twitter video](https://buffer.com/library/twitter-video/amp). The per-tweet card set is
-rendered by `smoke/launch-card.ts` (`launchCardSet()`), which fans ONE generated background out
-behind all the distinct info-cards.
+[buffer twitter video](https://buffer.com/library/twitter-video/amp),
+[Threads API mixed-media carousel](https://www.threads.com/@threadsapi.changelog/post/DAWFiK2BE6m).
+The per-tweet card set is rendered by `smoke/launch-card.ts` (`launchCardSet()`), which fans ONE
+generated background out behind all the distinct info-cards.
 
 ## How it's built
 
