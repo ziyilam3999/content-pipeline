@@ -26,6 +26,10 @@ import {
   registerRoot,
 } from "remotion";
 
+// #807 — the background motion curve is a pure, unit-tested helper in the tsc/jest gate (this file
+// is outside it), so an imperceptibly-slow background can never ship again.
+import { artBackgroundTransform } from "../video/artBackgroundMotion";
+
 // ───────────────────────────── launch (existing) ────────────────────────────
 
 interface CaptionCue {
@@ -816,15 +820,14 @@ const AnimatedArtBackground: React.FC<{
   scrimOpacity: number;
   blurPx: number;
   durationInFrames: number;
-}> = ({ src, scrimOpacity, blurPx, durationInFrames }) => {
+}> = ({ src, scrimOpacity, blurPx }) => {
   const frame = useCurrentFrame();
-  const span = Math.max(1, durationInFrames - 1);
-  const opts = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
-  // Slow continuous zoom + drift over the full clip. Over-scale base 1.12 keeps the panned
-  // edges off-frame at the widest pan; the pan is a few percent of the frame.
-  const scale = interpolate(frame, [0, span], [1.0, 1.12], opts);
-  const panX = interpolate(frame, [0, span], [-2.2, 2.2], opts); // % of frame width
-  const panY = interpolate(frame, [0, span], [1.6, -1.6], opts); // % of frame height
+  const { fps } = useVideoConfig();
+  // #807 — PERCEPTIBLE oscillating motion: a sine-driven sway (+/-6% over ~22-26s) plus a breathing
+  // zoom (1.15<->1.25 over ~24s), pure-function-derived so it's unit-tested for perceptibility (the
+  // #805 single-span Ken-Burns at ~0.12%/s read as a still image — see video/artBackgroundMotion.ts).
+  // Min scale 1.15 keeps the +/-6% pan edge-safe on all 3 aspects (objectFit: cover).
+  const { scale, panXPct, panYPct } = artBackgroundTransform(frame, fps);
   return (
     <AbsoluteFill style={{ backgroundColor: BG, overflow: "hidden" }}>
       <Img
@@ -834,7 +837,7 @@ const AnimatedArtBackground: React.FC<{
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          transform: `scale(${scale}) translate(${panX}%, ${panY}%)`,
+          transform: `scale(${scale}) translate(${panXPct}%, ${panYPct}%)`,
           transformOrigin: "center center",
           filter: blurPx > 0 ? `blur(${blurPx}px)` : undefined,
         }}
