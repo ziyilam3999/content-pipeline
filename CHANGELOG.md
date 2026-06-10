@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.9.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.8.0...v0.9.0) (2026-06-10)
+
+### Features
+
+* **video:** animated generative-art background for the Post #2 builder demo (#805) — the builder-demo composition's flat `#0a0f1e` fill becomes an OPTIONAL animated generative-art background: the SAME post-2 card art (`_art-base-post2.png`, within-post reuse allowed by the #802 per-post guard) rendered FULL-FRAME (`objectFit: cover`, per-aspect, never letterboxed per #765) under a slow, deterministic Ken-Burns drift (scale ~1.0→1.12 + a few-percent pan via `interpolate(useCurrentFrame())`), then DIMMED by a dark `#0a0f1e` scrim (default opacity 0.72) so the foreground UI and synced caption band stay clearly legible — "subtle living texture behind the same dark UI." Config-driven background MODE (`backgroundImagePath` / `backgroundScrimOpacity` / `backgroundBlurPx`, `DEMO_BG`/`DEMO_BG_SCRIM`/`DEMO_BG_BLUR` env knobs), default OFF → byte-identical to the prior solid background. NO new paid call: reuses the existing `builder-narration.mp3` + its alignment bundle; audio, scene timing, and captions are unchanged, so the audio/sync provenance guard (#774/#777) and the sync/parity CI gate (#778) stay green ([#57](https://github.com/ziyilam3999/content-pipeline/pull/57))
+
 ## [0.8.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.7.0...v0.8.0) (2026-06-10)
 
 ### Features
