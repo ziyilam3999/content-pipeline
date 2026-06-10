@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.8.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.7.0...v0.8.0) (2026-06-10)
+
+### Features
+
+* **image:** per-post UNIQUE card art + post-2 paid regen (#802, #803) — every NEW launch post now gets its OWN distinct background artwork. The art cache key is POST-SCOPED (`generateArtOnce(..., {postSlug})` → `_art-base-<postSlug>.png`), so a new post is a cache MISS and must generate fresh art instead of silently inheriting the previous post's art (the old single global `_art-base.png` handed post #2 post #1's art — the bug this fixes). Each post supplies its own art-theme prompt (`promptExtra`) so the gens differ in palette and motif, and a committed cross-post uniqueness registry (`smoke/fixtures/art-registry.json` + `smoke/art-registry.ts` `assertArtUnique`) throws fail-loud if a post would ship art whose sha256 is already registered to a DIFFERENT post. Within-post sharing (one paid gen reused behind that post's cards) stays cheap and correct. Adds the `smoke:launch-card-post2:paid` path (ONE authorized #803 nano-banana regen for post #2) with a hard-fail proof line that refuses a false "paid ✓" if it fell back to the placeholder ([#55](https://github.com/ziyilam3999/content-pipeline/pull/55))
+
 ## [0.7.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.6.0...v0.7.0) (2026-06-10)
 
 ### Features
