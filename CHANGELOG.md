@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.7.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.6.0...v0.7.0) (2026-06-10)
+
+### Features
+
+* **publish:** Post #2 ("lfah is a BUILDER") dry-run publish assembly — a sibling smoke (`smoke/publish-typefully-post2.ts`) that assembles the 4-tweet X thread (hook=`builder-demo-9x16.mp4` 9:16 hero video, t2-t4 = `card-post2-{A,B,C}.png`) + the Threads mixed post ([9:16 video lead, card A]) and proves the layout passes the consolidated #797 `assertPostAssemblyFidelity` gate in DRY-RUN. Reuses the same gate (no forked logic); hero=9:16 everywhere (`CONFIG.publish.heroVideoAspect`). Emits `FIDELITY: PASS` + `PUBLISH-TYPEFULLY-POST2: mode=dry-run posts=x:4,threads:1 media=6`, makes ZERO network calls (no Typefully client constructed in dry-run), and the LIVE path stays gated behind `TYPEFULLY_LIVE`. Adds a Post #2 assembly unit test asserting the gate passes and that the #792/#793/#794 regression forms throw ([#53](https://github.com/ziyilam3999/content-pipeline/pull/53))
+
 ## [0.6.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.5.0...v0.6.0) (2026-06-10)
 
 ### Features
