@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.11.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.10.0...v0.11.0) (2026-06-10)
+
+### Features
+
+* **publish:** per-platform copy-length validator gates over-limit social copy (#809) — Post #2's hand-authored copy reached a LIVE Typefully draft over-limit (X tweet 4 = 282 X-weighted chars vs the 280 limit; Threads = 524 vs 500) because the existing copy verifier checked numbers + superlatives but never per-platform CHARACTER limits, and did not know X discounts every URL to 23 chars (t.co wrapping) or that Threads caps at 500. New `CONFIG.publish.copyLimits` SSOT (`xTweet: 280`, `threads: 500`, `xUrlWeight: 23`) and pure module `publish/copyLimits.ts`: `xWeightedLength` (Unicode codepoints, every URL counted as a fixed 23), `assertCopyWithinPlatformLimits` (throws a clear per-unit "X tweet N is K over the 280 limit" message; boundary inclusive at the limit), and a NON-FATAL `heroVideoAdvisory` (logs a NOTE for a portrait / taller-than-1080 hero so X's extra compression of the deliberate 9:16 cut is never a Typefully surprise). The assertion is wired BEFORE assembly/upload in BOTH publish smokes (dry-run AND live) and into `adapters/copy.ts` (fail fast at the source), printing `COPY-LIMITS: PASS`; the video advisory is wired non-fatally into both smokes. 352 tests / 33 suites green (was 340 / 32; +12 both-ends tests: over-limit fails, exactly-at-limit passes, URL discount applied, Threads >500 fails / =500 passes, advisory flags 1080×1920 / silent for 1920×1080); tsc clean; no paid calls ([#63](https://github.com/ziyilam3999/content-pipeline/pull/63))
+
 ## [0.10.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.9.1...v0.10.0) (2026-06-10)
 
 ### Features
