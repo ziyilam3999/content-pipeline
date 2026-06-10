@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.6.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.5.0...v0.6.0) (2026-06-10)
+
+### Features
+
+* **launch:** Post #2 "lfah is a BUILDER" card-over-art SET — three X-aspect (1:1) infographics (`card-post2-A/B/C.png`) for the dogfood/build story, reusing the cached nano-banana art (zero paid spend) and the #790 auto-fit card machinery (no composition fork). Card words are verbatim from the number-verified `card_labels`, carried into the repo as a committed fixture so CI works without the gitignored authored source ([#49](https://github.com/ziyilam3999/content-pipeline/pull/49))
+
 ## [0.5.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.10...v0.5.0) (2026-06-10)
 
 ### Features
