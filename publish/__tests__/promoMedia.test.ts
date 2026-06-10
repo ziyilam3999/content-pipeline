@@ -20,6 +20,8 @@ import {
   isPlatformPrimaryComplete,
   assertPromoMediaComplete,
   assertPlatformPrimaryLeadsWithVideo,
+  assertHeroAspect,
+  detectAspectTag,
   checkVideoFirst,
 } from "../promoMedia";
 
@@ -280,5 +282,56 @@ describe("checkVideoFirst (SOFT video-first ordering — warns, never throws)", 
     const check = checkVideoFirst(noVideo);
     expect(check.videoUnitIsFirst).toBe(true);
     expect(check.message).toBeUndefined();
+  });
+});
+
+// ── Hero-aspect FIDELITY gate (#794 — the exact miss operator caught) ──────
+// The bug: the publisher posted demo-1x1.mp4 (1080x1080 SQUARE) as the X hook and demo-4x5.mp4
+// on Threads; the full-bleed demo-9x16.mp4 (1080x1920) we built was posted NOWHERE. The #792
+// video-first gate only asserts a video LEADS — not WHICH aspect. This gate asserts the lead
+// video is the full-bleed 9:16 phone cut, FAILING LOUDLY on a square 1:1 or secondary 4:5 hero.
+const DEMO_DIR = "out/review/lfah/demo-multi-aspect";
+const HERO_9X16 = `${DEMO_DIR}/demo-9x16.mp4`;
+const HERO_1X1 = `${DEMO_DIR}/demo-1x1.mp4`;
+const HERO_4X5 = `${DEMO_DIR}/demo-4x5.mp4`;
+
+describe("detectAspectTag (filename aspect-tag convention)", () => {
+  it("reads the aspect tag from the renderer's -<tag> filename convention", () => {
+    expect(detectAspectTag(HERO_9X16)).toBe("9x16");
+    expect(detectAspectTag(HERO_1X1)).toBe("1x1");
+    expect(detectAspectTag(HERO_4X5)).toBe("4x5");
+    expect(detectAspectTag("/abs/path/demo-16x9.mp4")).toBe("16x9");
+  });
+
+  it("returns null when no recognized aspect tag is present", () => {
+    expect(detectAspectTag("out/review/lfah/demo.mp4")).toBeNull();
+    expect(detectAspectTag("hero.mp4")).toBeNull();
+  });
+});
+
+describe("assertHeroAspect (#794 hero-aspect fidelity)", () => {
+  it("PASSES the full-bleed 9:16 phone hero (the cut we built, leads everywhere)", () => {
+    expect(() => assertHeroAspect(HERO_9X16, "9x16", "X tweet-1 hook")).not.toThrow();
+    expect(() => assertHeroAspect(HERO_9X16, "9x16", "Threads hero")).not.toThrow();
+    // Default expected tag is "9x16".
+    expect(() => assertHeroAspect(HERO_9X16)).not.toThrow();
+  });
+
+  it("THROWS when a SQUARE 1:1 cut is used as the hero (the exact #794 regression)", () => {
+    expect(() => assertHeroAspect(HERO_1X1, "9x16", "X tweet-1 hook")).toThrow(
+      /Hero-aspect FIDELITY violation — X tweet-1 hook leads with 1:1 \(1080x1080, square\) but the published hero MUST be the full-bleed 9:16/,
+    );
+  });
+
+  it("THROWS when the SECONDARY 4:5 cut is used as the hero", () => {
+    expect(() => assertHeroAspect(HERO_4X5, "9x16", "Threads hero")).toThrow(
+      /published hero MUST be the full-bleed 9:16 \(1080x1920, full-bleed phone-native\) phone cut/,
+    );
+  });
+
+  it("THROWS (fail closed) when the hero filename carries NO recognizable aspect tag", () => {
+    expect(() => assertHeroAspect(`${DEMO_DIR}/demo.mp4`, "9x16", "X tweet-1 hook")).toThrow(
+      /carries no recognizable aspect tag/,
+    );
   });
 });

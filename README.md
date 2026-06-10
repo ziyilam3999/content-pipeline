@@ -45,6 +45,16 @@ How the principle is realized per platform:
   **single post whose first media item is the video** (it leads) and which also carries the
   card-over-art infographic.
 
+**Which video is the hero: the full-bleed 9:16 phone cut.** The video that LEADS — both the X hook
+tweet and the Threads/LinkedIn hero post — is the **full-bleed 9:16 phone-native cut** (1080x1920),
+the most-watched format. We render the demo in three aspects (1:1, 4:5, 9:16), but the **published
+post always leads with the 9:16 hero** — never the square (1:1) or portrait (4:5) crop. This is
+**config-driven** (`config/index.ts` → `CONFIG.publish.heroVideoAspect = "9:16"`), so the hero is
+selected by config, not a magic hard-code, and enforced by a **fidelity gate** (`assertHeroAspect`
+in `publish/promoMedia.ts`) that **throws** if a 1:1 or 4:5 cut is used as a lead video. (#794: the
+launch first went out with the square 1:1 as the X hook and the 4:5 cut on Threads — so the
+full-screen 9:16 hero we built was posted nowhere; the gate now makes that miss impossible.)
+
 This is baked as a **per-platform hard gate** in `publish/promoMedia.ts` → `assertPromoMediaComplete`
 (it throws naming the offending platform/unit/kind). The gate is **per-platform, not aggregate**:
 it is not enough for a video to exist *somewhere* in the batch — each video-capable platform's lead

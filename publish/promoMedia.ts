@@ -359,3 +359,84 @@ export function assertPromoMediaComplete(
     );
   }
 }
+
+// ── Hero-aspect FIDELITY gate (#794) ─────────────────────────────────────
+//
+// THE BUG (operator caught on the live launch post): the publisher posted demo-1x1.mp4
+// (1080x1080 SQUARE) as the X hook video and demo-4x5.mp4 on Threads. The full-bleed
+// demo-9x16.mp4 (1080x1920, phone-native, most-watched cut we deliberately built in
+// #765/#773) was posted NOWHERE. The "9:16 is the hero" decision was baked at the RENDER
+// layer (the asset is correct) but never enforced at the PUBLISH/assembly layer, and no
+// assertion caught a wrong-aspect hero.
+//
+// THE FIX: a post-assembly fidelity assertion. The lead/hero video of every phone-first
+// platform (X hook tweet, Threads/LinkedIn hero post) MUST be the full-bleed phone cut
+// (9:16 / 1080x1920). This FAILS LOUDLY if a square (1:1) or secondary (4:5) aspect is
+// used as the hero — making the #794 miss mechanically impossible to ship silently.
+//
+// We detect the aspect from the FILENAME CONVENTION (`-9x16` / `-1x1` / `-4x5`) rather
+// than probing pixel dimensions: the 3 aspect files are named by this convention
+// (out/review/lfah/demo-multi-aspect/demo-{1x1,4x5,9x16}.mp4), it needs no vendored
+// ffprobe + DYLD shim, and it is CI-portable (no media file need exist on disk).
+
+/** A filename aspect tag, in the `WxH`-style convention the renderer emits. */
+export type AspectTag = "9x16" | "1x1" | "4x5" | "16x9";
+
+/** Map a filename aspect tag → its canonical `W:H` AspectRatio form (for clear errors). */
+const ASPECT_TAG_TO_RATIO: Record<AspectTag, string> = {
+  "9x16": "9:16 (1080x1920, full-bleed phone-native)",
+  "1x1": "1:1 (1080x1080, square)",
+  "4x5": "4:5 (1080x1350, portrait)",
+  "16x9": "16:9 (1920x1080, landscape)",
+};
+
+/**
+ * Detect the aspect tag embedded in a media filename by the renderer's `-<tag>` convention
+ * (e.g. `demo-9x16.mp4` → `"9x16"`). Returns `null` when no recognized tag is present, so
+ * callers can decide whether an untagged file is acceptable. Matches the FIRST recognized tag
+ * in the basename, anchored to a `-`/`_` boundary or start, case-insensitively. The convention
+ * places exactly one aspect tag per filename, so first vs last is moot in practice.
+ */
+export function detectAspectTag(filePath: string): AspectTag | null {
+  const base = filePath.split(/[\\/]/).pop() ?? filePath;
+  const m = base.toLowerCase().match(/(?:^|[-_])(9x16|1x1|4x5|16x9)(?=[-_.]|$)/);
+  return (m?.[1] as AspectTag | undefined) ?? null;
+}
+
+/**
+ * Throw unless the hero/lead video at `videoPath` is the expected full-bleed phone-native
+ * aspect (default `"9x16"`). This is the #794 fidelity gate: the lead video of every
+ * phone-first platform (X hook tweet, Threads/LinkedIn hero post) MUST be the 9:16
+ * full-bleed cut — never a square (1:1) or secondary (4:5) crop.
+ *
+ *  - `videoPath`: the hero video file path (aspect read from its filename convention).
+ *  - `expectedTag`: the required aspect tag (default `"9x16"` — the full-bleed phone cut).
+ *  - `label`: a human name for the slot (e.g. "X tweet-1 hook") used in the error message.
+ *
+ * THROWS when the filename carries a DIFFERENT aspect tag (the #794 miss — a 1:1 hero), and
+ * also when NO aspect tag is present (an untagged hero is unverifiable → fail closed, so a
+ * silently-renamed file can't slip past the gate).
+ */
+export function assertHeroAspect(
+  videoPath: string,
+  expectedTag: AspectTag = "9x16",
+  label = "hero video",
+): void {
+  const tag = detectAspectTag(videoPath);
+  if (tag === null) {
+    throw new Error(
+      `Hero-aspect FIDELITY violation — ${label} "${videoPath}" carries no recognizable ` +
+        `aspect tag in its filename (expected the full-bleed ${ASPECT_TAG_TO_RATIO[expectedTag]} ` +
+        `cut, e.g. demo-${expectedTag}.mp4). An untagged hero is unverifiable; name the file by ` +
+        `the renderer's -<aspect> convention so the gate can confirm it leads with the phone cut.`,
+    );
+  }
+  if (tag !== expectedTag) {
+    throw new Error(
+      `Hero-aspect FIDELITY violation — ${label} leads with ${ASPECT_TAG_TO_RATIO[tag]} but the ` +
+        `published hero MUST be the full-bleed ${ASPECT_TAG_TO_RATIO[expectedTag]} phone cut ` +
+        `(#794: the square 1:1 was posted as the hero and the 9:16 full-screen cut we built went ` +
+        `nowhere). Select the demo-${expectedTag}.mp4 render for the lead slot. Got "${videoPath}".`,
+    );
+  }
+}
