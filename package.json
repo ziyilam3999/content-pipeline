@@ -19,6 +19,9 @@
     "smoke:demo-narrated": "tsx smoke/demo-narrated.ts",
     "smoke:demo-narrated:paid": "DEMO_NARRATED_PAID=1 tsx smoke/demo-narrated.ts",
     "smoke:demo-multi": "tsx smoke/demo-multi-aspect.ts",
+    "smoke:builder-demo-narrated": "tsx smoke/builder-demo-narrated.ts",
+    "smoke:builder-demo-narrated:paid": "BUILDER_DEMO_PAID=1 tsx smoke/builder-demo-narrated.ts",
+    "smoke:builder-demo-multi": "tsx smoke/builder-demo-multi-aspect.ts",
     "smoke:publish-typefully": "tsx smoke/publish-typefully.ts",
     "smoke:publish-typefully:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully.ts",
     "e2e:lfah": "tsx smoke/e2e-lfah.ts"

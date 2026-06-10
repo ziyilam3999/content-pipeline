@@ -18,7 +18,7 @@
  */
 
 import { type ContentSpec, type Fact } from "../inputs/contentspec";
-import { type NarrationSegment, narrationScript } from "./demoNarration";
+import { narrationScript } from "./demoNarration";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -384,7 +384,11 @@ export function deriveTitle(spec: ContentSpec): string {
  * same silent-cut fallback `buildCaptions` uses for captions.
  */
 export function narrationSceneEndTimes(
-  segments: NarrationSegment[],
+  // #799 — accepts ANY ordered narration (the Post #1 `NarrationSegment[]` OR the Post #2
+  // builder `BuilderNarrationSegment[]`): the algorithm only reads `.text` + `.length`, never
+  // the `sceneId` literal type, so it stays single-sourced across both demos. Each segment must
+  // carry a `text` (the structural shape `narrationScript` consumes).
+  segments: ReadonlyArray<{ text: string }>,
   charEndTimesSec: number[] | undefined,
   durationSec?: number,
 ): number[] | null {
