@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.4.8](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.7...v0.4.8) (2026-06-10)
+
+### Bug Fixes
+
+* **image:** auto-fit card-over-art to frame + render-time overflow gate + raw-art cache (#790) (#41) — the 4:5 hero card-over-art silently clipped its bottom tile (the "cost saving vs full-cloud (same chain) 55%" punchline) because the fact tiles wrapped past the fixed-height `body` (`overflow: hidden`) with zero fit logic. `image/card.ts` gains a no-op-by-default `--fit` CSS variable the facts grid reads (font sizes, gap, padding, min-width); `buildCardHtml` stays pure so its existing tests are unchanged. `adapters/image.ts` `renderImage` now measures overflow in-page after `setContent` and progressively shrinks `--fit` (up to 12 steps, 0.5 floor) until every `.fact` tile AND the `.cta`/`.repo` footer fit inside the frame; if it still overflows at the floor it THROWS naming the count of clipping tiles (silent clip → loud failure). A new jest test (`adapters/__tests__/image-overflow.test.ts`) proves both ends: the full lfahSpec hero fits (the loop converges, all tiles incl. the 55% tile) and a deliberately-too-many-facts case throws. `smoke/launch-card.ts` adds a raw-art cache (`_art-base.png` + `_art-base.datauri.b64`) so after one paid nano-banana gen, layout re-renders are free; SAFE mode reuses the cache when present, else stays the deterministic placeholder. CI now installs Playwright Chromium so the render-path test runs. Verified UNPAID end-to-end.
+
 ## [0.4.7](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.6...v0.4.7) (2026-06-10)
 
 ### Features
