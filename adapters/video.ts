@@ -18,6 +18,7 @@ import { type CopyResult } from "../pipeline/run";
 import { buildCaptionTrack } from "../video/captions";
 import { buildRenderSpecs, ASPECTS, type Aspect } from "../video/renderSpec";
 import { buildDemoTimeline } from "../video/demoTimeline";
+import { buildBuilderTimeline } from "../video/builderDemoTimeline";
 import { demoLayout } from "../video/demoLayout";
 import {
   buildDemoCaptionCues,
@@ -309,6 +310,90 @@ export async function renderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts):
   return renderRemotion({
     entryPoint,
     id: "demo",
+    inputProps,
+    outPath,
+    maxAttempts: opts?.renderAttempts ?? 3,
+  });
+}
+
+/**
+ * #799 — render the BUILDER demo MP4 (composition id="builder-demo"): the 8-scene "lfah builds an
+ * app, test-first" story (intro name-expand → test-first → RED → GREEN → ship gate → dogfood reveal
+ * → numbers → CTA), driven by `video/builderDemoTimeline.ts`. DISTINCT from `renderDemoVideo` (the
+ * Post #1 4-way demo) but SHARES every render mechanic: per-aspect frame-fill (`demoLayout`), the
+ * audio↔sync provenance guard (#774), and the synced-caption band + parity invariant (#775).
+ *
+ * Defaults to a free silent 9:16 cut; pass `audioPath` (+ `script`, `sceneEndTimesSec`,
+ * `charEndTimesSec` from the SAME synth) for the paid voiceover cut. A voiced render's scene cuts +
+ * captions follow the REAL narration; a wrong/old audio file is REFUSED by `assertAudioMatchesSync`.
+ */
+export async function renderBuilderDemoVideo(spec: ContentSpec, opts?: RenderDemoOpts): Promise<string> {
+  const fps = opts?.fps ?? 30;
+  const timeline = buildBuilderTimeline(spec, {
+    durationSec: opts?.durationSec,
+    fps,
+    sceneEndTimesSec: opts?.sceneEndTimesSec, // scenes follow the narrator when present + valid
+  });
+  const durationSec = timeline.durationSec;
+
+  // #774 provenance guard — a voiced render's audio MUST be the synth the alignment came from.
+  if (opts?.audioPath && opts?.sceneEndTimesSec && opts.sceneEndTimesSec.length > 0) {
+    assertAudioMatchesSync(opts.audioPath, opts.sceneEndTimesSec);
+  }
+
+  const aspectName = opts?.aspectName ?? "9:16";
+  const aspect: Aspect | undefined = ASPECTS.find((a) => a.name === aspectName);
+  if (!aspect) throw new Error(`unknown aspect "${aspectName}"`);
+  const width = aspect.width;
+  const height = aspect.height;
+  const baseLayout = demoLayout(width, height);
+  const durationInFrames = Math.max(1, Math.round(durationSec * fps));
+
+  // #775 parity — a voiced render (audioPath) MUST carry a script → non-empty captions spanning clip.
+  const hasScript = typeof opts?.script === "string" && opts.script.trim().length > 0;
+  if (opts?.audioPath && !hasScript) {
+    throw new Error(
+      "#775 parity: a voiced builder-demo render (audioPath set) must carry captions — pass opts.script (the spoken narration).",
+    );
+  }
+  let layout = baseLayout;
+  let captionCues: ReturnType<typeof buildDemoCaptionCues> = [];
+  let captionBandY = 0;
+  if (hasScript) {
+    const clip = { durationSec, charEndTimesSec: opts!.charEndTimesSec };
+    captionCues = buildDemoCaptionCues(opts!.script!, clip);
+    assertVoicedDemoHasCaptions(captionCues, clip);
+    layout = reserveCaptionBand(baseLayout);
+    captionBandY = captionBandTopY(layout, height);
+  }
+
+  const inputProps = {
+    title: timeline.title,
+    nameExpansion: timeline.nameExpansion,
+    introHeadline: timeline.introHeadline,
+    scenes: timeline.scenes,
+    phases: timeline.phases,
+    numbers: timeline.numbers,
+    cta: timeline.cta,
+    repoUrl: timeline.repoUrl,
+    audioSrc: opts?.audioPath ? toDataUri(opts.audioPath) : undefined,
+    captions: captionCues,
+    captionBandY,
+    layout,
+    width,
+    height,
+    fps,
+    durationInFrames,
+  };
+
+  const outDir = opts?.outDir ?? path.join(process.cwd(), "out", "video");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, opts?.fileName ?? `builder-demo-${aspectName.replace(":", "x")}.mp4`);
+
+  const entryPoint = path.join(__dirname, "..", "remotion", "index.tsx");
+  return renderRemotion({
+    entryPoint,
+    id: "builder-demo",
     inputProps,
     outPath,
     maxAttempts: opts?.renderAttempts ?? 3,

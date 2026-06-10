@@ -86,6 +86,6 @@ export const DEMO_NARRATION: NarrationSegment[] = [
  * EXACT string sent to the TTS provider — so a returned per-character end-times
  * array (length === this string's length) indexes 1:1 into it.
  */
-export function narrationScript(segments: NarrationSegment[] = DEMO_NARRATION): string {
+export function narrationScript(segments: ReadonlyArray<{ text: string }> = DEMO_NARRATION): string {
   return segments.map((s) => s.text).join(" ");
 }

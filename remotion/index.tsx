@@ -760,6 +760,461 @@ const DemoVideo: React.FC<DemoProps> = (props) => {
   );
 };
 
+// ─────────────────────── builder demo (#799 — Post #2) ──────────────────────
+// "lfah builds an app, test-first" — an 8-scene story DISTINCT from the 4-way demo above.
+// Reuses the shared SceneShell / scaler / entrance / DemoCaptionBand primitives; only the
+// per-scene CONTENT differs. Props are the flattened `video/builderDemoTimeline.ts` spec.
+
+interface BuilderScene { id: string; fromSec: number; durationSec: number }
+interface BuilderPhase { id: string; rescued: boolean }
+interface BuilderNumber { label: string; value: string; scopeGuard?: string }
+
+interface BuilderProps {
+  title: string;
+  nameExpansion: string;
+  introHeadline: string;
+  scenes: BuilderScene[];
+  phases: BuilderPhase[];
+  numbers: BuilderNumber[];
+  cta: string;
+  repoUrl?: string;
+  audioSrc?: string;
+  captions?: CaptionCue[];
+  captionBandY?: number;
+  layout: DemoLayout;
+  width: number;
+  height: number;
+  fps: number;
+  durationInFrames: number;
+}
+
+const RED = "#f87171"; // failing test
+const GREEN = LANE_COLOR.local; // passing / local / free
+
+/** A small pill used across builder scenes. */
+const Pill: React.FC<{ color: string; filled?: boolean; size: number; children: React.ReactNode }> = ({
+  color,
+  filled = false,
+  size,
+  children,
+}) => (
+  <div
+    style={{
+      color: filled ? BG : color,
+      background: filled ? color : "transparent",
+      border: `2px solid ${color}`,
+      fontFamily: FONT,
+      fontWeight: 800,
+      fontSize: size,
+      padding: "10px 22px",
+      borderRadius: 999,
+      display: "inline-block",
+    }}
+  >
+    {children}
+  </div>
+);
+
+/** Scene 1 — name-expand intro + the test-first claim. */
+const BIntroScene: React.FC<{ title: string; nameExpansion: string; headline: string; layout: DemoLayout }> = ({
+  title,
+  nameExpansion,
+  headline,
+  layout,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  return (
+    <SceneShell layout={layout} gap={Math.round(24 * layout.gapScale)}>
+      <div style={{ ...entrance(frame, fps), color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(76), textAlign: "center", lineHeight: 1.1 }}>
+        {title}
+      </div>
+      <div style={{ ...entrance(frame, fps, 8), color: "#64748b", fontFamily: FONT, fontSize: f(30), letterSpacing: 3, textAlign: "center" }}>
+        {nameExpansion}
+      </div>
+      <div style={{ ...entrance(frame, fps, 16), color: "#fff", fontFamily: FONT, fontWeight: 700, fontSize: f(48), lineHeight: 1.2, textAlign: "center" }}>
+        {headline}
+      </div>
+      <div style={{ ...entrance(frame, fps, 26), textAlign: "center" }}>
+        <Pill color={GREEN} filled size={f(34)}>builds whole apps · test-first</Pill>
+      </div>
+    </SceneShell>
+  );
+};
+
+/** Scene 2 — test-first = the failing test is the SPEC and the PROOF. */
+const BTestFirstScene: React.FC<{ layout: DemoLayout }> = ({ layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  const chip = (label: string, sub: string, delay: number) => (
+    <div
+      style={{
+        ...entrance(frame, fps, delay),
+        width: "100%",
+        height: layout.fill ? "100%" : undefined,
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        gap: 10,
+        background: "#111a30",
+        border: `3px solid ${GREEN}`,
+        borderRadius: 18,
+        padding: layout.fill ? "30px 30px" : "22px 26px",
+      }}
+    >
+      <div style={{ color: GREEN, fontFamily: FONT, fontWeight: 800, fontSize: f(44) }}>{label}</div>
+      <div style={{ color: "#cbd5e1", fontFamily: FONT, fontSize: f(30), lineHeight: 1.3 }}>{sub}</div>
+    </div>
+  );
+  return (
+    <SceneShell
+      layout={layout}
+      gap={Math.round(18 * layout.gapScale)}
+      contentWidth={952}
+      header={
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4, paddingBottom: 6 }}>
+          EVERY FEATURE STARTS AS A FAILING TEST
+        </div>
+      }
+    >
+      {chip("The spec", "a plain-English goal — what the feature must do", 10)}
+      {chip("The proof", "a test that's only true when it actually works", 22)}
+    </SceneShell>
+  );
+};
+
+/** A RED/GREEN test chip used by scenes 3 and 4. `state` flips on `flipAtFrame`. */
+const TestChip: React.FC<{ layout: DemoLayout; green: boolean; runner?: string; delay: number }> = ({
+  layout,
+  green,
+  runner,
+  delay,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  const color = green ? GREEN : RED;
+  return (
+    <div
+      style={{
+        ...entrance(frame, fps, delay),
+        width: "100%",
+        boxSizing: "border-box",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 18,
+        background: green ? "#0f2a22" : "#2a1518",
+        border: `3px solid ${color}`,
+        borderRadius: 18,
+        padding: layout.fill ? "30px 32px" : "22px 28px",
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ color: "#fff", fontFamily: "SFMono-Regular, Menlo, Consolas, monospace", fontSize: f(34), fontWeight: 700 }}>
+          {green ? "✓ test passing" : "✗ test failing"}
+        </div>
+        {runner ? (
+          <div style={{ color: "#94a3b8", fontFamily: FONT, fontSize: f(26) }}>{runner}</div>
+        ) : null}
+      </div>
+      <Pill color={color} filled size={f(34)}>{green ? "GREEN" : "RED"}</Pill>
+    </div>
+  );
+};
+
+/** Scene 3 — RED: scaffold empty project, drop the first failing test. */
+const BRedScene: React.FC<{ layout: DemoLayout }> = ({ layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  return (
+    <SceneShell
+      layout={layout}
+      gap={Math.round(18 * layout.gapScale)}
+      contentWidth={952}
+      header={
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4, paddingBottom: 6 }}>
+          STEP 1 · SCAFFOLD + FIRST FAILING TEST
+        </div>
+      }
+    >
+      <div style={{ ...entrance(frame, fps, 8), color: "#cbd5e1", fontFamily: FONT, fontSize: f(32), textAlign: "center", lineHeight: 1.3 }}>
+        Empty project. The first test goes in. No code yet.
+      </div>
+      <TestChip layout={layout} green={false} runner="jest · 0 passing" delay={16} />
+    </SceneShell>
+  );
+};
+
+/** Scene 4 — GREEN: a free local model writes code till the REAL test suite passes (not an LLM judge). */
+const BGreenScene: React.FC<{ layout: DemoLayout }> = ({ layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  return (
+    <SceneShell
+      layout={layout}
+      gap={Math.round(18 * layout.gapScale)}
+      contentWidth={952}
+      header={
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4, paddingBottom: 6 }}>
+          STEP 2 · FREE LOCAL MODEL WRITES CODE → GREEN
+        </div>
+      }
+    >
+      <TestChip layout={layout} green delay={10} runner="the real test runner: jest, or pytest" />
+      <div style={{ ...entrance(frame, fps, 22), textAlign: "center" }}>
+        <Pill color={GREEN} filled size={f(32)}>real test suite · NOT an LLM judge</Pill>
+      </div>
+    </SceneShell>
+  );
+};
+
+/** Scene 5 — GATE + COMMIT: ships only when test green AND reviewer agrees; a broken phase HALTS. */
+const BGateScene: React.FC<{ layout: DemoLayout }> = ({ layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  const gate = (label: string, delay: number) => (
+    <div
+      style={{
+        ...entrance(frame, fps, delay),
+        width: "100%",
+        boxSizing: "border-box",
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        background: "#0f2a22",
+        border: `3px solid ${GREEN}`,
+        borderRadius: 16,
+        padding: layout.fill ? "24px 28px" : "18px 24px",
+      }}
+    >
+      <div style={{ color: GREEN, fontSize: f(40), fontWeight: 800 }}>✅</div>
+      <div style={{ color: "#fff", fontFamily: FONT, fontSize: f(34), fontWeight: 700 }}>{label}</div>
+    </div>
+  );
+  return (
+    <SceneShell
+      layout={layout}
+      gap={Math.round(16 * layout.gapScale)}
+      contentWidth={952}
+      header={
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4, paddingBottom: 6 }}>
+          STEP 3 · SHIP ONLY WHEN BOTH AGREE
+        </div>
+      }
+    >
+      {gate("the real test suite is green", 10)}
+      {gate("an independent reviewer agrees", 20)}
+      <div style={{ ...entrance(frame, fps, 32), textAlign: "center" }}>
+        <Pill color={GREEN} filled size={f(40)}>→ 🚢 commit &amp; move on</Pill>
+      </div>
+      <div style={{ ...entrance(frame, fps, 42), color: RED, fontFamily: FONT, fontSize: f(28), fontWeight: 700, textAlign: "center", lineHeight: 1.3 }}>
+        can't go green? the build HALTS — never stack on a broken phase
+      </div>
+    </SceneShell>
+  );
+};
+
+/** Scene 6 — DOGFOOD REVEAL: it built THIS pipeline — 13 phases, all shipped (2 cloud-rescued). */
+const BDogfoodScene: React.FC<{ phases: BuilderPhase[]; layout: DemoLayout }> = ({ phases, layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  // The chips animate to green in sequence; the 2 cloud-rescued ones get a blue ring + label.
+  return (
+    <SceneShell
+      layout={layout}
+      gap={Math.round(18 * layout.gapScale)}
+      contentWidth={952}
+      header={
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4, paddingBottom: 6 }}>
+          IT BUILT THIS VERY PIPELINE
+        </div>
+      }
+    >
+      <div style={{ ...entrance(frame, fps, 6), color: "#cbd5e1", fontFamily: FONT, fontSize: f(32), textAlign: "center", lineHeight: 1.3 }}>
+        The copy, the cards, the render — 13 build phases. Every one shipped.
+      </div>
+      <div
+        style={{
+          width: "100%",
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: Math.round(14 * layout.gapScale),
+        }}
+      >
+        {phases.map((p, i) => {
+          const ring = p.rescued ? LANE_COLOR.cloud : GREEN;
+          return (
+            <div
+              key={p.id}
+              style={{
+                ...entrance(frame, fps, 12 + i * 4, 14),
+                minWidth: f(96),
+                boxSizing: "border-box",
+                background: "#0f2a22",
+                border: `3px solid ${ring}`,
+                borderRadius: 14,
+                padding: "12px 14px",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ color: GREEN, fontFamily: FONT, fontWeight: 800, fontSize: f(28) }}>✓ {p.id}</div>
+              {p.rescued ? (
+                <div style={{ color: LANE_COLOR.cloud, fontFamily: FONT, fontSize: f(18), fontWeight: 700, marginTop: 4 }}>cloud-rescued</div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </SceneShell>
+  );
+};
+
+/** Scene 7 — NUMBERS panel: the honest dogfood stats. */
+const BNumbersScene: React.FC<{ numbers: BuilderNumber[]; layout: DemoLayout }> = ({ numbers, layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  return (
+    <SceneShell
+      layout={layout}
+      gap={Math.round(14 * layout.gapScale)}
+      contentWidth={952}
+      header={
+        <div style={{ ...entrance(frame, fps), color: "#64748b", fontFamily: FONT, fontSize: f(34), letterSpacing: 4, paddingBottom: 6 }}>
+          THE NUMBERS · n=13 BUILD PHASES
+        </div>
+      }
+    >
+      {numbers.map((num, i) => {
+        const isFree = /free local/i.test(num.label);
+        const accent = isFree ? GREEN : "#fff";
+        return (
+          <div
+            key={num.label}
+            style={{
+              ...entrance(frame, fps, 8 + i * 8),
+              width: "100%",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              background: "#111a30",
+              border: `2px solid ${isFree ? GREEN : "#1e293b"}`,
+              borderRadius: 14,
+              padding: layout.fill ? "18px 24px" : "14px 22px",
+              boxSizing: "border-box",
+            }}
+          >
+            <div style={{ color: "#cbd5e1", fontFamily: FONT, fontSize: f(30), textTransform: "capitalize" }}>{num.label}</div>
+            <div style={{ color: accent, fontFamily: FONT, fontWeight: 800, fontSize: f(44) }}>{num.value}</div>
+          </div>
+        );
+      })}
+    </SceneShell>
+  );
+};
+
+const BCtaScene: React.FC<{ cta: string; repoUrl?: string; layout: DemoLayout }> = ({ cta, repoUrl, layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  const idx = cta.indexOf(":");
+  const head = idx >= 0 ? cta.slice(0, idx).trim() : cta.trim();
+  const command = idx >= 0 ? cta.slice(idx + 1).trim() : "";
+  return (
+    <SceneShell layout={layout} gap={Math.round(24 * layout.gapScale)}>
+      <div style={{ ...entrance(frame, fps), color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(58), textAlign: "center", lineHeight: 1.15 }}>
+        Your tests are the spec &amp; the proof.
+      </div>
+      <div style={{ ...entrance(frame, fps, 8), color: GREEN, fontFamily: FONT, fontWeight: 800, fontSize: f(40), textAlign: "center" }}>
+        {head}
+      </div>
+      {command ? (
+        <div
+          style={{
+            ...entrance(frame, fps, 14),
+            color: "#e2e8f0",
+            background: "#111a30",
+            border: `2px solid ${GREEN}`,
+            fontFamily: "SFMono-Regular, Menlo, Consolas, monospace",
+            fontSize: f(28),
+            lineHeight: 1.4,
+            padding: "20px 26px",
+            borderRadius: 16,
+            maxWidth: 860,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+            textAlign: "left",
+          }}
+        >
+          {command}
+        </div>
+      ) : null}
+      <div style={{ ...entrance(frame, fps, 22), textAlign: "center" }}>
+        <Pill color={GREEN} filled size={f(30)}>then: lfah build</Pill>
+      </div>
+    </SceneShell>
+  );
+};
+
+const DEFAULT_LAYOUT_1X1: DemoLayout = {
+  aspectRatio: 1,
+  fill: false,
+  justify: "center",
+  padTopFraction: 0.18,
+  padBottomFraction: 0.18,
+  typeScale: 1,
+  gapScale: 1,
+  usableSpanFraction: 0.64,
+};
+
+const BuilderDemoVideo: React.FC<BuilderProps> = (props) => {
+  const { scenes, fps } = props;
+  const layout = props.layout ?? DEFAULT_LAYOUT_1X1;
+  const sceneEl: Record<string, React.ReactNode> = {
+    intro: <BIntroScene title={props.title} nameExpansion={props.nameExpansion} headline={props.introHeadline} layout={layout} />,
+    testfirst: <BTestFirstScene layout={layout} />,
+    red: <BRedScene layout={layout} />,
+    green: <BGreenScene layout={layout} />,
+    gate: <BGateScene layout={layout} />,
+    dogfood: <BDogfoodScene phases={props.phases} layout={layout} />,
+    numbers: <BNumbersScene numbers={props.numbers} layout={layout} />,
+    cta: <BCtaScene cta={props.cta} repoUrl={props.repoUrl} layout={layout} />,
+  };
+  const captions = props.captions ?? [];
+  return (
+    <AbsoluteFill style={{ backgroundColor: BG }}>
+      {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
+      {scenes.map((s) => {
+        const from = Math.round(s.fromSec * fps);
+        const durationInFrames = Math.max(1, Math.round(s.durationSec * fps));
+        return (
+          <Sequence key={s.id} from={from} durationInFrames={durationInFrames} name={s.id}>
+            {sceneEl[s.id] ?? null}
+          </Sequence>
+        );
+      })}
+      {captions.length > 0 ? (
+        <DemoCaptionBand
+          captions={captions}
+          bandY={props.captionBandY ?? Math.round((props.height ?? 1920) * 0.82)}
+          fps={fps}
+          typeScale={layout.typeScale}
+        />
+      ) : null}
+    </AbsoluteFill>
+  );
+};
+
 // ───────────────────────────── root ─────────────────────────────────────────
 
 const Root: React.FC = () => {
@@ -817,6 +1272,39 @@ const Root: React.FC = () => {
           height: 1920,
           fps: 30,
           durationInFrames: 540,
+        }}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.durationInFrames,
+          width: props.width,
+          height: props.height,
+          fps: props.fps,
+        })}
+      />
+
+      <Composition
+        id="builder-demo"
+        component={BuilderDemoVideo}
+        durationInFrames={2700}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          title: "local-first-agent-harness",
+          nameExpansion: "local first agent harness",
+          introHeadline: "",
+          scenes: [] as BuilderScene[],
+          phases: [] as BuilderPhase[],
+          numbers: [] as BuilderNumber[],
+          cta: "",
+          repoUrl: undefined,
+          audioSrc: undefined,
+          captions: [] as CaptionCue[],
+          captionBandY: Math.round(1920 * 0.82),
+          layout: DEFAULT_LAYOUT_9X16,
+          width: 1080,
+          height: 1920,
+          fps: 30,
+          durationInFrames: 2700,
         }}
         calculateMetadata={({ props }) => ({
           durationInFrames: props.durationInFrames,
