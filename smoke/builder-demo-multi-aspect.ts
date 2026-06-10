@@ -36,6 +36,25 @@ interface NarrationBundle {
 
 const ASPECTS = ["9:16", "1:1", "4:5"];
 
+/**
+ * #805 — the post-2 generative-art background ("the card art, animated"). Defaults to the
+ * post-2 base art (within-post reuse, #802-allowed); override with DEMO_BG_IMAGE, or disable
+ * entirely with DEMO_BG=off. The scrim opacity (legibility-first, dim-more-when-unsure) is
+ * DEMO_BG_SCRIM (default 0.72); optional art blur via DEMO_BG_BLUR (default 0).
+ */
+const DEFAULT_BG_IMAGE = path.join("out", "review", "lfah", "image", "_art-base-post2.png");
+function loadBackground(): { backgroundImagePath: string; backgroundScrimOpacity: number; backgroundBlurPx: number } | null {
+  if ((process.env.DEMO_BG ?? "on").toLowerCase() === "off") return null;
+  const img = process.env.DEMO_BG_IMAGE ?? DEFAULT_BG_IMAGE;
+  if (!fs.existsSync(img)) {
+    console.warn(`[builder-demo-multi] DEMO_BG requested but image not found (${img}); rendering solid bg.`);
+    return null;
+  }
+  const scrim = process.env.DEMO_BG_SCRIM ? Number(process.env.DEMO_BG_SCRIM) : 0.72;
+  const blur = process.env.DEMO_BG_BLUR ? Number(process.env.DEMO_BG_BLUR) : 0;
+  return { backgroundImagePath: img, backgroundScrimOpacity: scrim, backgroundBlurPx: blur };
+}
+
 function loadBundle(): NarrationBundle | null {
   let p = process.env.DEMO_BUNDLE;
   if (!p && fs.existsSync(DEFAULT_BUNDLE_PATH)) {
@@ -64,8 +83,18 @@ function loadBundle(): NarrationBundle | null {
 
 async function main() {
   const bundle = loadBundle();
+  const background = loadBackground();
   const outDir = path.join(process.cwd(), "out", "review", "lfah", "demo-builder", "multi-aspect");
   fs.mkdirSync(outDir, { recursive: true });
+
+  if (background) {
+    console.log(
+      `[builder-demo-multi] #805 animated bg ON — image=${path.basename(background.backgroundImagePath)} ` +
+        `scrim=${background.backgroundScrimOpacity} blur=${background.backgroundBlurPx}px`,
+    );
+  } else {
+    console.log("[builder-demo-multi] #805 animated bg OFF — solid #0a0f1e background.");
+  }
 
   if (bundle) {
     const audioDur = audioDurationSec(bundle.audioPath);
@@ -99,6 +128,7 @@ async function main() {
             charEndTimesSec: bundle.charEndTimesSec,
           }
         : {}),
+      ...(background ?? {}), // #805 — animated generative-art background (per-aspect cover-fill)
     });
     const bytes = fs.statSync(file).size;
     if (bytes <= 0) {
