@@ -11,6 +11,42 @@ export const CONFIG = {
   image: {
     generativeBackgroundDefault: false,
   },
+  // #808 — DEMO render rules: the three winning properties of the Post #2 demo, baked as the
+  // committed default so EVERY future demo inherits them. This is the SSOT — producers + tests
+  // read these numbers, never magic constants buried in code.
+  demo: {
+    // RULE 1 — the perceptible animated generative-art background is the DEFAULT path (not opt-in):
+    // whenever a post's art-base image exists, the committed multi-aspect producer renders the
+    // moving background automatically. Escape hatch: DEMO_BG=0/off disables it (solid bg).
+    animatedBackgroundDefault: true,
+    // Default dark-scrim opacity over the moving art (legibility-first; dim MORE when unsure).
+    backgroundScrimOpacity: 0.72,
+
+    // RULE 2 — every produced REVIEW video auto-emits a phone-downloadable mobile proxy
+    // (<name>-mobile.mp4). The operator reviews on the Claude phone app, whose download relay
+    // silently fails on large files; the full-res 1080p master ballooned to ~37.7MB and would NOT
+    // download, while a 720p ~4MB proxy does. See feedback_deliver_mobile_proxy_for_remote_review_videos.
+    mobileProxy: {
+      // Hard ceiling — a proxy above this fails the enforced assertion (download relay risk).
+      maxBytes: 15 * 1024 * 1024, // ~15MB hard cap
+      // Soft target — what a healthy proxy should land near.
+      targetBytes: 8 * 1024 * 1024, // ~8MB
+      // Max edge (short OR long) in pixels — 720p class so the phone relay accepts it.
+      maxEdgePx: 720,
+      // ffmpeg encode knobs (mirror tools/make-mobile-proxy.sh).
+      crf: 27,
+      audioBitrateK: 96,
+    },
+
+    // RULE 3 — ~90s target, never truncate the voiced cut. The good Post #2 voiced cut is ~99s;
+    // aim for ~90s but ACCEPT anything in the window so a real voiceover-driven length flows
+    // through untruncated. The window is an ASSERTION guard (it fails a future demo that silently
+    // drifts to e.g. 40s or 130s); it does NOT hard-set the length — real audio alignment still
+    // drives scene timing (feedback_real_audio_alignment_drives_all_timed_visual_tracks).
+    durationTargetSec: 90,
+    durationAcceptanceMinSec: 80,
+    durationAcceptanceMaxSec: 100,
+  },
   models: {
     copy: {
       provider: "claude-max-oauth",

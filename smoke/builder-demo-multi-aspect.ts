@@ -19,8 +19,16 @@ import * as path from "path";
 
 import { renderBuilderDemoVideo } from "../adapters/video";
 import { audioDurationSec } from "../video/audioDuration";
-import { clampDemoDurationSec } from "../video/demoTimeline";
-import { probeRender, assertVideoFrameCount } from "../video/renderProbe";
+import { clampDemoDurationSec, assertDemoDurationInWindow } from "../video/demoTimeline";
+import {
+  probeRender,
+  assertVideoFrameCount,
+  probeMobileProxy,
+  assertMobileProxy,
+} from "../video/renderProbe";
+import { resolveDemoBackground } from "../video/demoBackground";
+import { makeMobileProxy } from "../video/mobileProxy";
+import { CONFIG } from "../config";
 import { builderSpec } from "../inputs/builderSpec";
 
 /** Where smoke:builder-demo-narrated writes its full alignment bundle. */
@@ -37,22 +45,32 @@ interface NarrationBundle {
 const ASPECTS = ["9:16", "1:1", "4:5"];
 
 /**
- * #805 — the post-2 generative-art background ("the card art, animated"). Defaults to the
- * post-2 base art (within-post reuse, #802-allowed); override with DEMO_BG_IMAGE, or disable
- * entirely with DEMO_BG=off. The scrim opacity (legibility-first, dim-more-when-unsure) is
- * DEMO_BG_SCRIM (default 0.72); optional art blur via DEMO_BG_BLUR (default 0).
+ * #808 RULE 1 — the perceptible animated generative-art background ("the card art, animated") is the
+ * DEFAULT: whenever the post-2 art-base image EXISTS, the moving background renders AUTOMATICALLY
+ * (no env flag needed). Override the image with DEMO_BG_IMAGE; disable entirely with DEMO_BG=0/off.
+ * Scrim defaults to CONFIG.demo.backgroundScrimOpacity (override DEMO_BG_SCRIM); blur via DEMO_BG_BLUR.
+ * The default-on DECISION is the pure `resolveDemoBackground` (unit-tested in demoBackground.test.ts);
+ * this wrapper only injects the fs/env reads.
  */
 const DEFAULT_BG_IMAGE = path.join("out", "review", "lfah", "image", "_art-base-post2.png");
 function loadBackground(): { backgroundImagePath: string; backgroundScrimOpacity: number; backgroundBlurPx: number } | null {
-  if ((process.env.DEMO_BG ?? "on").toLowerCase() === "off") return null;
   const img = process.env.DEMO_BG_IMAGE ?? DEFAULT_BG_IMAGE;
-  if (!fs.existsSync(img)) {
-    console.warn(`[builder-demo-multi] DEMO_BG requested but image not found (${img}); rendering solid bg.`);
-    return null;
+  const bg = resolveDemoBackground({
+    artImageExists: fs.existsSync(img),
+    artImagePath: img,
+    demoBgEnv: process.env.DEMO_BG,
+    demoBgScrimEnv: process.env.DEMO_BG_SCRIM,
+    demoBgBlurEnv: process.env.DEMO_BG_BLUR,
+  });
+  if (!bg) {
+    const off = ["0", "off", "false", "no"].includes((process.env.DEMO_BG ?? "").toLowerCase());
+    if (off) {
+      console.log("[builder-demo-multi] #808 animated bg disabled via DEMO_BG — solid bg.");
+    } else if (!fs.existsSync(img)) {
+      console.warn(`[builder-demo-multi] art-base image not found (${img}); rendering solid bg.`);
+    }
   }
-  const scrim = process.env.DEMO_BG_SCRIM ? Number(process.env.DEMO_BG_SCRIM) : 0.72;
-  const blur = process.env.DEMO_BG_BLUR ? Number(process.env.DEMO_BG_BLUR) : 0;
-  return { backgroundImagePath: img, backgroundScrimOpacity: scrim, backgroundBlurPx: blur };
+  return bg;
 }
 
 function loadBundle(): NarrationBundle | null {
@@ -89,11 +107,11 @@ async function main() {
 
   if (background) {
     console.log(
-      `[builder-demo-multi] #805 animated bg ON — image=${path.basename(background.backgroundImagePath)} ` +
+      `[builder-demo-multi] #808 animated bg ON (DEFAULT) — image=${path.basename(background.backgroundImagePath)} ` +
         `scrim=${background.backgroundScrimOpacity} blur=${background.backgroundBlurPx}px`,
     );
   } else {
-    console.log("[builder-demo-multi] #805 animated bg OFF — solid #0a0f1e background.");
+    console.log("[builder-demo-multi] #808 animated bg OFF — solid #0a0f1e background.");
   }
 
   if (bundle) {
@@ -113,6 +131,23 @@ async function main() {
   const expectedDurationSec = bundle
     ? clampDemoDurationSec(bundle.durationSec, { voiced: true })
     : clampDemoDurationSec(undefined);
+
+  // #808 RULE 3 — the VOICED deliverable must land in the ~90s acceptance window [80,100] (config
+  // SSOT). A ~99s real voiced cut passes; a future demo that silently drifts to 40s/130s FAILS here.
+  // The free/silent CI cut clamps to [45,90] and is exempt (it's a fast no-render path, not a deliverable).
+  if (bundle) {
+    try {
+      assertDemoDurationInWindow(expectedDurationSec, { label: "voiced builder demo" });
+      console.log(
+        `DURATION-WINDOW: voiced cut ${expectedDurationSec.toFixed(2)}s within ` +
+          `[${CONFIG.demo.durationAcceptanceMinSec},${CONFIG.demo.durationAcceptanceMaxSec}]s (target ~${CONFIG.demo.durationTargetSec}s) OK`,
+      );
+    } catch (durErr) {
+      console.error(`SMOKE FAIL: #808 ${durErr instanceof Error ? durErr.message : String(durErr)}`);
+      process.exit(1);
+    }
+  }
+
   const results: { aspect: string; file: string; bytes: number }[] = [];
   for (const aspectName of ASPECTS) {
     const t0 = Date.now();
@@ -151,6 +186,29 @@ async function main() {
       console.error(`SMOKE FAIL: #799 RENDER-VERIFY ${verifyErr instanceof Error ? verifyErr.message : String(verifyErr)}`);
       process.exit(1);
     }
+
+    // #808 RULE 2 — every delivered review video auto-emits a phone-downloadable mobile proxy
+    // (<name>-mobile.mp4) next to the master, then VERIFIES it meets the review-relay caps
+    // (≤15MB, ≤720p short-edge, +faststart). A master too big for the phone download relay is
+    // useless for remote review; this makes the small sibling mandatory + cap-enforced.
+    try {
+      const proxyPath = makeMobileProxy(file);
+      const pp = probeMobileProxy(proxyPath);
+      assertMobileProxy(
+        pp,
+        { maxBytes: CONFIG.demo.mobileProxy.maxBytes, maxEdgePx: CONFIG.demo.mobileProxy.maxEdgePx },
+        { label: aspectName },
+      );
+      console.log(
+        `MOBILE-PROXY: aspect=${aspectName} file="${proxyPath}" ` +
+          `${(pp.bytes / 1048576).toFixed(2)}MB ${pp.widthPx}x${pp.heightPx} faststart=${pp.hasFaststart} ` +
+          `(cap ${(CONFIG.demo.mobileProxy.maxBytes / 1048576).toFixed(0)}MB / ${CONFIG.demo.mobileProxy.maxEdgePx}p) OK`,
+      );
+    } catch (proxyErr) {
+      console.error(`SMOKE FAIL: #808 MOBILE-PROXY ${proxyErr instanceof Error ? proxyErr.message : String(proxyErr)}`);
+      process.exit(1);
+    }
+
     results.push({ aspect: aspectName, file, bytes });
   }
 

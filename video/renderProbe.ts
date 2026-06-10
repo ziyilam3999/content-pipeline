@@ -166,6 +166,19 @@ export function parseHasAudioStream(ffmpegOutput: string): boolean {
 }
 
 /**
+ * #808 — parse the coded video frame dimensions (`... Video: h264 ... 1280x720 ...`) from an ffmpeg
+ * stream dump. Returns null if no `Video:` stream line with a WxH token is present. We anchor on the
+ * `Video:` stream declaration so we never pick up an unrelated WxH elsewhere in the banner/metadata.
+ */
+export function parseVideoDimensions(ffmpegOutput: string): { width: number; height: number } | null {
+  const line = ffmpegOutput.split("\n").find((l) => /Stream #\d+:\d+[^\n]*:\s*Video:/.test(l));
+  if (!line) return null;
+  const m = line.match(/\b(\d{2,5})x(\d{2,5})\b/);
+  if (!m) return null;
+  return { width: Number(m[1]), height: Number(m[2]) };
+}
+
+/**
  * Probe an MP4 (or any container the vendored ffmpeg can demux). Returns the decoded
  * video frame count, the container duration, and whether an audio stream exists.
  *
@@ -233,5 +246,125 @@ export function assertVideoFrameCount(
         `A drift this large means the MP4 is truncated or the wrong length — the render did NOT ` +
         `produce the full deliverable.`,
     );
+  }
+}
+
+// ── #808 RULE 2: mobile-proxy probe + enforced caps ───────────────────────────────────────────
+
+/**
+ * #808 — does this MP4 have its `moov` atom BEFORE `mdat` (i.e. was it muxed with `+faststart`)?
+ *
+ * +faststart moves the index (`moov`) to the front so a phone can start playback before the whole
+ * file downloads — required for the review-relay proxy. We detect it by scanning the top-level ISO
+ * BMFF box order directly from the file's bytes (no ffmpeg dependency, deterministic): walk the box
+ * headers and report true iff `moov` appears before `mdat`. A streamed/non-faststart file places
+ * `moov` at the END, so `mdat` is seen first. We only read the first chunk needed to settle the
+ * order — once we hit either box we have the answer.
+ */
+export function hasFaststartMoov(filePath: string): boolean {
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const stat = fs.fstatSync(fd);
+    const fileSize = stat.size;
+    let offset = 0;
+    const header = Buffer.alloc(16);
+    while (offset + 8 <= fileSize) {
+      const read = fs.readSync(fd, header, 0, 16, offset);
+      if (read < 8) break;
+      let boxSize = header.readUInt32BE(0);
+      const boxType = header.toString("ascii", 4, 8);
+      // 64-bit largesize (boxSize === 1): real size is the next 8 bytes.
+      let headerLen = 8;
+      if (boxSize === 1) {
+        if (read < 16) break;
+        // High 32 bits are ~always 0 for these files; use the low 32 to stay in JS safe ints.
+        boxSize = header.readUInt32BE(12);
+        headerLen = 16;
+      }
+      if (boxType === "moov") return true; // moov first → faststart
+      if (boxType === "mdat") return false; // mdat first → NOT faststart
+      if (boxSize <= 0) break; // box-to-end-of-file (size 0) or malformed → stop
+      offset += boxSize < headerLen ? headerLen : boxSize;
+    }
+    return false;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+export interface MobileProxyProbe {
+  bytes: number;
+  widthPx: number;
+  heightPx: number;
+  /** Smaller of width/height. */
+  shortEdgePx: number;
+  /** Larger of width/height. */
+  longEdgePx: number;
+  hasFaststart: boolean;
+}
+
+/**
+ * #808 — probe a mobile-proxy MP4: file size, video dimensions, and faststart. Throws (never a
+ * silent false value, per this module's design rule) if the file is missing or its video dimensions
+ * are unparseable.
+ */
+export function probeMobileProxy(filePath: string): MobileProxyProbe {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`probeMobileProxy: file does not exist: ${filePath}`);
+  }
+  const { bin, dir } = resolveVendoredFfmpeg();
+  const metaOut = runFfmpeg(["-hide_banner", "-i", filePath], dir, bin);
+  const dims = parseVideoDimensions(metaOut);
+  if (!dims) {
+    throw new Error(
+      `probeMobileProxy: could not parse video dimensions for ${filePath}. Tail: ${metaOut.slice(-400)}`,
+    );
+  }
+  const bytes = fs.statSync(filePath).size;
+  return {
+    bytes,
+    widthPx: dims.width,
+    heightPx: dims.height,
+    shortEdgePx: Math.min(dims.width, dims.height),
+    longEdgePx: Math.max(dims.width, dims.height),
+    hasFaststart: hasFaststartMoov(filePath),
+  };
+}
+
+/** The enforced mobile-proxy caps (config SSOT — `CONFIG.demo.mobileProxy`). */
+export interface MobileProxyCaps {
+  maxBytes: number;
+  maxEdgePx: number;
+}
+
+/**
+ * #808 — assert a mobile proxy meets the REVIEW-DELIVERY caps: ≤ maxBytes (download-relay ceiling),
+ * ≤ maxEdgePx on its short/long edge (720p class), AND faststart (moov-before-mdat). Throws a clear
+ * aggregated error listing every breached cap so the producer's render-verify fails LOUDLY.
+ */
+export function assertMobileProxy(
+  probe: MobileProxyProbe,
+  caps: MobileProxyCaps,
+  opts?: { label?: string },
+): void {
+  const where = opts?.label ? ` (${opts.label})` : "";
+  const fails: string[] = [];
+  if (probe.bytes > caps.maxBytes) {
+    fails.push(
+      `size ${(probe.bytes / 1048576).toFixed(2)}MB > cap ${(caps.maxBytes / 1048576).toFixed(2)}MB ` +
+        `(the phone download relay silently fails on files this large)`,
+    );
+  }
+  // 720p class: the SHORT edge of a portrait/landscape proxy must be ≤ maxEdgePx. (For a 9:16 proxy
+  // the short edge is the width; for a 16:9 proxy it is the height. Either way the constraining
+  // dimension that controls pixel count + bitrate is the short edge.)
+  if (probe.shortEdgePx > caps.maxEdgePx) {
+    fails.push(`short edge ${probe.shortEdgePx}px > ${caps.maxEdgePx}px (not 720p class)`);
+  }
+  if (!probe.hasFaststart) {
+    fails.push("no +faststart moov atom (moov is not before mdat — phone can't stream it)");
+  }
+  if (fails.length > 0) {
+    throw new Error(`#808 mobile-proxy cap violation${where}: ${fails.join("; ")}.`);
   }
 }
