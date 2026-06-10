@@ -36,13 +36,26 @@
  * `mv` will take the un-copied PNGs with it.
  *
  * ART CACHE (#790 — free layout re-renders): the PAID run also WRITES the raw nano-banana art to a
- * cache pair — `out/review/lfah/image/_art-base.png` (the bytes) + `_art-base.datauri.b64` (the data
- * URI it was reused as). On a LATER run, if that cache exists and LAUNCH_CARD_PAID is NOT forcing a
- * regen, the cached art is REUSED (free) instead of the placeholder — so once one paid gen has run,
- * re-rendering all the cards through a fixed/changed layout costs nothing. Override the cache path
- * with LAUNCH_CARD_ART_CACHE=<png-path>. SAFE mode WITHOUT a cache stays the deterministic 1x1
- * placeholder (no cache write, no paid call). LAUNCH_CARD_PAID=1 always re-gens AND refreshes the
- * cache. The cache lives under the gitignored `out/` tree — runtime data, never committed.
+ * cache pair — `out/review/lfah/image/_art-base[-<postSlug>].png` (the bytes) +
+ * `_art-base[-<postSlug>].datauri.b64` (the data URI it was reused as). On a LATER run, if that cache
+ * exists and LAUNCH_CARD_PAID is NOT forcing a regen, the cached art is REUSED (free) instead of the
+ * placeholder — so once one paid gen has run, re-rendering all the cards through a fixed/changed
+ * layout costs nothing. Override the cache path with LAUNCH_CARD_ART_CACHE=<png-path>. SAFE mode
+ * WITHOUT a cache stays the deterministic 1x1 placeholder (no cache write, no paid call).
+ * LAUNCH_CARD_PAID=1 always re-gens AND refreshes the cache. The cache lives under the gitignored
+ * `out/` tree — runtime data, never committed.
+ *
+ * PER-POST UNIQUE ART (#802) — doctrine:
+ *   • EVERY new post gets its OWN distinct background artwork. The cache key is POST-SCOPED:
+ *     `generateArtOnce(..., {postSlug})` keys the cache to `_art-base-<postSlug>.png`. A NEW post has
+ *     no such file yet → cache MISS → forces a fresh gen (the old single global `_art-base.png`,
+ *     keyed to NOTHING, silently handed post #2 post #1's art — the bug this fixes).
+ *   • Cards WITHIN the same post SHARE that one art (one paid gen reused behind the post's cards —
+ *     `generateArtOnce` semantics are per-post: one gen, fanned out).
+ *   • Cross-post reuse is BLOCKED fail-loud by the committed art-registry (smoke/art-registry.ts) —
+ *     `assertArtUnique(slug, sha256, registry)` throws if a post would ship art already registered to
+ *     a DIFFERENT post. Each post supplies its own art prompt (promptExtra) so the gens actually
+ *     differ. Back-compat: an omitted/empty postSlug keeps the legacy `_art-base.png` path (post #1).
  *
  * Run: `npm run smoke:launch-card`        (SAFE — no paid call; reuses cached art if present)
  *      `npm run smoke:launch-card:paid`   (PAID — ONE real nano-banana gen reused for all cards + cache)
@@ -68,12 +81,16 @@ const MAX_FACTS_PER_CARD = 8;
 const MAX_FACTS_HERO = 18;
 
 /**
- * The raw-art cache (#790). After ONE paid gen the art bytes + the data URI it was reused as are
- * written here so later layout re-renders are FREE (no paid call). Default path lives under the
- * gitignored out/ tree; override the PNG path with LAUNCH_CARD_ART_CACHE.
+ * The raw-art cache (#790, post-scoped #802). After ONE paid gen the art bytes + the data URI it was
+ * reused as are written here so later layout re-renders are FREE (no paid call). The cache key is
+ * POST-SCOPED: a non-empty `postSlug` yields `_art-base-<postSlug>.png` so each post has its OWN art
+ * file (a new post = cache MISS = forced fresh gen). An omitted/empty slug keeps the legacy
+ * `_art-base.png` (post #1, back-compat). Override the PNG path entirely with LAUNCH_CARD_ART_CACHE.
  */
-function artCachePngPath(outDir: string): string {
-  return process.env.LAUNCH_CARD_ART_CACHE || path.join(outDir, "_art-base.png");
+function artCachePngPath(outDir: string, postSlug?: string): string {
+  if (process.env.LAUNCH_CARD_ART_CACHE) return process.env.LAUNCH_CARD_ART_CACHE;
+  const base = postSlug && postSlug.trim() ? `_art-base-${postSlug.trim()}.png` : "_art-base.png";
+  return path.join(outDir, base);
 }
 function artCacheDataUriPath(pngPath: string): string {
   return pngPath.replace(/\.png$/i, "") + ".datauri.b64";
@@ -197,20 +214,43 @@ function dataUriByteLength(dataUri: string): number {
   return Buffer.from(dataUri.slice(dataUri.indexOf(",") + 1), "base64").length;
 }
 
+/** Per-post knobs for the shared-art gen (#802). */
+export interface GenerateArtOnceOpts {
+  /**
+   * POST-SCOPED cache key. A non-empty slug keys the cache to `_art-base-<slug>.png` so each post
+   * has its OWN art (a new post = cache MISS = forced fresh gen). Omit/empty = legacy `_art-base.png`.
+   */
+  postSlug?: string;
+  /** Extra creative direction appended to the art prompt so per-post gens actually differ. */
+  promptExtra?: string;
+}
+
 /**
- * Generate the shared background art ONCE. Resolution order (#790):
- *   1. PAID (LAUNCH_CARD_PAID=1) → the single real nano-banana call; its data URI is reused behind
- *      every card AND written to the art cache so future runs are free.
- *   2. SAFE + cache present → REUSE the cached real art (free, no model call) — so after one paid
- *      gen, re-rendering the cards through a changed layout costs nothing.
+ * The path that generateArtOnce would use for `postSlug`'s art cache (the bytes). Exposed so callers
+ * can read back / hash / copy the exact file a post's art was written to.
+ */
+export function artBasePngPath(outDir: string, postSlug?: string): string {
+  return artCachePngPath(outDir, postSlug);
+}
+
+/**
+ * Generate the shared background art ONCE (per post). Resolution order (#790; post-scoped #802):
+ *   1. PAID (LAUNCH_CARD_PAID=1) → the single real nano-banana call (this post's promptExtra makes
+ *      it distinct); its data URI is reused behind every card of THIS post AND written to the
+ *      post-scoped art cache so future runs are free.
+ *   2. SAFE + this post's cache present → REUSE the cached real art (free, no model call).
  *   3. SAFE + no cache → the deterministic 1x1 placeholder (no model call, no spend).
+ *
+ * The cache key is POST-SCOPED via opts.postSlug: each post reads/writes its OWN `_art-base-<slug>.png`,
+ * so a NEW post can never silently inherit a previous post's art.
  */
 export async function generateArtOnce(
   master: ContentSpec,
   paid: boolean,
   outDir: string,
+  opts?: GenerateArtOnceOpts,
 ): Promise<string> {
-  const cachePng = artCachePngPath(outDir);
+  const cachePng = artCachePngPath(outDir, opts?.postSlug);
   const cacheUri = artCacheDataUriPath(cachePng);
 
   if (!paid) {
@@ -227,7 +267,11 @@ export async function generateArtOnce(
 
   console.log("→ generating ONE real creative background via nano-banana (PAID Gemini)…");
   // Generous per-attempt timeout: nano-banana image gen can run well past the 120s default.
-  const art = await generateArt(master, undefined, { timeoutMs: 240_000 }); // primary-only: throws on failure
+  // promptExtra makes this post's art distinct from other posts' (#802).
+  const art = await generateArt(master, undefined, {
+    timeoutMs: 240_000,
+    promptExtra: opts?.promptExtra,
+  }); // primary-only: throws on failure
   console.log("  " + art.pathLine);
   const artBytes = dataUriByteLength(art.dataUri);
   if (artBytes < 5000) {

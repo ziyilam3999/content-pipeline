@@ -22,13 +22,21 @@
  * mechanically gated.
  *
  * SHARED-ART, ZERO SPEND: the background is the SAME cached nano-banana art Post #1 already paid
- * for once — `generateArtOnce(..., paid=false, ...)` reuses `out/review/lfah/image/_art-base.png`
- * (free, no model call) when present, else a deterministic 1x1 placeholder. This smoke NEVER takes
- * the paid path. Point LAUNCH_CARD_ART_CACHE at the cached PNG when running from a worktree whose
- * own `out/` is empty (the cache lives in the primary clone under the gitignored out/ tree).
+ * for once. PER-POST UNIQUE ART (#802/#803): Post #2 has its OWN art, NOT Post #1's. The cache key
+ * is POST-SCOPED — this smoke uses `postSlug="post2"` so its art lives at `_art-base-post2.png`,
+ * distinct from Post #1's `_art-base.png`. The SAFE (free) path reuses `_art-base-post2.png` when
+ * present, else a deterministic 1x1 placeholder — and NEVER inherits Post #1's art.
  *
- * Run: `npm run smoke:launch-card-post2`
- *   (SAFE — no paid call; reuses cached art if present, else deterministic placeholder.)
+ * PAID PATH (#803 — ONE authorized gen): with LAUNCH_CARD_PAID=1 this smoke makes ONE fresh
+ * nano-banana gen using a POST-2 THEME prompt (a builder / test-first / red→green build-loop vibe,
+ * brand-clean, no text-in-image) → writes `_art-base-post2.png` → asserts its sha256 ≠ Post #1's via
+ * the committed art-registry (smoke/art-registry.ts — fail-loud cross-post guard) → registers it →
+ * emits an ART-PATH line proving the REAL paid path ran (HARD-FAILS if it fell back to the
+ * placeholder/cache). Point LAUNCH_CARD_ART_CACHE at a PNG to override the cache path entirely.
+ *
+ * Run: `npm run smoke:launch-card-post2`        (SAFE — no paid call; post-2 cached art or placeholder)
+ *      `npm run smoke:launch-card-post2:paid`   (PAID — ONE fresh nano-banana gen for post #2 + cache)
+ *        Key from $GEMINI_API_KEY or macOS Keychain (service "GEMINI_API_KEY").
  */
 
 import * as fs from "fs";
@@ -39,10 +47,41 @@ import { CONFIG, type AspectRatio } from "../config";
 import { buildCardHtml, selectFacts } from "../image/card";
 import { type ContentSpec, type Fact } from "../inputs/contentspec";
 import { type CopyResult } from "../pipeline/run";
-import { generateArtOnce } from "./launch-card";
+import {
+  artBasePngPath,
+  generateArtOnce,
+  type GenerateArtOnceOpts,
+} from "./launch-card";
+import {
+  assertArtUnique,
+  loadRegistry,
+  registerArt,
+  saveRegistry,
+  sha256File,
+} from "./art-registry";
 import { lfahSpec } from "./lfahSpec";
 
-const PAID_GUARD = process.env.LAUNCH_CARD_PAID === "1";
+const PAID = process.env.LAUNCH_CARD_PAID === "1";
+
+/** Post #2's stable slug — the post-scoped art cache key + registry key. */
+const POST2_SLUG = "post2";
+
+/**
+ * Post #2's OWN art-theme prompt (#802). Appended to the brand-safe base prompt so the gen is
+ * DISTINCT from Post #1's (Post #1 used the bare lfah summary). Builder / test-first / red→green
+ * build-loop vibe — abstract/tech, brand-clean, NO employer brand, NO text/letters/logos.
+ */
+const POST2_PROMPT_EXTRA =
+  "Evoke an autonomous software BUILDER assembling an app test-first: a red-to-green build loop, " +
+  "failing tests turning green, modular blocks snapping into place, forward build-momentum. " +
+  "Emerald-green and warm-amber energy threading through the deep navy, like a passing test sweeping " +
+  "a red bar to green — distinct in palette and motif from a pure data/benchmark chart.";
+
+/** generateArtOnce opts for Post #2 — post-scoped cache key + its own distinct prompt. */
+const POST2_ART_OPTS: GenerateArtOnceOpts = {
+  postSlug: POST2_SLUG,
+  promptExtra: POST2_PROMPT_EXTRA,
+};
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 function isPng(buf: Buffer): boolean {
@@ -268,25 +307,52 @@ async function renderPost2Card(
 }
 
 async function main(): Promise<void> {
-  // Defensive: this smoke is the FREE path by contract. If someone exports LAUNCH_CARD_PAID=1
-  // they want the paid Post-1 smoke, not this one — refuse rather than make a surprise paid call.
-  if (PAID_GUARD) {
-    throw new Error(
-      "SMOKE FAIL: launch-card-post2 is the FREE card smoke (reuses cached art). " +
-        "LAUNCH_CARD_PAID=1 is not supported here — use smoke:launch-card:paid to regen the art.",
-    );
-  }
-
   assertVerbatim();
 
   const outDir = path.join(process.cwd(), "out", "review", "lfah", "image");
   fs.mkdirSync(outDir, { recursive: true });
 
-  console.log("→ Post #2 'lfah is a BUILDER' card SET (SAFE — reuses cached art, ZERO paid spend)");
+  console.log(
+    `→ Post #2 'lfah is a BUILDER' card SET (${
+      PAID
+        ? "PAID — ONE fresh nano-banana gen for post #2 (#803)"
+        : "SAFE — reuses post-2 cached art / placeholder, ZERO paid spend"
+    })`,
+  );
 
-  // ONE shared background reused behind all three cards: cached real art (free) when present, else
-  // a deterministic placeholder. paid=false ALWAYS — this smoke never makes a model call.
-  const artDataUri = await generateArtOnce(lfahSpec(), false, outDir);
+  // ONE shared background reused behind all three cards of THIS post (#802 per-post sharing).
+  // POST-SCOPED cache key (postSlug="post2") → its OWN `_art-base-post2.png`, NEVER post #1's art.
+  // PAID=true makes the single #803 authorized nano-banana gen with post #2's distinct theme prompt.
+  const artDataUri = await generateArtOnce(lfahSpec(), PAID, outDir, POST2_ART_OPTS);
+
+  // CROSS-POST UNIQUENESS GUARD (#802). The art bytes live at the post-scoped cache file. When that
+  // file exists (paid run just wrote it, or a prior post-2 paid run cached it) hash it and assert it
+  // is NOT post #1's (or any other post's) art. Fail-loud on a cross-post reuse; register on pass.
+  const artPng = artBasePngPath(outDir, POST2_SLUG);
+  let post2Sha: string | undefined;
+  let usedPath: string;
+  if (fs.existsSync(artPng)) {
+    post2Sha = sha256File(artPng);
+    const registry = loadRegistry();
+    assertArtUnique(POST2_SLUG, post2Sha, registry); // throws if post #2 would ship post #1's art
+    saveRegistry(registerArt(POST2_SLUG, post2Sha, registry));
+    usedPath = "nano-banana";
+    console.log(`  art-sha256(post2)=${post2Sha}`);
+    console.log(`  cross-post uniqueness: PASS — post2 art ≠ any other post's; registered.`);
+  } else {
+    // No real art file present (SAFE run with no post-2 cache) → deterministic placeholder path.
+    usedPath = "placeholder";
+  }
+
+  // PAID-PATH PROOF (#803, feedback_smoke_prove_primary_not_fallback): under a paid invocation the
+  // real nano-banana art MUST have been written + hashed. If we fell back to the placeholder, the
+  // paid primary did NOT run — HARD-FAIL rather than report a false "paid ✓".
+  if (PAID && usedPath !== "nano-banana") {
+    throw new Error(
+      "SMOKE FAIL: LAUNCH_CARD_PAID=1 but the real nano-banana art was not produced " +
+        `(no ${artPng}). The paid primary path did not run — refusing to report a false paid pass.`,
+    );
+  }
 
   const written: { name: string; outPath: string; bytes: number }[] = [];
 
@@ -313,11 +379,20 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log(`\nSMOKE-PATH: primary="nano-banana" used="cached-or-placeholder" clean=true`);
+  // ART-PATH proof line (#803): primary=nano-banana, used=<actual>, paid=<bool>. On a paid run
+  // usedPath is mechanically forced to nano-banana above (else we already threw).
+  console.log(
+    `\nART-PATH: primary="nano-banana" used="${usedPath}" paid=${PAID ? "true" : "false"}` +
+      (post2Sha ? ` sha256="${post2Sha}"` : ""),
+  );
+  console.log(`SMOKE-PATH: primary="nano-banana" used="${usedPath}" clean=true`);
   for (const w of written) console.log(`ARTIFACT: ${w.outPath} (${w.bytes} bytes)`);
   console.log(
-    `\nSMOKE PASS (SAFE): ${written.length} Post-#2 builder info-cards composed with verbatim ` +
-      `card_labels over the cached art; no paid call.`,
+    PAID
+      ? `\nSMOKE PASS (PAID): ${written.length} Post-#2 builder info-cards composed with verbatim ` +
+          `card_labels over ONE fresh nano-banana art (post-scoped, ≠ post #1); registered unique.`
+      : `\nSMOKE PASS (SAFE): ${written.length} Post-#2 builder info-cards composed with verbatim ` +
+          `card_labels over the post-2 cached art / placeholder; no paid call.`,
   );
 }
 

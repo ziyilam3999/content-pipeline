@@ -69,6 +69,24 @@ image+video; a soft `checkVideoFirst` warning flags when the video does not lead
 The per-tweet card set is rendered by `smoke/launch-card.ts` (`launchCardSet()`), which fans ONE
 generated background out behind all the distinct info-cards.
 
+### Art doctrine: per-post UNIQUE art, within-post shared, cross-post guarded
+
+**Every NEW post gets its OWN distinct background artwork.** Cards in the SAME post may share one
+piece of art (one paid gen, reused behind that post's cards — cheap and consistent), but a new post
+must **never** inherit the previous post's art. This is realized three ways:
+
+- **Post-scoped art cache key.** `generateArtOnce(..., {postSlug})` (`smoke/launch-card.ts`) keys the
+  art cache to `_art-base-<postSlug>.png`. A new post has no such file yet → cache MISS → it must
+  generate fresh art. (The old single global `_art-base.png`, keyed to nothing, silently handed
+  post #2 post #1's art — the bug this fixes. An omitted slug keeps the legacy path for post #1.)
+- **Distinct per-post prompt.** Each post supplies its own art-theme prompt (`promptExtra`) so the
+  generations actually differ in palette and motif (e.g. post #2's builder / red→green build-loop
+  theme vs post #1's benchmark-data theme).
+- **Cross-post uniqueness registry (fail-loud).** `smoke/fixtures/art-registry.json` maps
+  `<postSlug> → sha256(art)`. Before a post ships its art, `assertArtUnique` (`smoke/art-registry.ts`)
+  throws if that exact art hash is already registered to a DIFFERENT post — so a silent cross-post
+  reuse can never ship. The #790 auto-fit/overflow gate stays intact on top of this.
+
 ## How it's built
 
 Each stage was built test-first: a test describing what the stage must do was
