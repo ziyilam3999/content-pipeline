@@ -31,6 +31,12 @@ export interface RenderImageOpts {
   bareArt?: boolean;
   genartDeps?: GenArtDeps;
   genartOpts?: GenArtOpts;
+  /**
+   * Called with the final auto-fit scale (1 = no shrink needed) after the card is laid
+   * out and proven to fit. Lets callers (e.g. the launch-card smoke) log "N/N tiles fit,
+   * scale=…" without changing the string return type used by the orchestrator slot.
+   */
+  onFit?: (scale: number) => void;
 }
 
 /** Decode a `data:<mime>;base64,<bytes>` URI to a Buffer. */
@@ -84,10 +90,110 @@ export async function renderImage(
       deviceScaleFactor: 1,
     });
     await page.setContent(html, { waitUntil: "networkidle" });
+
+    // AUTO-FIT: shrink the facts grid (via the card's --fit CSS knob) until every
+    // .fact tile AND the .cta/.repo fit inside the frame. Converts a silent bottom
+    // clip into either a clean fit or a loud throw. See fitCardToFrame() below.
+    const fitScale = await fitCardToFrame(page);
+    opts?.onFit?.(fitScale);
+
     await page.screenshot({ path: outPath });
   } finally {
     await browser.close();
   }
 
   return outPath;
+}
+
+/** The fit-loop tuning constants (also exported for tests). */
+export const FIT_FLOOR = 0.5; // never shrink below half-scale
+export const FIT_STEPS = 12; // max shrink iterations
+const FIT_DECAY = 0.92; // multiplicative shrink per step (0.92^12 ≈ 0.37, below the 0.5 floor)
+
+/** What the in-page overflow probe returns. The adapter decides fit/throw from it. */
+export interface FitMeasure {
+  /** Number of .fact tiles whose bottom edge exceeds the frame's inner box. */
+  overflowingFacts: number;
+  /** True if the .cta or .repo footer overflows the frame's inner box. */
+  footerOverflows: boolean;
+  /** The body inner-height boundary (frame height − bottom padding), in px. */
+  innerBottom: number;
+  /** The bottom edge of the lowest overflowing element (or last fact), in px. */
+  worstBottom: number;
+}
+
+/**
+ * Measure (in-page) whether the card's content overflows the frame's inner box. The
+ * boundary is the body's content-box bottom (frame height − bottom padding); anything
+ * whose bottom edge exceeds it would be clipped by `overflow: hidden`. A 1px slack
+ * absorbs sub-pixel rounding so a pixel-exact fit is not falsely flagged.
+ */
+export async function measureCardFit(page: import("playwright").Page): Promise<FitMeasure> {
+  // The callback runs IN THE BROWSER, so it uses DOM globals the node tsconfig lib doesn't declare.
+  // `doc` is the browser document, typed loosely to keep this file node-only (no `dom` lib needed).
+  return page.evaluate(() => {
+    const doc = (globalThis as unknown as { document: any }).document;
+    const getCS = (globalThis as unknown as { getComputedStyle: (e: any) => any }).getComputedStyle;
+    const SLACK = 1;
+    const body = doc.body;
+    const padBottom = parseFloat(getCS(body).paddingBottom) || 0;
+    const innerBottom = body.clientHeight - padBottom; // content-box bottom edge
+    const limit = innerBottom + SLACK;
+
+    let overflowingFacts = 0;
+    let worstBottom = 0;
+    doc.querySelectorAll(".fact").forEach((el: any) => {
+      const b = el.getBoundingClientRect().bottom;
+      worstBottom = Math.max(worstBottom, b);
+      if (b > limit) overflowingFacts += 1;
+    });
+
+    let footerOverflows = false;
+    doc.querySelectorAll(".cta, .repo").forEach((el: any) => {
+      const b = el.getBoundingClientRect().bottom;
+      worstBottom = Math.max(worstBottom, b);
+      if (b > limit) footerOverflows = true;
+    });
+
+    return { overflowingFacts, footerOverflows, innerBottom, worstBottom };
+  });
+}
+
+/**
+ * Progressively reduce the facts-grid scale (the card's `--fit` CSS variable) until the
+ * content fits the frame, re-measuring each step. Stops as soon as it fits. If it still
+ * overflows at the floor scale, THROWS naming how many tiles don't fit — turning a
+ * previously-silent bottom clip into a mechanical failure (prevention gate).
+ */
+export async function fitCardToFrame(page: import("playwright").Page): Promise<number> {
+  let scale = 1;
+  let measure = await measureCardFit(page);
+  if (measure.overflowingFacts === 0 && !measure.footerOverflows) return scale;
+
+  for (let step = 0; step < FIT_STEPS; step++) {
+    scale = Math.max(FIT_FLOOR, scale * FIT_DECAY);
+    await page.evaluate((s: number) => {
+      (globalThis as unknown as { document: any }).document.documentElement.style.setProperty(
+        "--fit",
+        String(s),
+      );
+    }, scale);
+    measure = await measureCardFit(page);
+    if (measure.overflowingFacts === 0 && !measure.footerOverflows) return scale;
+    if (scale <= FIT_FLOOR) break; // can't shrink further
+  }
+
+  // Still overflowing at the floor → loud failure instead of a silent clip.
+  if (measure.overflowingFacts > 0 || measure.footerOverflows) {
+    const parts: string[] = [];
+    if (measure.overflowingFacts > 0) parts.push(`${measure.overflowingFacts} fact tile(s)`);
+    if (measure.footerOverflows) parts.push("the cta/repo footer");
+    throw new Error(
+      `renderImage: card content overflows the frame at minimum fit scale ${scale.toFixed(3)} — ` +
+        `${parts.join(" and ")} fall below the frame inner-bottom ` +
+        `(${Math.round(measure.worstBottom)}px > ${Math.round(measure.innerBottom)}px). ` +
+        `Reduce the fact count or enlarge the frame.`,
+    );
+  }
+  return scale;
 }

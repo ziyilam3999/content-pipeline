@@ -35,8 +35,17 @@
  * worktree, COPY any paid renders to a durable path FIRST; a `git worktree remove` or a quarantine
  * `mv` will take the un-copied PNGs with it.
  *
- * Run: `npm run smoke:launch-card`        (SAFE — no paid call)
- *      `npm run smoke:launch-card:paid`   (PAID — ONE real nano-banana gen reused for all cards)
+ * ART CACHE (#790 — free layout re-renders): the PAID run also WRITES the raw nano-banana art to a
+ * cache pair — `out/review/lfah/image/_art-base.png` (the bytes) + `_art-base.datauri.b64` (the data
+ * URI it was reused as). On a LATER run, if that cache exists and LAUNCH_CARD_PAID is NOT forcing a
+ * regen, the cached art is REUSED (free) instead of the placeholder — so once one paid gen has run,
+ * re-rendering all the cards through a fixed/changed layout costs nothing. Override the cache path
+ * with LAUNCH_CARD_ART_CACHE=<png-path>. SAFE mode WITHOUT a cache stays the deterministic 1x1
+ * placeholder (no cache write, no paid call). LAUNCH_CARD_PAID=1 always re-gens AND refreshes the
+ * cache. The cache lives under the gitignored `out/` tree — runtime data, never committed.
+ *
+ * Run: `npm run smoke:launch-card`        (SAFE — no paid call; reuses cached art if present)
+ *      `npm run smoke:launch-card:paid`   (PAID — ONE real nano-banana gen reused for all cards + cache)
  *        Key from $GEMINI_API_KEY or macOS Keychain (service "GEMINI_API_KEY").
  */
 
@@ -57,6 +66,18 @@ const PAID = process.env.LAUNCH_CARD_PAID === "1";
 // is plenty (the densest card, the comparison, has 6 tiles). The 4:5 hero shows the full story.
 const MAX_FACTS_PER_CARD = 8;
 const MAX_FACTS_HERO = 18;
+
+/**
+ * The raw-art cache (#790). After ONE paid gen the art bytes + the data URI it was reused as are
+ * written here so later layout re-renders are FREE (no paid call). Default path lives under the
+ * gitignored out/ tree; override the PNG path with LAUNCH_CARD_ART_CACHE.
+ */
+function artCachePngPath(outDir: string): string {
+  return process.env.LAUNCH_CARD_ART_CACHE || path.join(outDir, "_art-base.png");
+}
+function artCacheDataUriPath(pngPath: string): string {
+  return pngPath.replace(/\.png$/i, "") + ".datauri.b64";
+}
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -171,22 +192,55 @@ export function launchCardSet(
   return LAUNCH_CARD_SET.map((card) => ({ card, spec: deriveCardSpec(master, card) }));
 }
 
+/** Decode a `data:<mime>;base64,<bytes>` data URI to its raw byte length. */
+function dataUriByteLength(dataUri: string): number {
+  return Buffer.from(dataUri.slice(dataUri.indexOf(",") + 1), "base64").length;
+}
+
 /**
- * Generate the shared background art ONCE. In PAID mode this is the single real nano-banana call
- * whose data URI is reused behind every info-card (one paid gen, N cards). In SAFE mode it returns
- * the deterministic placeholder — no model call, no spend.
+ * Generate the shared background art ONCE. Resolution order (#790):
+ *   1. PAID (LAUNCH_CARD_PAID=1) → the single real nano-banana call; its data URI is reused behind
+ *      every card AND written to the art cache so future runs are free.
+ *   2. SAFE + cache present → REUSE the cached real art (free, no model call) — so after one paid
+ *      gen, re-rendering the cards through a changed layout costs nothing.
+ *   3. SAFE + no cache → the deterministic 1x1 placeholder (no model call, no spend).
  */
-export async function generateArtOnce(master: ContentSpec, paid: boolean): Promise<string> {
-  if (!paid) return PLACEHOLDER_ART_DATA_URI;
+export async function generateArtOnce(
+  master: ContentSpec,
+  paid: boolean,
+  outDir: string,
+): Promise<string> {
+  const cachePng = artCachePngPath(outDir);
+  const cacheUri = artCacheDataUriPath(cachePng);
+
+  if (!paid) {
+    // Reuse cached real art when available (free); else deterministic placeholder.
+    if (fs.existsSync(cacheUri) && fs.existsSync(cachePng)) {
+      const dataUri = fs.readFileSync(cacheUri, "utf8").trim();
+      const bytes = dataUriByteLength(dataUri);
+      console.log(`  art-cache: REUSE ${cachePng} (${(bytes / 1024).toFixed(1)} KB, free — no paid call)`);
+      return dataUri;
+    }
+    console.log("  art-cache: none → deterministic 1x1 placeholder (SAFE, no paid call)");
+    return PLACEHOLDER_ART_DATA_URI;
+  }
+
   console.log("→ generating ONE real creative background via nano-banana (PAID Gemini)…");
   // Generous per-attempt timeout: nano-banana image gen can run well past the 120s default.
   const art = await generateArt(master, undefined, { timeoutMs: 240_000 }); // primary-only: throws on failure
   console.log("  " + art.pathLine);
-  const artBytes = Buffer.from(art.dataUri.slice(art.dataUri.indexOf(",") + 1), "base64").length;
+  const artBytes = dataUriByteLength(art.dataUri);
   if (artBytes < 5000) {
     throw new Error(`SMOKE FAIL: nano-banana art suspiciously small (${artBytes} bytes)`);
   }
-  console.log(`  art: ${(artBytes / 1024).toFixed(1)} KB (reused for all cards — single paid call)`);
+  // Write the cache so later layout re-renders are FREE.
+  fs.mkdirSync(path.dirname(cachePng), { recursive: true });
+  fs.writeFileSync(cachePng, Buffer.from(art.dataUri.slice(art.dataUri.indexOf(",") + 1), "base64"));
+  fs.writeFileSync(cacheUri, art.dataUri);
+  console.log(
+    `  art: ${(artBytes / 1024).toFixed(1)} KB (reused for all cards — single paid call); ` +
+      `art-cache: WROTE ${cachePng} + ${cacheUri}`,
+  );
   return art.dataUri;
 }
 
@@ -236,11 +290,24 @@ async function renderCard(
   fileName: string,
   artDataUri: string,
   maxFacts: number,
-): Promise<{ outPath: string; bytes: number }> {
+): Promise<{ outPath: string; bytes: number; fitScale: number }> {
   const caller: ArtCaller = async () => artDataUri; // fan the single art out — no further generation
+  // The render path now auto-fits the card to the frame and THROWS if it can't (#790). Capture the
+  // final fit scale so the smoke can confirm "N/N tiles fit, scale=…". A throw here = a real clip.
+  let fitScale = 1;
   const outPath = await renderImage(
     { spec, copy: copyFor(spec) },
-    { generative: true, aspect, outDir, fileName, maxFacts, genartDeps: { caller } },
+    {
+      generative: true,
+      aspect,
+      outDir,
+      fileName,
+      maxFacts,
+      genartDeps: { caller },
+      onFit: (s) => {
+        fitScale = s;
+      },
+    },
   );
   const buf = fs.readFileSync(outPath);
   if (!isPng(buf)) throw new Error(`SMOKE FAIL: ${fileName} is not a valid PNG`);
@@ -256,7 +323,7 @@ async function renderCard(
   if (buf.length < 5 * 1024) {
     throw new Error(`SMOKE FAIL: ${fileName} suspiciously small (${buf.length} bytes, want >5KB).`);
   }
-  return { outPath, bytes: buf.length };
+  return { outPath, bytes: buf.length, fitScale };
 }
 
 async function main(): Promise<void> {
@@ -272,8 +339,9 @@ async function main(): Promise<void> {
     })`,
   );
 
-  // ONE generative source reused behind EVERY card → at most ONE paid call.
-  const artDataUri = await generateArtOnce(master, PAID);
+  // ONE generative source reused behind EVERY card → at most ONE paid call. May reuse cached real
+  // art (free) when present and not force-regenerating; otherwise placeholder in SAFE mode (#790).
+  const artDataUri = await generateArtOnce(master, PAID, outDir);
 
   const written: { name: string; outPath: string; bytes: number }[] = [];
 
@@ -293,10 +361,21 @@ async function main(): Promise<void> {
     console.log(`  1:1 ${fileName}: ${(bytes / 1024).toFixed(1)} KB → ${outPath}`);
   }
 
-  // The 4:5 hero/Threads card — the whole honest n=13 story on one card.
+  // The 4:5 hero/Threads card — the whole honest n=13 story on one card. The render path auto-fits
+  // every tile into the frame and THROWS on a residual clip (#790), so reaching this line at all
+  // means the hero fits. We additionally assert the punchline "55%" tile is among the selected tiles.
   {
     const fileName = "card-over-art-4x5.png";
-    const { outPath, bytes } = await renderCard(
+    const heroTiles = selectFacts(master, MAX_FACTS_HERO);
+    const COST_SAVING_LABEL = "cost saving vs full-cloud (same chain)";
+    const has55 = heroTiles.some((f) => f.label === COST_SAVING_LABEL && /55%/.test(f.value));
+    if (!has55) {
+      throw new Error(
+        `SMOKE FAIL: 4:5 hero is missing the "${COST_SAVING_LABEL}" 55% punchline tile ` +
+          `among its ${heroTiles.length} selected tiles.`,
+      );
+    }
+    const { outPath, bytes, fitScale } = await renderCard(
       master,
       "4:5",
       outDir,
@@ -306,6 +385,11 @@ async function main(): Promise<void> {
     );
     written.push({ name: fileName, outPath, bytes });
     console.log(`  4:5 ${fileName}: ${(bytes / 1024).toFixed(1)} KB → ${outPath}`);
+    // The render threw if any tile clipped, so this confirms ALL of them fit, including the 55% tile.
+    console.log(
+      `  hero fit: ${heroTiles.length}/${heroTiles.length} tiles within frame ` +
+        `(incl. the ${COST_SAVING_LABEL} 55% tile), scale=${fitScale.toFixed(3)}`,
+    );
   }
 
   console.log(

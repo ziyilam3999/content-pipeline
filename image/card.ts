@@ -64,6 +64,15 @@ export function buildCardHtml(
 <head>
 <meta charset="utf-8">
 <style>
+/*
+ * --fit is the AUTO-FIT KNOB read by the render adapter (adapters/image.ts).
+ * It is a multiplier on the facts-grid type scale + spacing. Default 1 = no-op
+ * (rendered layout identical to before this hook existed). The adapter measures
+ * overflow after setContent and progressively lowers --fit until every .fact tile
+ * AND the .cta/.repo fit inside the frame; if it cannot, it throws (no silent clip).
+ * Only the FACTS GRID scales — the header (name/summary) stays readable.
+ */
+:root { --fit: 1; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   width: ${width}px;
@@ -78,11 +87,11 @@ body {
 }
 .name { font-size: 48px; font-weight: 700; }
 .summary { font-size: 28px; margin-top: 16px; opacity: 0.85; }
-.facts { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 40px; }
-.fact { background: rgba(255,255,255,0.12); padding: 24px; border-radius: 12px; min-width: 200px; }
-.label { display: block; font-size: 18px; opacity: 0.7; }
-.value { display: block; font-size: 48px; font-weight: 700; }
-.scope { display: block; font-size: 16px; opacity: 0.6; }
+.facts { display: flex; flex-wrap: wrap; gap: calc(24px * var(--fit)); margin-top: calc(40px * var(--fit)); }
+.fact { background: rgba(255,255,255,0.12); padding: calc(24px * var(--fit)); border-radius: 12px; min-width: calc(200px * var(--fit)); }
+.label { display: block; font-size: calc(18px * var(--fit)); opacity: 0.7; }
+.value { display: block; font-size: calc(48px * var(--fit)); font-weight: 700; }
+.scope { display: block; font-size: calc(16px * var(--fit)); opacity: 0.6; }
 .cta { margin-top: auto; font-size: 28px; font-weight: 600; }
 .repo { font-size: 20px; opacity: 0.7; margin-top: 8px; }
 </style>
