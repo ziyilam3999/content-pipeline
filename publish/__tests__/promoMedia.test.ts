@@ -23,6 +23,9 @@ import {
   assertHeroAspect,
   detectAspectTag,
   checkVideoFirst,
+  assertPostAssemblyFidelity,
+  assertSubmittedOrderMatchesIntent,
+  PostAssembly,
 } from "../promoMedia";
 
 const complete: PromoMediaSet = {
@@ -333,5 +336,187 @@ describe("assertHeroAspect (#794 hero-aspect fidelity)", () => {
     expect(() => assertHeroAspect(`${DEMO_DIR}/demo.mp4`, "9x16", "X tweet-1 hook")).toThrow(
       /carries no recognizable aspect tag/,
     );
+  });
+});
+
+// ── CONSOLIDATED publish-assembly fidelity gate (#797 — the ONE funnel) ────
+// The publish assembly previously called the fidelity checks ad-hoc and SEPARATELY, so it was
+// trivial to wire one and forget another — the failure mode behind THREE misses this session
+// (Threads dropped the video #792, the thread went out of order #793, the wrong aspect was posted
+// #794). `assertPostAssemblyFidelity` runs ALL the hard checks in ONE call. These tests prove it
+// THROWS on EACH violation form individually and is a NO-OP on a complete, correctly-ordered
+// assembly. The hero video paths use the renderer's -<tag> filename convention so the hero-aspect
+// check can read the aspect without probing pixels.
+const HERO_9X16_VID = `${DEMO_DIR}/demo-9x16.mp4`;
+const HERO_1X1_VID = `${DEMO_DIR}/demo-1x1.mp4`;
+const HERO_4X5_VID = `${DEMO_DIR}/demo-4x5.mp4`;
+const CARD_OVER_ART = "out/review/lfah/image/card-over-art-4x5.png";
+
+/** A fully-correct X thread: hook=9:16 video, body=cards, no mixing, video leads. */
+function correctXThread(): PromoThread {
+  return {
+    units: [
+      { text: ["Hook tweet."], stills: [], videos: [{ path: HERO_9X16_VID }] },
+      cardedUnit(2),
+      cardedUnit(3),
+    ],
+  };
+}
+
+/** A fully-correct Threads post: 9:16 video leads (media[0]), card present, mixing allowed. */
+function correctThreadsPost(): PlatformPrimaryPost {
+  return {
+    label: "Threads",
+    text: ["We moved the heavy file-editing role onto a LOCAL model — launch data."],
+    media: [
+      { path: HERO_9X16_VID, kind: "video" },
+      { path: CARD_OVER_ART, kind: "card-over-art" },
+    ],
+    mixAllowed: true,
+  };
+}
+
+/** A fully-correct assembly: correct X thread + correct Threads post + 9:16 hero videos. */
+function correctAssembly(): PostAssembly {
+  return {
+    xThread: correctXThread(),
+    platformPosts: [correctThreadsPost()],
+    heroVideos: [
+      { videoPath: HERO_9X16_VID, label: "X tweet-1 hook" },
+      { videoPath: HERO_9X16_VID, label: "Threads hero" },
+    ],
+    heroAspectTag: "9x16",
+  };
+}
+
+describe("assertPostAssemblyFidelity (#797 — the ONE consolidated funnel)", () => {
+  it("is a NO-OP on a complete, correctly-ordered assembly", () => {
+    expect(() => assertPostAssemblyFidelity(correctAssembly())).not.toThrow();
+  });
+
+  it("THROWS on a video-LESS Threads post (the #792 dropped-video miss)", () => {
+    const a = correctAssembly();
+    a.platformPosts = [
+      {
+        label: "Threads",
+        text: ["Card-only Threads post — no video."],
+        media: [{ path: CARD_OVER_ART, kind: "card-over-art" }],
+        mixAllowed: true,
+      },
+    ];
+    expect(() => assertPostAssemblyFidelity(a)).toThrow(/Threads does not lead with video/);
+  });
+
+  it("THROWS when a worded thread unit carries NO media", () => {
+    const a = correctAssembly();
+    a.xThread = {
+      units: [
+        { text: ["Hook tweet."], stills: [], videos: [{ path: HERO_9X16_VID }] },
+        { text: ["Tweet 2 — bare, no media."], stills: [] },
+        cardedUnit(3),
+      ],
+    };
+    expect(() => assertPostAssemblyFidelity(a)).toThrow(/unit 2 media-less/);
+  });
+
+  it("THROWS when a unit mixes image+video on the X thread (the EITHER/OR constraint)", () => {
+    const a = correctAssembly();
+    a.xThread = {
+      units: [
+        {
+          text: ["Hook tweet — illegally carries BOTH an image and a video."],
+          stills: [{ path: "out/review/lfah/image/card-tweet-1.png", kind: "card-over-art" }],
+          videos: [{ path: HERO_9X16_VID }],
+        },
+        cardedUnit(2),
+      ],
+    };
+    expect(() => assertPostAssemblyFidelity(a)).toThrow(/unit 1 mixes image\+video/);
+  });
+
+  it("THROWS naming the aspect when the hero video is 1:1 (square) — the #794 miss", () => {
+    const a = correctAssembly();
+    a.heroVideos = [{ videoPath: HERO_1X1_VID, label: "X tweet-1 hook" }];
+    expect(() => assertPostAssemblyFidelity(a)).toThrow(
+      /Hero-aspect FIDELITY violation — X tweet-1 hook leads with 1:1 \(1080x1080, square\)/,
+    );
+  });
+
+  it("THROWS naming the aspect when the hero video is the secondary 4:5 cut", () => {
+    const a = correctAssembly();
+    a.heroVideos = [{ videoPath: HERO_4X5_VID, label: "Threads hero" }];
+    expect(() => assertPostAssemblyFidelity(a)).toThrow(/leads with 4:5 \(1080x1350, portrait\)/);
+  });
+
+  it("THROWS when the SUBMITTED media array is out of order (image before the lead video) — #793", () => {
+    const a = correctAssembly();
+    // Card before the video on a video-capable Threads post → submit-order does not lead with video.
+    a.platformPosts = [
+      {
+        label: "Threads",
+        text: ["Threads post with the card assembled BEFORE the video."],
+        media: [
+          { path: CARD_OVER_ART, kind: "card-over-art" },
+          { path: HERO_9X16_VID, kind: "video" },
+        ],
+        mixAllowed: true,
+      },
+    ];
+    expect(() => assertPostAssemblyFidelity(a)).toThrow(/does not lead with video/);
+  });
+
+  it("covers EVERY platform post in the assembly (a second platform's miss still throws)", () => {
+    const a = correctAssembly();
+    a.platformPosts = [
+      correctThreadsPost(),
+      {
+        label: "LinkedIn",
+        text: ["A second platform whose post drops the video."],
+        media: [{ path: CARD_OVER_ART, kind: "card-over-art" }],
+        mixAllowed: true,
+      },
+    ];
+    expect(() => assertPostAssemblyFidelity(a)).toThrow(/LinkedIn does not lead with video/);
+  });
+});
+
+describe("assertSubmittedOrderMatchesIntent (#793 — assembly-layer order fidelity)", () => {
+  it("is a NO-OP when the video leads (media[0])", () => {
+    expect(() => assertSubmittedOrderMatchesIntent(correctThreadsPost())).not.toThrow();
+  });
+
+  it("THROWS naming the index when the video is present but NOT first", () => {
+    const cardLeads: PlatformPrimaryPost = {
+      label: "Threads",
+      text: ["Card assembled before the video."],
+      media: [
+        { path: CARD_OVER_ART, kind: "card-over-art" },
+        { path: HERO_9X16_VID, kind: "video" },
+      ],
+      mixAllowed: true,
+    };
+    expect(() => assertSubmittedOrderMatchesIntent(cardLeads)).toThrow(
+      /Order-intent FIDELITY violation \(#793\).*the VIDEO is at index 1/,
+    );
+  });
+
+  it("THROWS when the post carries no media at all", () => {
+    const empty: PlatformPrimaryPost = {
+      label: "Threads",
+      text: ["No media."],
+      media: [],
+      mixAllowed: true,
+    };
+    expect(() => assertSubmittedOrderMatchesIntent(empty)).toThrow(/carries no media/);
+  });
+
+  it("is a NO-OP (not an order miss) when the post has NO video — completeness is a separate gate", () => {
+    const noVideo: PlatformPrimaryPost = {
+      label: "Threads",
+      text: ["Card-only — no video at all."],
+      media: [{ path: CARD_OVER_ART, kind: "card-over-art" }],
+      mixAllowed: true,
+    };
+    expect(() => assertSubmittedOrderMatchesIntent(noVideo)).not.toThrow();
   });
 });
