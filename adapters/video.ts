@@ -215,6 +215,17 @@ export interface RenderDemoOpts {
   /** #775 — real per-character end-times (ElevenLabs alignment) that sync captions to the voice. */
   charEndTimesSec?: number[];
   renderAttempts?: number;
+  /**
+   * #805 — OPTIONAL animated generative-art background (builder demo). Path to a local image
+   * (the post-2 card art, `_art-base-post2.png`) — embedded as a data URI and rendered FULL-FRAME
+   * with a slow Ken-Burns drift under a dark scrim so the foreground stays legible. Omitted ->
+   * the solid `#0a0f1e` background (unchanged behaviour). Within-post art reuse only (#802 guard).
+   */
+  backgroundImagePath?: string;
+  /** #805 — dark-scrim opacity over the moving art (0..1). Default 0.7 (legibility-first; dim MORE when unsure). */
+  backgroundScrimOpacity?: number;
+  /** #805 — optional CSS blur (px) applied to the art. Default 0 (none). */
+  backgroundBlurPx?: number;
 }
 
 /**
@@ -384,6 +395,11 @@ export async function renderBuilderDemoVideo(spec: ContentSpec, opts?: RenderDem
     height,
     fps,
     durationInFrames,
+    // #805 — animated generative-art background (optional). Embed the image as a data URI
+    // (Remotion's Chromium refuses arbitrary file:// resources). Omitted -> solid bg.
+    backgroundSrc: opts?.backgroundImagePath ? toDataUri(opts.backgroundImagePath) : undefined,
+    backgroundScrimOpacity: opts?.backgroundScrimOpacity,
+    backgroundBlurPx: opts?.backgroundBlurPx,
   };
 
   const outDir = opts?.outDir ?? path.join(process.cwd(), "out", "video");

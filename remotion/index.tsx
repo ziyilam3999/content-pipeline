@@ -786,7 +786,63 @@ interface BuilderProps {
   height: number;
   fps: number;
   durationInFrames: number;
+  /**
+   * #805 — OPTIONAL animated generative-art background. When `backgroundSrc` is set (a data URI
+   * for the post-2 card art), the solid `#0a0f1e` fill is replaced by that art rendered FULL-FRAME
+   * (`objectFit: cover`, per-aspect, never letterboxed — #765) under a slow Ken-Burns drift
+   * (deterministic scale ~1.0->~1.12 + a few-percent pan via `interpolate(useCurrentFrame())`),
+   * then DIMMED by a dark `#0a0f1e` scrim at `backgroundScrimOpacity` so the foreground UI +
+   * caption band stay legible ("subtle living texture behind the same dark UI"). Omitted/empty ->
+   * behaviour is byte-identical to today (solid bg). See `AnimatedArtBackground`.
+   */
+  backgroundSrc?: string;
+  /** #805 — dark-scrim opacity over the moving art (0..1). Higher = dimmer art / more legible. Default 0.7. */
+  backgroundScrimOpacity?: number;
+  /** #805 — optional CSS blur (px) on the art to further calm the busy infographic. Default 0 (none). */
+  backgroundBlurPx?: number;
 }
+
+/**
+ * #805 — the animated generative-art background for the builder demo. The square card art
+ * (`src`) is rendered full-frame with `objectFit: cover` (fills 9:16 / 1:1 / 4:5 alike — #765),
+ * driven by a SLOW, DETERMINISTIC Ken-Burns move: scale eases 1.0 -> ~1.12 and a gentle
+ * few-percent pan across the WHOLE clip (single monotonic interpolation over [0, durationInFrames]
+ * -> no abrupt loop seam). A dark `#0a0f1e` scrim at `scrimOpacity` sits ON TOP of the art so the
+ * foreground content + caption band keep strong contrast. The over-scale (>=1.12) also guarantees
+ * the panned art never reveals an edge. Legibility-first: when in doubt the caller dims MORE.
+ */
+const AnimatedArtBackground: React.FC<{
+  src: string;
+  scrimOpacity: number;
+  blurPx: number;
+  durationInFrames: number;
+}> = ({ src, scrimOpacity, blurPx, durationInFrames }) => {
+  const frame = useCurrentFrame();
+  const span = Math.max(1, durationInFrames - 1);
+  const opts = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
+  // Slow continuous zoom + drift over the full clip. Over-scale base 1.12 keeps the panned
+  // edges off-frame at the widest pan; the pan is a few percent of the frame.
+  const scale = interpolate(frame, [0, span], [1.0, 1.12], opts);
+  const panX = interpolate(frame, [0, span], [-2.2, 2.2], opts); // % of frame width
+  const panY = interpolate(frame, [0, span], [1.6, -1.6], opts); // % of frame height
+  return (
+    <AbsoluteFill style={{ backgroundColor: BG, overflow: "hidden" }}>
+      <Img
+        src={src}
+        style={{
+          position: "absolute",
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          transform: `scale(${scale}) translate(${panX}%, ${panY}%)`,
+          transformOrigin: "center center",
+          filter: blurPx > 0 ? `blur(${blurPx}px)` : undefined,
+        }}
+      />
+      <AbsoluteFill style={{ backgroundColor: BG, opacity: scrimOpacity }} />
+    </AbsoluteFill>
+  );
+};
 
 const RED = "#f87171"; // failing test
 const GREEN = LANE_COLOR.local; // passing / local / free
@@ -1191,8 +1247,22 @@ const BuilderDemoVideo: React.FC<BuilderProps> = (props) => {
     cta: <BCtaScene cta={props.cta} repoUrl={props.repoUrl} layout={layout} />,
   };
   const captions = props.captions ?? [];
+  // #805 — animated generative-art background mode: when a background image is supplied, the
+  // solid fill becomes the slow-drifting, dimmed card art (legibility preserved by the scrim).
+  // Omitted -> the original solid `#0a0f1e` fill (byte-identical to pre-#805 behaviour).
+  const hasAnimatedBg = typeof props.backgroundSrc === "string" && props.backgroundSrc.length > 0;
+  const scrimOpacity = props.backgroundScrimOpacity ?? 0.7;
+  const blurPx = props.backgroundBlurPx ?? 0;
   return (
     <AbsoluteFill style={{ backgroundColor: BG }}>
+      {hasAnimatedBg ? (
+        <AnimatedArtBackground
+          src={props.backgroundSrc!}
+          scrimOpacity={scrimOpacity}
+          blurPx={blurPx}
+          durationInFrames={props.durationInFrames}
+        />
+      ) : null}
       {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
       {scenes.map((s) => {
         const from = Math.round(s.fromSec * fps);
@@ -1305,6 +1375,9 @@ const Root: React.FC = () => {
           height: 1920,
           fps: 30,
           durationInFrames: 2700,
+          backgroundSrc: undefined,
+          backgroundScrimOpacity: 0.7,
+          backgroundBlurPx: 0,
         }}
         calculateMetadata={({ props }) => ({
           durationInFrames: props.durationInFrames,
