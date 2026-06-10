@@ -1,6 +1,19 @@
 /**
  * Promo-media completeness gate (#787 → #789 → #792 PLATFORM-AGNOSTIC video-first PRINCIPLE).
  *
+ * THE ONE PUBLISH-ASSEMBLY FIDELITY GATE (#797): `assertPostAssemblyFidelity(assembly)` is THE
+ * single funnel a publish-assembly MUST call. It runs ALL the hard checks in one call so a caller
+ * can NEVER wire one and forget another (the exact failure mode behind THREE misses this session:
+ * Threads dropped the video #792, the thread published out of order #793, the wrong video aspect
+ * was posted #794). It enforces, in one place: (a) video-leads + per-unit cards + no-mixing over
+ * EVERY platform post/thread (`assertPromoMediaComplete`); (b) hero-aspect — every lead video is the
+ * configured full-bleed phone cut (`assertHeroAspect`, default 9:16 — never a 1:1/4:5 secondary);
+ * (c) order-intent — each platform post's SUBMITTED media array order has the video at index 0 (the
+ * assembly-layer realization of the #793 caveat — we cannot read back the LIVE published order, but
+ * we CAN and MUST assert the order we submit). The granular primitives below stay exported (other
+ * code/tests use them) — #797 ADDS the funnel, it does not delete the primitives. `checkVideoFirst`
+ * stays a SOFT advisory (logs, never throws) and is NOT folded into this hard gate.
+ *
  * THE DURABLE PRINCIPLE (#792 — generalized from the X-thread SHAPE that #789 over-fitted to):
  *   EVERY platform's PRIMARY worded post LEADS WITH VIDEO. Native video is the highest-attention
  *   medium (~10x engagement) and is native on X, Threads, and LinkedIn — so the strongest stop-power
@@ -438,5 +451,120 @@ export function assertHeroAspect(
         `(#794: the square 1:1 was posted as the hero and the 9:16 full-screen cut we built went ` +
         `nowhere). Select the demo-${expectedTag}.mp4 render for the lead slot. Got "${videoPath}".`,
     );
+  }
+}
+
+// ── CONSOLIDATED publish-assembly fidelity gate (#797) ───────────────────
+//
+// THE PROBLEM: the publish assembly called the three fidelity checks ad-hoc and SEPARATELY
+// (`assertPromoMediaComplete(xThread)`, `assertPromoMediaComplete(threadsPost)`,
+// `assertHeroAspect(xHook)`, `assertHeroAspect(threadsHero)`, …). Nothing forced all of them to run
+// together, so it was trivial to wire one and forget another — the exact failure mode behind THREE
+// publish-assembly fidelity misses this session (Threads dropped the video #792, the thread went out
+// of order #793, the wrong video aspect was posted #794).
+//
+// THE FIX: ONE entry point — `assertPostAssemblyFidelity(assembly)` — that runs ALL the hard checks
+// in a single call. A publish assembly makes ONE call instead of N scattered ones, so a caller can
+// NEVER forget a check. It funnels the existing primitives (which stay exported); it does not
+// duplicate their logic. `checkVideoFirst` is NOT folded in — it stays the SOFT advisory it is.
+
+/**
+ * A single platform's lead VIDEO whose aspect the hero-aspect gate must verify (#794). `videoPath`
+ * is the lead/hero video file (aspect read from its filename convention); `label` names the slot in
+ * the error message (e.g. "X tweet-1 hook", "Threads hero").
+ */
+export interface HeroVideoRef {
+  videoPath: string;
+  label: string;
+}
+
+/**
+ * The full publish assembly handed to the ONE fidelity gate (#797). It carries EVERYTHING the gate
+ * needs so a caller cannot omit a check by forgetting an argument:
+ *  - `xThread`: the X thread (`PromoThread`) — the X-launch realization (hook=video, body=cards).
+ *  - `platformPosts`: the platform PRIMARY posts (`PlatformPrimaryPost[]`) — Threads/LinkedIn/any
+ *    future platform. The gate runs the per-platform video-first invariant over EVERY entry, so a
+ *    new platform added here is automatically covered (no per-platform wiring to forget).
+ *  - `heroVideos`: every lead/hero VIDEO across the assembly whose aspect must be the hero cut —
+ *    the X hook video AND each platform post's lead video. The caller lists them so the gate need
+ *    not guess which slot is the hero on each shape.
+ *  - `heroAspectTag`: the configured hero aspect tag (default `"9x16"` — from
+ *    `CONFIG.publish.heroVideoAspect`, the full-bleed phone cut). Every hero video must match it.
+ */
+export interface PostAssembly {
+  xThread: PromoThread;
+  platformPosts: PlatformPrimaryPost[];
+  heroVideos: HeroVideoRef[];
+  heroAspectTag?: AspectTag;
+}
+
+/**
+ * Assert the SUBMITTED media-array ORDER of a platform primary post matches intent — the lead
+ * (index 0) is the VIDEO (#793, realized at the ASSEMBLY layer). THROWS naming the platform when an
+ * image precedes the lead video on a video-capable post.
+ *
+ * WHY a distinct check (vs `assertPromoMediaComplete`'s media[0]-is-video rule): #793 is an ORDER
+ * fidelity concern, not merely a completeness one. We CANNOT read back the LIVE published order
+ * (Typefully exposes no per-tweet URLs — that read-back stays deferred to #793). But we CAN and MUST
+ * assert the order we SUBMIT carries the video first, so a scrambled submit-order is rejected before
+ * any upload. This makes the assembly-layer half of #793 explicit and independently testable.
+ */
+export function assertSubmittedOrderMatchesIntent(post: PlatformPrimaryPost): void {
+  const label = post?.label ?? "platform post";
+  const media = Array.isArray(post?.media) ? post.media : [];
+  if (media.length === 0) {
+    throw new Error(
+      `Order-intent FIDELITY violation (#793) — ${label} carries no media, so the SUBMITTED order ` +
+        `cannot lead with the video. Assemble the lead/hero video at media[0].`,
+    );
+  }
+  const videoIndex = media.findIndex((m) => m?.kind === "video");
+  if (videoIndex < 0) {
+    // No video at all — a completeness concern owned by assertPromoMediaComplete; not an order miss.
+    return;
+  }
+  if (media[0]?.kind !== "video") {
+    throw new Error(
+      `Order-intent FIDELITY violation (#793) — ${label} SUBMITTED media array is out of intended ` +
+        `order: the lead (index 0) is "${media[0]?.kind}" but the VIDEO is at index ${videoIndex}. ` +
+        `The video MUST be assembled FIRST (we cannot read back the LIVE published order, so the ` +
+        `SUBMITTED order is the only order-intent we can enforce). Move the hero video to media[0].`,
+    );
+  }
+}
+
+/**
+ * THE ONE publish-assembly fidelity gate (#797). Run this SINGLE call at the publish-assembly
+ * boundary INSTEAD of the scattered `assertPromoMediaComplete` / `assertHeroAspect` calls — it runs
+ * ALL the hard checks together so a caller can NEVER forget one. THROWS (with a clear, specific
+ * message naming which check failed) on any violation of:
+ *
+ *  (a) VIDEO-LEADS + PER-UNIT CARDS + NO-MIXING — `assertPromoMediaComplete` over the X thread AND
+ *      every platform primary post (Threads/LinkedIn/any future platform in `platformPosts`).
+ *  (b) HERO-ASPECT (#794) — every lead/hero video listed in `heroVideos` is the configured
+ *      `heroAspectTag` (default `"9x16"`, the full-bleed phone cut) via `assertHeroAspect` — never a
+ *      square 1:1 or secondary 4:5.
+ *  (c) ORDER-INTENT (#793, assembly-layer) — each platform post's SUBMITTED media array leads with
+ *      the video at index 0 via `assertSubmittedOrderMatchesIntent`.
+ *
+ * `checkVideoFirst` is intentionally NOT called here — it stays a SOFT advisory the caller logs.
+ */
+export function assertPostAssemblyFidelity(assembly: PostAssembly): void {
+  const heroTag: AspectTag = assembly?.heroAspectTag ?? "9x16";
+
+  // (a) video-leads + per-unit cards + no-mixing — over the X thread AND every platform post.
+  assertPromoMediaComplete(assembly.xThread);
+  for (const post of assembly.platformPosts ?? []) {
+    assertPromoMediaComplete(post);
+  }
+
+  // (c) order-intent — each platform post's SUBMITTED media leads with the video (#793).
+  for (const post of assembly.platformPosts ?? []) {
+    assertSubmittedOrderMatchesIntent(post);
+  }
+
+  // (b) hero-aspect — every lead/hero video across the assembly is the configured phone cut (#794).
+  for (const hero of assembly.heroVideos ?? []) {
+    assertHeroAspect(hero.videoPath, heroTag, hero.label);
   }
 }

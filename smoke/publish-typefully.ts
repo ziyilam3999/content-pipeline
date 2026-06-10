@@ -47,8 +47,7 @@ import {
   type DraftPost,
 } from "../adapters/typefully";
 import {
-  assertPromoMediaComplete,
-  assertHeroAspect,
+  assertPostAssemblyFidelity,
   checkVideoFirst,
   type AspectTag,
   type PromoThread,
@@ -248,26 +247,31 @@ async function main() {
     );
   });
 
-  // ── Run the layout gate on the REAL assembled draft (both modes, before any network) ──
+  // ── ONE publish-assembly fidelity gate (#797) on the REAL assembled draft (both modes, before
+  // any network). This SINGLE call replaces the previously-scattered assertPromoMediaComplete /
+  // assertHeroAspect calls — so a check can NEVER be wired-one-forget-another (the failure mode
+  // behind #792 video-dropped, #793 out-of-order, #794 wrong-aspect). It funnels: (a) video-leads +
+  // per-unit cards + no-mixing over the X thread AND the Threads post; (b) hero-aspect — every lead
+  // video is the full-bleed 9:16 phone cut (#794); (c) order-intent — each platform post's SUBMITTED
+  // media leads with the video (#793, assembly-layer half).
   const promoThread = buildPromoThread(xThread, slots);
   const threadsPost = buildThreadsPrimaryPost();
-  assertPromoMediaComplete(promoThread); // throws if the X thread violates the canonical layout
-  assertPromoMediaComplete(threadsPost); // throws unless the Threads post LEADS WITH VIDEO + has a card
-  console.log(
-    "\nassertPromoMediaComplete: PASS (X thread + Threads post satisfy the video-first principle)",
-  );
-
-  // ── #794 hero-aspect FIDELITY gate — the lead video of each phone-first platform MUST be the
-  // full-bleed 9:16 phone cut (throws on a square 1:1 / secondary 4:5 hero). This is the gate the
-  // #792 video-first check could NOT provide: it asserts WHICH aspect leads, not merely that a video
-  // leads. The X hook (tweet 1) and the Threads lead (media[0]) are both checked.
   const xHookPath = slots[0].path; // X tweet-1 hook video
   const threadsHeroPath = threadsPost.media[0].path; // Threads lead/hero video
-  assertHeroAspect(xHookPath, HERO_ASPECT_TAG, "X tweet-1 hook");
-  assertHeroAspect(threadsHeroPath, HERO_ASPECT_TAG, "Threads hero");
+  assertPostAssemblyFidelity({
+    xThread: promoThread,
+    platformPosts: [threadsPost],
+    heroVideos: [
+      { videoPath: xHookPath, label: "X tweet-1 hook" },
+      { videoPath: threadsHeroPath, label: "Threads hero" },
+    ],
+    heroAspectTag: HERO_ASPECT_TAG,
+  });
   console.log(
-    `hero-aspect fidelity: PASS — X tweet-1 hook video = ${path.basename(xHookPath)} AND ` +
-      `Threads hero = ${path.basename(threadsHeroPath)} (both full-bleed ${CONFIG.publish.heroVideoAspect} phone cut, #794) ✓`,
+    `\nassertPostAssemblyFidelity: PASS (#797 — ONE gate) — X thread + Threads post lead with video, ` +
+      `carry per-unit cards, no mixing; both lead videos are the full-bleed ${CONFIG.publish.heroVideoAspect} ` +
+      `phone cut (X hook = ${path.basename(xHookPath)}, Threads hero = ${path.basename(threadsHeroPath)}); ` +
+      `each platform post's SUBMITTED media leads with the video ✓`,
   );
   console.log(
     `Threads lead media: ${threadsPost.media[0].kind} (${path.basename(threadsPost.media[0].path)}) — video leads ✓`,
