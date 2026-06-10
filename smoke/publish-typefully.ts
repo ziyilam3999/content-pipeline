@@ -5,11 +5,17 @@
  * THE PRINCIPLE (#792, baked in publish/promoMedia.ts, doctrine in README): EVERY platform's primary
  * worded post LEADS WITH VIDEO (highest-attention medium, ~10x engagement) and every worded unit ALSO
  * carries its card-over-art infographic. Per-platform realization:
- *   - X (no image+video mixing in one tweet): SPLIT into a video HOOK tweet (demo-1x1.mp4) + card
- *     body tweets (card-tweet-{2..5}.png), CTA last. Modeled as a PromoThread.
+ *   - X (no image+video mixing in one tweet): SPLIT into a video HOOK tweet (demo-9x16.mp4, the
+ *     full-bleed 9:16 phone HERO — #794) + card body tweets (card-tweet-{2..5}.png), CTA last.
+ *     Modeled as a PromoThread.
  *   - Threads (mixed-media carousel SUPPORTED — verified 2026-06-10): a SINGLE post whose media is
- *     ORDERED [demo-4x5.mp4 (HERO/lead), card-over-art-4x5.png (second)]. VIDEO LEADS, CARD PRESENT.
- *     Modeled as a PlatformPrimaryPost so the gate can require media[0] to be the video.
+ *     ORDERED [demo-9x16.mp4 (HERO/lead, full-bleed 9:16 — #794), card-over-art-4x5.png (second)].
+ *     VIDEO LEADS, CARD PRESENT. Modeled as a PlatformPrimaryPost so the gate can require media[0]
+ *     to be the video AND the #794 fidelity gate can require that lead to be the 9:16 hero.
+ *
+ * #794: the hero video EVERYWHERE it leads is the full-bleed 9:16 phone-native cut (most-watched),
+ * config-driven via CONFIG.publish.heroVideoAspect and enforced by assertHeroAspect. Previously the
+ * X hook used the square 1:1 and Threads used the 4:5 cut, so the 9:16 hero got posted NOWHERE.
  *
  * The REAL assembled draft is checked through `assertPromoMediaComplete` (the hard invariant) — for
  * X the thread invariant, for Threads the PER-PLATFORM video-first invariant — and the SOFT
@@ -42,10 +48,13 @@ import {
 } from "../adapters/typefully";
 import {
   assertPromoMediaComplete,
+  assertHeroAspect,
   checkVideoFirst,
+  type AspectTag,
   type PromoThread,
   type PlatformPrimaryPost,
 } from "../publish/promoMedia";
+import { CONFIG } from "../config";
 
 // ── Sources ────────────────────────────────────────────────────────────
 
@@ -61,9 +70,13 @@ const X_THREAD_JSON = path.join(PRIMARY_ROOT, "out", "copy", "lfah-launch-conten
 const IMAGE_DIR = path.join(PRIMARY_ROOT, "out", "review", "lfah", "image");
 const DEMO_DIR = path.join(PRIMARY_ROOT, "out", "review", "lfah", "demo-multi-aspect");
 
-// Tweet 1 (hook) = video; tweets 2..5 = their own card-over-art still.
-const DEMO_1X1 = path.join(DEMO_DIR, "demo-1x1.mp4"); // X tweet[0] HOOK video (1:1)
-const DEMO_4X5 = path.join(DEMO_DIR, "demo-4x5.mp4"); // Threads HERO/lead video (4:5 phone-native)
+// HERO video aspect — config-driven (#794), NOT a magic hard-code. The lead video of every
+// phone-first platform (X hook tweet, Threads hero post) is the full-bleed phone-native cut.
+// `CONFIG.publish.heroVideoAspect` is "9:16"; the filename tag is the `WxH` form ("9x16").
+// The #794 bug: a square 1:1 (demo-1x1.mp4) led the X hook and demo-4x5.mp4 led Threads, so the
+// full-screen 9:16 cut we built got posted NOWHERE. Now BOTH leads select the same 9:16 hero.
+const HERO_ASPECT_TAG = CONFIG.publish.heroVideoAspect.replace(":", "x") as AspectTag; // "9x16"
+const DEMO_HERO = path.join(DEMO_DIR, `demo-${HERO_ASPECT_TAG}.mp4`); // full-bleed 9:16 hero — leads X + Threads
 const CARD_TWEET = (i: number) => path.join(IMAGE_DIR, `card-tweet-${i}.png`); // X tweet[i-1] body card
 const CARD_OVER_ART_4X5 = path.join(IMAGE_DIR, "card-over-art-4x5.png"); // Threads infographic card
 
@@ -134,7 +147,7 @@ interface MediaSlot {
 
 function xThreadSlots(): MediaSlot[] {
   return [
-    { label: "X tweet 1 (HOOK)", path: DEMO_1X1, kind: "video" },
+    { label: "X tweet 1 (HOOK)", path: DEMO_HERO, kind: "video" },
     { label: "X tweet 2", path: CARD_TWEET(2), kind: "card-over-art" },
     { label: "X tweet 3", path: CARD_TWEET(3), kind: "card-over-art" },
     { label: "X tweet 4", path: CARD_TWEET(4), kind: "card-over-art" },
@@ -160,11 +173,12 @@ function buildPromoThread(xThread: string[], slots: MediaSlot[]): PromoThread {
 /**
  * The ORDERED Threads media list — THE single source of truth for both the gate and the draft body
  * (so the gate runs on the EXACT media we upload, not an idealized set). Threads supports a
- * mixed-media carousel, so the post leads with the 4:5 HERO video then carries the infographic card.
- * Order is significant: index 0 is the lead and MUST be the video (#792 per-platform video-first).
+ * mixed-media carousel, so the post leads with the full-bleed 9:16 HERO video (#794 — config-driven,
+ * was wrongly the 4:5 cut) then carries the infographic card. Order is significant: index 0 is the
+ * lead and MUST be the video (#792 per-platform video-first); that lead is the 9:16 hero (#794).
  */
 const THREADS_ORDERED_MEDIA: { path: string; kind: "video" | "card-over-art" }[] = [
-  { path: DEMO_4X5, kind: "video" }, // HERO / lead — video leads
+  { path: DEMO_HERO, kind: "video" }, // HERO / lead — full-bleed 9:16, video leads (#794)
   { path: CARD_OVER_ART_4X5, kind: "card-over-art" }, // second — the infographic card
 ];
 
@@ -241,6 +255,19 @@ async function main() {
   assertPromoMediaComplete(threadsPost); // throws unless the Threads post LEADS WITH VIDEO + has a card
   console.log(
     "\nassertPromoMediaComplete: PASS (X thread + Threads post satisfy the video-first principle)",
+  );
+
+  // ── #794 hero-aspect FIDELITY gate — the lead video of each phone-first platform MUST be the
+  // full-bleed 9:16 phone cut (throws on a square 1:1 / secondary 4:5 hero). This is the gate the
+  // #792 video-first check could NOT provide: it asserts WHICH aspect leads, not merely that a video
+  // leads. The X hook (tweet 1) and the Threads lead (media[0]) are both checked.
+  const xHookPath = slots[0].path; // X tweet-1 hook video
+  const threadsHeroPath = threadsPost.media[0].path; // Threads lead/hero video
+  assertHeroAspect(xHookPath, HERO_ASPECT_TAG, "X tweet-1 hook");
+  assertHeroAspect(threadsHeroPath, HERO_ASPECT_TAG, "Threads hero");
+  console.log(
+    `hero-aspect fidelity: PASS — X tweet-1 hook video = ${path.basename(xHookPath)} AND ` +
+      `Threads hero = ${path.basename(threadsHeroPath)} (both full-bleed ${CONFIG.publish.heroVideoAspect} phone cut, #794) ✓`,
   );
   console.log(
     `Threads lead media: ${threadsPost.media[0].kind} (${path.basename(threadsPost.media[0].path)}) — video leads ✓`,
