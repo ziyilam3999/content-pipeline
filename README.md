@@ -26,16 +26,23 @@ one adding a piece.
 
 One piece is not here yet: a **weekly schedule** that regenerates content on its own.
 
-### Promo-post media rule (every *worded post unit* = text + its OWN card-over-art + video)
+### Canonical X-launch-thread media layout (hook = video, body = cards, CTA last, no mixing)
 
-Every **worded post unit** carries its OWN card-over-art infographic — so for an X **thread**,
-**each tweet** gets its own distinct card-over-art still (not one shared hero card for the whole
-thread), and the set as a whole still ships a **video**. The why: infographics are more attractive,
-and a thread of bare tweets reads as incomplete. A thread where any worded tweet lacks its own card
-must not go out — the operator caught a dropped card-over-art still, so this is baked as a hard gate
-(`publish/promoMedia.ts` → `assertPromoMediaComplete`, which throws naming the missing unit/kind)
-rather than left as a habit. The per-tweet card set is rendered by `smoke/launch-card.ts`
-(`launchCardSet()`), which fans ONE generated background out behind all the distinct info-cards.
+The durable rule for an X (Twitter) **launch thread**: the **hook / lead tweet leads with the
+VIDEO** (native video earns ~10x the engagement and tweet 1 is the highest-impression slot, so the
+strongest stop-power media goes first); **every other worded tweet carries its own infographic
+card-over-art still** (cards best simplify the data in the body); the **CTA and any hashtags go in
+the last tweet**; and because **a single X tweet carries EITHER images OR one video — never both**,
+no post unit may mix an image and a video. This is baked as a hard gate
+(`publish/promoMedia.ts` → `assertPromoMediaComplete`, which throws naming the offending unit/kind:
+no worded unit may be media-less, the set needs a video AND a card-over-art still, and no unit may
+mix image+video) plus a soft `checkVideoFirst` warning that the video should lead. Sources:
+[avenuez 2025-2026 X guide](https://avenuez.com/blog/2025-2026-x-twitter-organic-social-media-guide-for-brands/),
+[business.twitter video during launches](https://business.twitter.com/en/blog/4-ways-to-use-video-during-product-launches-on-twitter.html),
+[usevisuals twitter threads 2025](https://usevisuals.com/blog/writing-effective-twitter-threads-2025),
+[buffer twitter video](https://buffer.com/library/twitter-video/amp). The per-tweet card set is
+rendered by `smoke/launch-card.ts` (`launchCardSet()`), which fans ONE generated background out
+behind all the distinct info-cards.
 
 ## How it's built
 

@@ -1,10 +1,11 @@
 /**
- * Promo-media completeness gate (#787, per-unit upgrade #787-followup).
+ * Promo-media completeness gate (#787 → #789 canonical X-launch-thread invariant).
  *
- * Operator standing rule: every WORDED post unit must carry its OWN card-over-art infographic.
- * Single post: text + card-over-art still + video. Thread: every worded tweet carries its own
- * card-over-art still + the set carries a video. The gate is a both-ends boolean: complete ⇒ no-op,
- * incomplete ⇒ throws naming what's missing.
+ * Single post (back-compat): text + card-over-art still + video.
+ * Thread (canonical X-launch layout): (a) no worded unit media-less, (b) ≥1 unit carries a video,
+ * (c) ≥1 unit carries a card-over-art still, (d) no unit mixes an image AND a video. The gate is a
+ * both-ends boolean: complete ⇒ no-op, incomplete ⇒ throws naming what's wrong. A SOFT video-first
+ * ordering rule (`checkVideoFirst`) warns but NEVER throws.
  */
 import {
   PromoMediaSet,
@@ -15,6 +16,7 @@ import {
   isPromoMediaComplete,
   isPromoThreadComplete,
   assertPromoMediaComplete,
+  checkVideoFirst,
 } from "../promoMedia";
 
 const complete: PromoMediaSet = {
@@ -23,7 +25,7 @@ const complete: PromoMediaSet = {
   videos: [{ path: "out/review/lfah/video/demo-1x1.mp4" }],
 };
 
-describe("assertPromoMediaComplete (single post)", () => {
+describe("assertPromoMediaComplete (single post — back-compat)", () => {
   it("does not throw on a complete media set (text + card-over-art still + video)", () => {
     expect(() => assertPromoMediaComplete(complete)).not.toThrow();
     expect(isPromoMediaComplete(complete)).toBe(true);
@@ -72,83 +74,123 @@ describe("assertPromoMediaComplete (single post)", () => {
   });
 });
 
-// A 5-tweet X thread where EVERY worded tweet carries its OWN card-over-art still, plus one
-// set-level video — the per-post-unit shape the operator rule mandates.
+// ── Canonical X-launch thread ────────────────────────────────────────────
+// Hook (tweet 1) = VIDEO. Every other worded tweet = its own card-over-art still. No unit mixes
+// image + video.
 function cardedUnit(i: number) {
   return {
     text: [`Tweet ${i} of the launch thread.`],
     stills: [{ path: `out/review/lfah/image/card-tweet-${i}.png`, kind: "card-over-art" as const }],
   };
 }
-const completeThread: PromoThread = {
-  units: [cardedUnit(1), cardedUnit(2), cardedUnit(3), cardedUnit(4), cardedUnit(5)],
-  videos: [{ path: "out/review/lfah/video/demo-1x1.mp4" }],
+function videoHookUnit() {
+  return {
+    text: ["Hook tweet of the launch thread."],
+    stills: [],
+    videos: [{ path: "out/review/lfah/demo-multi-aspect/demo-1x1.mp4" }],
+  };
+}
+const canonicalThread: PromoThread = {
+  units: [videoHookUnit(), cardedUnit(2), cardedUnit(3), cardedUnit(4), cardedUnit(5)],
 };
 
-describe("assertPromoMediaComplete (thread — PER POST UNIT)", () => {
-  it("does NOT throw when EVERY worded tweet carries its own card-over-art still + a video", () => {
-    expect(() => assertPromoMediaComplete(completeThread)).not.toThrow();
-    expect(isPromoThreadComplete(completeThread)).toBe(true);
-    expect(missingPromoThreadMedia(completeThread)).toEqual([]);
+describe("assertPromoMediaComplete (thread — CANONICAL X-launch layout)", () => {
+  it("(i) PASSES a thread with hook=video + body=cards (no mixing, video leads)", () => {
+    expect(() => assertPromoMediaComplete(canonicalThread)).not.toThrow();
+    expect(isPromoThreadComplete(canonicalThread)).toBe(true);
+    expect(missingPromoThreadMedia(canonicalThread)).toEqual([]);
   });
 
-  it("THROWS when one worded tweet is missing its own card (only tweet 1 has a card)", () => {
+  it("(ii) THROWS when a worded tweet is bare (media-less)", () => {
     const t: PromoThread = {
       units: [
-        cardedUnit(1),
-        { text: ["Tweet 2 — bare, no card."], stills: [] },
+        videoHookUnit(),
+        { text: ["Tweet 2 — bare, no media."], stills: [] },
         cardedUnit(3),
         cardedUnit(4),
         cardedUnit(5),
       ],
-      videos: completeThread.videos,
     };
-    expect(() => assertPromoMediaComplete(t)).toThrow(/unit 2 card-over-art still/);
-    expect(missingPromoThreadMedia(t)).toContain("unit 2 card-over-art still");
+    expect(() => assertPromoMediaComplete(t)).toThrow(/unit 2 media-less/);
+    expect(missingPromoThreadMedia(t)).toContain("unit 2 media-less");
     expect(isPromoThreadComplete(t)).toBe(false);
   });
 
-  it("lists EVERY worded unit missing a card (the one-shared-hero anti-pattern fails)", () => {
-    // The exact pattern the rule forbids: one shared hero on tweet 1, the rest bare.
-    const oneHero: PromoThread = {
-      units: [
-        cardedUnit(1),
-        { text: ["Tweet 2 — bare."], stills: [] },
-        { text: ["Tweet 3 — bare."], stills: [] },
-      ],
-      videos: completeThread.videos,
-    };
-    expect(missingPromoThreadMedia(oneHero)).toEqual([
-      "unit 2 card-over-art still",
-      "unit 3 card-over-art still",
-    ]);
-    expect(() => assertPromoMediaComplete(oneHero)).toThrow(/unit 2 .* unit 3/);
-  });
-
-  it("does NOT accept a plain card or bare-art in place of a per-tweet card-over-art", () => {
+  it("(iii) THROWS when a unit mixes an image AND a video (the X EITHER/OR constraint)", () => {
     const t: PromoThread = {
       units: [
-        cardedUnit(1),
-        { text: ["Tweet 2"], stills: [{ path: "p.png", kind: "card" }] },
-        { text: ["Tweet 3"], stills: [{ path: "b.png", kind: "bare-art" }] },
+        {
+          text: ["Hook tweet — illegally carries BOTH an image and a video."],
+          stills: [{ path: "out/review/lfah/image/card-tweet-1.png", kind: "card-over-art" }],
+          videos: [{ path: "out/review/lfah/demo-multi-aspect/demo-1x1.mp4" }],
+        },
+        cardedUnit(2),
+        cardedUnit(3),
       ],
-      videos: completeThread.videos,
     };
-    expect(() => assertPromoMediaComplete(t)).toThrow(/unit 2 .* unit 3/);
+    expect(() => assertPromoMediaComplete(t)).toThrow(/unit 1 mixes image\+video/);
+    expect(missingPromoThreadMedia(t)).toContain("unit 1 mixes image+video");
+    expect(isPromoThreadComplete(t)).toBe(false);
   });
 
-  it("requires a set-level VIDEO even when every tweet is carded", () => {
-    const t: PromoThread = { ...completeThread, videos: [] };
+  it("(iv) THROWS when the thread has cards but NO video", () => {
+    const t: PromoThread = {
+      units: [cardedUnit(1), cardedUnit(2), cardedUnit(3)],
+    };
     expect(() => assertPromoMediaComplete(t)).toThrow(/video/);
     expect(missingPromoThreadMedia(t)).toContain("video");
+    expect(isPromoThreadComplete(t)).toBe(false);
   });
 
-  it("ignores an EMPTY (media-only) unit — only WORDED units must be carded", () => {
+  it("THROWS when the thread has a video but NO card-over-art still anywhere", () => {
     const t: PromoThread = {
-      units: [cardedUnit(1), { text: ["   "], stills: [] }],
-      videos: completeThread.videos,
+      units: [videoHookUnit(), { text: ["Tweet 2"], stills: [{ path: "p.png", kind: "card" }] }],
+    };
+    expect(() => assertPromoMediaComplete(t)).toThrow(/card-over-art still/);
+    expect(missingPromoThreadMedia(t)).toContain("card-over-art still");
+  });
+
+  it("ignores an EMPTY (media-only) unit — only WORDED units must carry media", () => {
+    const t: PromoThread = {
+      units: [videoHookUnit(), cardedUnit(2), { text: ["   "], stills: [] }],
     };
     expect(() => assertPromoMediaComplete(t)).not.toThrow();
     expect(missingPromoThreadMedia(t)).toEqual([]);
+  });
+});
+
+describe("checkVideoFirst (SOFT video-first ordering — warns, never throws)", () => {
+  it("(v) the soft warning FIRES but does NOT throw when the video is not the first media unit", () => {
+    // Card on tweet 1, video on tweet 2 → video is NOT the first media-bearing unit.
+    const misordered: PromoThread = {
+      units: [
+        cardedUnit(1),
+        { text: ["Tweet 2 — the video, but too late."], stills: [], videos: [{ path: "v.mp4" }] },
+        cardedUnit(3),
+      ],
+    };
+    // Hard invariant still holds (every worded unit has media, ≥1 video, ≥1 card, no mixing).
+    expect(() => assertPromoMediaComplete(misordered)).not.toThrow();
+
+    const check = checkVideoFirst(misordered);
+    expect(check.videoUnitIsFirst).toBe(false);
+    expect(check.videoUnitIndex).toBe(1);
+    expect(check.firstMediaUnitIndex).toBe(0);
+    expect(check.message).toMatch(/video should lead/i);
+  });
+
+  it("reports videoUnitIsFirst=true (no warning) for the canonical hook=video thread", () => {
+    const check = checkVideoFirst(canonicalThread);
+    expect(check.videoUnitIsFirst).toBe(true);
+    expect(check.videoUnitIndex).toBe(0);
+    expect(check.firstMediaUnitIndex).toBe(0);
+    expect(check.message).toBeUndefined();
+  });
+
+  it("is vacuously OK (no warning) when the thread carries no video", () => {
+    const noVideo: PromoThread = { units: [cardedUnit(1), cardedUnit(2)] };
+    const check = checkVideoFirst(noVideo);
+    expect(check.videoUnitIsFirst).toBe(true);
+    expect(check.message).toBeUndefined();
   });
 });
