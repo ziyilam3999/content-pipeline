@@ -403,8 +403,21 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((err) => {
-  // Never leak the key: genart's errors are key-free by design; print the message only.
-  console.error("SMOKE FAIL (threw):", err instanceof Error ? err.message : String(err));
-  process.exit(1);
-});
+/**
+ * Only run the Post-1 card SET when this file is the entrypoint — NOT when another smoke imports
+ * its reusable helpers (e.g. smoke/launch-card-post2.ts imports `generateArtOnce`). Without this
+ * guard, importing the module would fire the Post-1 render as a side effect. The basename check
+ * works under tsx whether it loads this as CommonJS or ESM (process.argv[1] is the invoked script).
+ */
+function isEntrypoint(): boolean {
+  const entry = process.argv[1] ?? "";
+  return /(^|\/)launch-card\.ts$/.test(entry) || entry.endsWith("launch-card");
+}
+
+if (isEntrypoint()) {
+  main().catch((err) => {
+    // Never leak the key: genart's errors are key-free by design; print the message only.
+    console.error("SMOKE FAIL (threw):", err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+}

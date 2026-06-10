@@ -1,0 +1,24 @@
+{
+  "_what": "DURABLE COMMITTED copy of Post #2 'lfah is a BUILDER' card_labels — the source of truth for the launch-card-post2 smoke + its unit test. The original lives in out/copy/lfah-post2-builder-content.json which is GITIGNORED (out/ is runtime-only), so it does not travel to CI or a fresh checkout. This fixture carries the verbatim, number-verified lines into the repo so the smoke and test work everywhere. Every stat is number-verified vs the metrics harvest (see the original file's number_verification block); do NOT edit a number here without re-verifying against that source.",
+  "_provenance": "out/copy/lfah-post2-builder-content.json -> card_labels (harvested 2026-06-10, #800).",
+  "card_labels": {
+    "A_dogfood_headline": [
+      "13 build phases — all 13 shipped (100%)",
+      "11 phases passed on the first try",
+      "graded by the REAL jest test suite, never an LLM judge",
+      "the pipeline that built this post built itself"
+    ],
+    "B_cost_local_split": [
+      "$12.56 total cloud spend for the whole build",
+      "~85% of phases solved by a FREE local model",
+      "cloud rescued only the 2 hardest phases",
+      "≈ $0.97 per phase"
+    ],
+    "C_the_how": [
+      "failing test → local model makes it green",
+      "ships only when the test suite AND an independent check agree",
+      "a broken phase halts the build",
+      "same local-first DNA — now building whole apps"
+    ]
+  }
+}
