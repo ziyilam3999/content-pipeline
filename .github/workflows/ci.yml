@@ -28,6 +28,21 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
+      # The image adapter renders cards via headless Chromium (Playwright). The
+      # #790 overflow-gate test (adapters/__tests__/image-overflow.test.ts) drives
+      # the real render path, so the browser must be present. `npm ci
+      # --ignore-scripts` skips Playwright's postinstall download, so install the
+      # browser explicitly here. chromium-headless-shell is what the adapter launches.
+      - name: Install Playwright Chromium
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            # --with-deps pulls the shared libs headless Chromium needs (sudo on the runner).
+            npx playwright install --with-deps chromium chromium-headless-shell
+          else
+            npx playwright install chromium chromium-headless-shell
+          fi
+
       - name: Typecheck (tsc --noEmit — strict, must exit 0)
         run: npm run typecheck
 
