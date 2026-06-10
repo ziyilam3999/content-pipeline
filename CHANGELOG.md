@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.10.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.9.1...v0.10.0) (2026-06-10)
+
+### Features
+
+* **video:** bake the three winning Post #2 demo properties as enforced rules (#808) — the operator confirmed the Post #2 builder demo is exactly right; three of its winning properties are now the committed DEFAULT so every future demo performs the same, each guarded by a CI test. **RULE 1 — perceptible animated background is the DEFAULT (not opt-in):** the committed multi-aspect builder-demo producer renders the moving generative-art background automatically whenever the post art-base image exists (escape hatch `DEMO_BG=0/off`); the default-on decision is the pure, unit-tested `video/demoBackground.ts → resolveDemoBackground`, and the #807 perceptibility test still gates motion-rate. **RULE 2 — every produced review video auto-emits a phone-downloadable mobile proxy:** after each aspect's master renders, the producer also emits `<name>-mobile.mp4` (new `video/mobileProxy.ts`, vendored ffmpeg, FREE) and asserts it meets the review-relay caps (≤15MB hard ceiling, ≤720p short edge, +faststart moov atom) via `video/renderProbe.ts → probeMobileProxy`/`assertMobileProxy`; the previously-uncommitted `tools/make-mobile-proxy.sh` is now committed. **RULE 3 — ~90s target, never truncate the voiced cut:** the ~90s target + `[80,100]s` acceptance window live in the config SSOT (`config/index.ts → CONFIG.demo`), and `assertDemoDurationInWindow` fails a demo that silently drifts to 40s/130s while the voiced clamp stays floor-only so the real ~99s voiced narration is never truncated. 340 tests / 32 suites green; tsc clean; live FREE smoke validated all three rules end-to-end with no paid calls ([#61](https://github.com/ziyilam3999/content-pipeline/pull/61))
+
 ## [0.9.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.9.0...v0.9.1) (2026-06-10)
 
 ### Bug Fixes
