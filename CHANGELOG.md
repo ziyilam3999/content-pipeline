@@ -7,6 +7,14 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.4.9](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.8...v0.4.9) (2026-06-10)
+
+### Features
+
+* **publish:** every platform's primary worded post leads with video (#792) ([#43](https://github.com/ziyilam3999/content-pipeline/pull/43))
+
+  Generalize the v0.4.7 X-thread SHAPE into the platform-agnostic PRINCIPLE — every platform's primary worded post LEADS WITH VIDEO (highest-attention medium) and every worded unit also carries its card-over-art infographic. Fixes the regression where the Threads launch post shipped card-only with NO video: `assertPromoMediaComplete` checked AGGREGATE (>=1 video anywhere), so the X hook video masked a video-less Threads post. Adds a per-platform gate (`PlatformPrimaryPost` + `assertPlatformPrimaryLeadsWithVideo`) requiring `media[0]` to be the video, a card when worded, and image-XOR-video on no-mix platforms; Threads now assembles as a mixed-media carousel `[demo-4x5.mp4 (lead), card-over-art-4x5.png]`.
+
 ## [0.4.8](https://github.com/ziyilam3999/content-pipeline/compare/v0.4.7...v0.4.8) (2026-06-10)
 
 ### Bug Fixes
