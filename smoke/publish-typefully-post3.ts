@@ -65,8 +65,15 @@ import {
   type AspectTag,
   type PromoThread,
   type PlatformPrimaryPost,
+  type HeroVideoRef,
 } from "../publish/promoMedia";
 import { assertCopyWithinPlatformLimits, heroVideoAdvisory } from "../publish/copyLimits";
+import {
+  parsePlatformsEnv,
+  platformSubsetNote,
+  assembleDraftBody,
+  type Platform,
+} from "../publish/platformSubset";
 import { threadLengthAdvisory } from "../publish/publishVerify";
 import {
   assertPublishAssetsMatchManifest,
@@ -226,11 +233,15 @@ function buildThreadsPrimaryPost(threadsText: string): PlatformPrimaryPost {
 }
 
 /**
- * Build the Typefully draft body. `mediaIds` maps each media path → the media-id string to embed
- * (placeholders in dry-run, real uploaded ids in live). `threadsMediaIds` is the ORDERED Threads
- * carousel — index 0 (the lead) is the HERO video, so the Threads post LEADS WITH VIDEO (#792).
+ * Build the Typefully draft body for the requested PLATFORM SUBSET (#828). `mediaIds` maps each
+ * media path → the media-id string to embed (placeholders in dry-run, real uploaded ids in live).
+ * `threadsMediaIds` is the ORDERED Threads carousel — index 0 (the lead) is the HERO video, so the
+ * Threads post LEADS WITH VIDEO (#792). Only the requested platforms' posts are assembled; an
+ * EXCLUDED platform is omitted from `body.platforms` ENTIRELY (via `assembleDraftBody`) so a
+ * Threads-only recovery draft cannot re-post an already-live X thread.
  */
 function buildDraftBody(
+  platforms: Platform[],
   xThread: string[],
   threadsText: string,
   slots: MediaSlot[],
@@ -243,47 +254,68 @@ function buildDraftBody(
   }));
   const threadsPosts: DraftPost[] = [{ text: threadsText, media_ids: threadsMediaIds }];
 
-  // NOTE: publish_at is intentionally omitted ⇒ Typefully saves this as a DRAFT.
-  return {
-    platforms: {
-      x: { enabled: true, posts: xPosts },
-      threads: { enabled: true, posts: threadsPosts },
-    },
-    draft_title: DRAFT_TITLE,
+  // NOTE: publish_at is omitted ⇒ Typefully saves this as a DRAFT. assembleDraftBody omits any
+  // platform NOT in `platforms` entirely (no disabled block) — the #828 partial-publish fix.
+  return assembleDraftBody(platforms, {
+    xPosts,
+    threadsPosts,
+    draftTitle: DRAFT_TITLE,
     share: false,
-  };
+  });
 }
 
 // ── Main ───────────────────────────────────────────────────────────────
 
 async function main() {
   const live = process.env.TYPEFULLY_LIVE === "1";
+  // ── #828 PLATFORM SUBSET. PLATFORMS unset ⇒ both (the normal full launch). A subset
+  // (PLATFORMS=threads, PLATFORMS=x,threads) targets ONLY those platforms — the partial-publish
+  // recovery path: a Threads-only draft cannot re-post an already-live X thread. Invalid ⇒ throws.
+  const platforms = parsePlatformsEnv(process.env.PLATFORMS);
+  const includeX = platforms.includes("x");
+  const includeThreads = platforms.includes("threads");
   const { xThread, threadsText } = readPost3Copy();
   const slots = xThreadSlots();
 
   console.log("POST #3 (forge-harness — only 1 of 8 ever talks to the model) — publish assembly\n");
+  const subsetNote = platformSubsetNote(platforms);
+  if (subsetNote) console.log(subsetNote + "\n");
+
+  // The media paths this run will actually upload, per the requested subset. The hero video is
+  // shared (deduped) across both platforms. Provenance + the upload loops key off these.
+  const xMediaPaths = includeX ? slots.map((s) => s.path) : [];
+  const threadsMediaPaths = includeThreads ? THREADS_ORDERED_MEDIA.map((m) => m.path) : [];
+  const allUploadPaths = [...new Set([...xMediaPaths, ...threadsMediaPaths])];
+  const usedBasenames = new Set(allUploadPaths.map((p) => path.basename(p)));
 
   // ── #810 PUBLISH-ASSET PROVENANCE GATE — runs in BOTH dry-run and live, BEFORE any assembly/upload.
-  // Re-hashes EVERY file this smoke is about to upload (the post3 hero video + each post-3 card,
-  // resolved from the POST_ASSETS SSOT) and asserts each sha256 matches the operator-approved render
-  // frozen in publish/manifests/forge-harness-post3.publish-manifest.json. Freeze AFTER operator
-  // approval: `npm run publish:freeze-manifest -- forge-harness-post3`.
-  const provenanceAssets: PublishAsset[] = POST_ASSETS["forge-harness-post3"].assets.map((a) => ({
-    role: a.role,
-    path: path.join(a.role === "hero-video" ? DEMO_DIR : IMAGE_DIR, a.basename),
-  }));
+  // Re-hashes EVERY file this smoke is about to upload FOR THE REQUESTED SUBSET (#828 — a Threads-only
+  // recovery hashes only the hero video + card-post3-A, the assets it actually uploads), resolved from
+  // the POST_ASSETS SSOT, and asserts each sha256 matches the operator-approved render frozen in
+  // publish/manifests/forge-harness-post3.publish-manifest.json. Freeze AFTER operator approval:
+  // `npm run publish:freeze-manifest -- forge-harness-post3`.
+  const provenanceAssets: PublishAsset[] = POST_ASSETS["forge-harness-post3"].assets
+    .filter((a) => usedBasenames.has(a.basename))
+    .map((a) => ({
+      role: a.role,
+      path: path.join(a.role === "hero-video" ? DEMO_DIR : IMAGE_DIR, a.basename),
+    }));
   assertPublishAssetsMatchManifest(provenanceAssets, loadManifest("forge-harness-post3"));
   console.log(
     `PROVENANCE: PASS — ${provenanceAssets.length} assets match the forge-harness-post3 approved manifest (#810)`,
   );
 
   // ── #809 COPY-LENGTH GATE — runs in BOTH dry-run and live, BEFORE any assembly/upload, so an
-  // over-limit post can NEVER reach a live Typefully draft. Each X tweet ≤280 X-weighted (URLs count
-  // as 23); the Threads post ≤500 codepoints. Throws a clear per-unit message; no-op when within limits.
-  assertCopyWithinPlatformLimits({ xThread, threadsText });
+  // over-limit post can NEVER reach a live Typefully draft. Only the REQUESTED platforms are checked
+  // (#828): X tweets ≤280 X-weighted (URLs count as 23); the Threads post ≤500 codepoints. Throws a
+  // clear per-unit message; no-op when within limits.
+  assertCopyWithinPlatformLimits({
+    xThread: includeX ? xThread : undefined,
+    threadsText: includeThreads ? threadsText : undefined,
+  });
   console.log(
-    `COPY-LIMITS: PASS — ${xThread.length} X tweets ≤${CONFIG.publish.copyLimits.xTweet} weighted ` +
-      `(URLs=23), Threads post ≤${CONFIG.publish.copyLimits.threads} chars (#809)`,
+    `COPY-LIMITS: PASS — ${includeX ? `${xThread.length} X tweets ≤${CONFIG.publish.copyLimits.xTweet} weighted (URLs=23)` : "X excluded"}, ` +
+      `${includeThreads ? `Threads post ≤${CONFIG.publish.copyLimits.threads} chars` : "Threads excluded"} (#809)`,
   );
 
   // ── #809 VIDEO-DIMENSION ADVISORY (NON-FATAL) for the 9:16 phone HERO. We key on the config hero
@@ -294,67 +326,76 @@ async function main() {
   const advisory = heroVideoAdvisory(heroDims);
   if (advisory.flagged) console.log(advisory.message);
 
-  // ── #793 SHORT-THREAD ADVISORY (NON-FATAL). A longer X thread raises same-second scramble risk
-  // (Post #1 fired its tweets the same second → X chained the reply order by ingestion). This only
-  // SURFACES the risk via the CONFIG soft cap; it NEVER fails the build (thread length is creative).
-  const threadNote = threadLengthAdvisory(xThread);
-  if (threadNote) console.log(threadNote);
+  // ── #793 SHORT-THREAD ADVISORY (NON-FATAL). Only relevant when X is in the subset. A longer X
+  // thread raises same-second scramble risk (Post #1 fired its tweets the same second → X chained the
+  // reply order by ingestion). This only SURFACES the risk via the CONFIG soft cap; never fatal.
+  if (includeX) {
+    const threadNote = threadLengthAdvisory(xThread);
+    if (threadNote) console.log(threadNote);
+  }
 
   // Assert every media file exists + print the per-tweet media map (both modes — what we'd upload).
-  console.log("X thread media map (4 tweets — hook=video, body=cards):");
-  for (const slot of slots) {
-    const size = assertFile(slot.label, slot.path);
-    console.log(
-      `  • ${slot.label.padEnd(16)} ${slot.kind.padEnd(13)} ${path.basename(slot.path)}  (${(size / 1024 / 1024).toFixed(2)} MB)`,
-    );
+  // Only the requested platforms' maps are printed (#828).
+  if (includeX) {
+    console.log("X thread media map (4 tweets — hook=video, body=cards):");
+    for (const slot of slots) {
+      const size = assertFile(slot.label, slot.path);
+      console.log(
+        `  • ${slot.label.padEnd(16)} ${slot.kind.padEnd(13)} ${path.basename(slot.path)}  (${(size / 1024 / 1024).toFixed(2)} MB)`,
+      );
+    }
   }
-  // Threads is an ORDERED mixed-media post — video LEADS, card second.
-  console.log("Threads post media map (mixed carousel — VIDEO LEADS, card second):");
-  THREADS_ORDERED_MEDIA.forEach((m, i) => {
-    const size = assertFile(`Threads media[${i}]`, m.path);
-    console.log(
-      `  • ${`Threads media[${i}]`.padEnd(16)} ${m.kind.padEnd(13)} ${path.basename(m.path)}  (${(size / 1024 / 1024).toFixed(2)} MB)`,
-    );
-  });
+  if (includeThreads) {
+    // Threads is an ORDERED mixed-media post — video LEADS, card second.
+    console.log("Threads post media map (mixed carousel — VIDEO LEADS, card second):");
+    THREADS_ORDERED_MEDIA.forEach((m, i) => {
+      const size = assertFile(`Threads media[${i}]`, m.path);
+      console.log(
+        `  • ${`Threads media[${i}]`.padEnd(16)} ${m.kind.padEnd(13)} ${path.basename(m.path)}  (${(size / 1024 / 1024).toFixed(2)} MB)`,
+      );
+    });
+  }
 
   // ── ONE publish-assembly fidelity gate (#797) on the REAL assembled draft (both modes, before any
-  // network). This SINGLE call funnels: (a) video-leads + per-unit cards + no-mixing over the X thread
-  // AND the Threads post; (b) hero-aspect — every lead video is the full-bleed 9:16 phone cut (#794);
-  // (c) order-intent — each platform post's SUBMITTED media leads with the video (#793).
-  const promoThread = buildPromoThread(xThread, slots);
-  const threadsPost = buildThreadsPrimaryPost(threadsText);
-  const xHookPath = slots[0].path; // X tweet-1 hook video
-  const threadsHeroPath = threadsPost.media[0].path; // Threads lead/hero video
+  // network) — over the REQUESTED subset only (#828). This SINGLE call funnels: (a) video-leads +
+  // per-unit cards + no-mixing over whichever of the X thread / Threads post is included; (b)
+  // hero-aspect — every included lead video is the full-bleed 9:16 phone cut (#794); (c) order-intent
+  // — each included platform post's SUBMITTED media leads with the video (#793).
+  const promoThread = includeX ? buildPromoThread(xThread, slots) : undefined;
+  const threadsPost = includeThreads ? buildThreadsPrimaryPost(threadsText) : undefined;
+  const heroVideos: HeroVideoRef[] = [];
+  if (promoThread) heroVideos.push({ videoPath: slots[0].path, label: "X tweet-1 hook" });
+  if (threadsPost) heroVideos.push({ videoPath: threadsPost.media[0].path, label: "Threads hero" });
   assertPostAssemblyFidelity({
     xThread: promoThread,
-    platformPosts: [threadsPost],
-    heroVideos: [
-      { videoPath: xHookPath, label: "X tweet-1 hook" },
-      { videoPath: threadsHeroPath, label: "Threads hero" },
-    ],
+    platformPosts: threadsPost ? [threadsPost] : [],
+    heroVideos,
     heroAspectTag: HERO_ASPECT_TAG,
   });
   console.log(
-    `\nassertPostAssemblyFidelity: PASS (#797 — ONE gate) — X thread (4 tweets) + Threads post lead ` +
-      `with video, carry per-unit cards, no mixing; both lead videos are the full-bleed ` +
-      `${CONFIG.publish.heroVideoAspect} phone cut (X hook = ${path.basename(xHookPath)}, Threads hero = ` +
-      `${path.basename(threadsHeroPath)}); each platform post's SUBMITTED media leads with the video ✓`,
+    `\nassertPostAssemblyFidelity: PASS (#797 — ONE gate) over [${platforms.join(", ")}] — included ` +
+      `platform(s) lead with video, carry per-unit cards, no mixing; every lead video is the ` +
+      `full-bleed ${CONFIG.publish.heroVideoAspect} phone cut; SUBMITTED media leads with the video ✓`,
   );
-  console.log(
-    `Threads lead media: ${threadsPost.media[0].kind} (${path.basename(threadsPost.media[0].path)}) — video leads ✓`,
-  );
+  if (threadsPost) {
+    console.log(
+      `Threads lead media: ${threadsPost.media[0].kind} (${path.basename(threadsPost.media[0].path)}) — video leads ✓`,
+    );
+  }
   // Clear, greppable PASS line for the AC.
   console.log(
-    `\nFIDELITY: PASS — Post #3 layout passes assertPostAssemblyFidelity (hero=${CONFIG.publish.heroVideoAspect} ` +
-      `on X t1 + Threads lead, video-leads per platform, per-unit cards on t2-t4, no img+video mixing, intended order)`,
+    `\nFIDELITY: PASS — Post #3 layout passes assertPostAssemblyFidelity over [${platforms.join(", ")}] ` +
+      `(hero=${CONFIG.publish.heroVideoAspect}, video-leads per included platform, per-unit cards, no img+video mixing, intended order)`,
   );
 
-  const vf = checkVideoFirst(promoThread);
-  console.log(
-    `video-first soft-check: videoUnitIsFirst=${vf.videoUnitIsFirst} ` +
-      `(video on unit ${vf.videoUnitIndex + 1}, first media-bearing unit ${vf.firstMediaUnitIndex + 1})`,
-  );
-  if (!vf.videoUnitIsFirst && vf.message) console.warn(vf.message);
+  if (promoThread) {
+    const vf = checkVideoFirst(promoThread);
+    console.log(
+      `video-first soft-check: videoUnitIsFirst=${vf.videoUnitIsFirst} ` +
+        `(video on unit ${vf.videoUnitIndex + 1}, first media-bearing unit ${vf.firstMediaUnitIndex + 1})`,
+    );
+    if (!vf.videoUnitIsFirst && vf.message) console.warn(vf.message);
+  }
 
   // ── POST AUTO-ARCHIVE (both modes, non-fatal). Post #3 is assembled + passed the fidelity gate,
   // so save its canonical copy + metadata into the DURABLE, non-repo archive NOW — automatically, no
@@ -364,28 +405,27 @@ async function main() {
   );
   if (archived) console.log(`ARCHIVE: forge-harness-post3 copy+metadata saved → ${archived.archiveDir}`);
 
-  // The ORDERED Threads carousel media-id list (index 0 = the lead HERO video).
-  const threadsMediaPaths = THREADS_ORDERED_MEDIA.map((m) => m.path);
-
   if (!live) {
     // DRY-RUN: print the exact draft body with placeholder media ids; ZERO network calls. No
-    // TypefullyClient is constructed on this path — nothing reaches the network.
+    // TypefullyClient is constructed on this path — nothing reaches the network. Only the requested
+    // subset's media is mapped (#828).
     const mediaIds = new Map<string, string>(
-      [...slots.map((s) => s.path), ...threadsMediaPaths].map((p) => [
-        p,
-        `<upload:${path.basename(p)}>`,
-      ]),
+      allUploadPaths.map((p) => [p, `<upload:${path.basename(p)}>`]),
     );
     const threadsMediaIds = threadsMediaPaths.map((p) => mediaIds.get(p)!);
-    const body = buildDraftBody(xThread, threadsText, slots, mediaIds, threadsMediaIds);
+    const body = buildDraftBody(platforms, xThread, threadsText, slots, mediaIds, threadsMediaIds);
     console.log(`\nsocial_set_id: ${SOCIAL_SET_ID}`);
     console.log("draft body (DRY-RUN — placeholders for media ids, no publish_at ⇒ DRAFT):");
     console.log(JSON.stringify(body, null, 2));
 
     const xCount = body.platforms.x?.posts.length ?? 0;
     const tCount = body.platforms.threads?.posts.length ?? 0;
-    const mediaCount = slots.length + threadsMediaPaths.length; // 4 X media + 2 Threads media = 6
-    console.log(`\nThreads post[0].media_ids[0] = ${threadsMediaIds[0]}  (the HERO video leads)`);
+    // Per-platform media count (matches the live upload count below — the shared hero is uploaded
+    // once per platform, mirroring the pre-#828 semantics): X media + Threads media for the subset.
+    const mediaCount = xMediaPaths.length + threadsMediaPaths.length;
+    if (includeThreads) {
+      console.log(`\nThreads post[0].media_ids[0] = ${threadsMediaIds[0]}  (the HERO video leads)`);
+    }
     console.log(
       `\nPUBLISH-TYPEFULLY-POST3: mode=dry-run posts=x:${xCount},threads:${tCount} media=${mediaCount}`,
     );
@@ -393,25 +433,30 @@ async function main() {
   }
 
   // LIVE — ORCHESTRATOR ONLY, after explicit operator authorization. Real upload + draft create.
+  // Uploads ONLY the requested subset's media (#828); the hero video is uploaded once and reused.
   console.log("\n→ LIVE mode: verifying auth, uploading media, creating the draft…");
   const client = new TypefullyClient();
   await client.verifyAuth();
 
+  // Upload the X media into the path→id map (only when X is in the subset).
   const mediaIds = new Map<string, string>();
-  for (const slot of slots) {
-    mediaIds.set(slot.path, await client.uploadMedia(SOCIAL_SET_ID, slot.path));
+  for (const p of xMediaPaths) {
+    mediaIds.set(p, await client.uploadMedia(SOCIAL_SET_ID, p));
   }
-  // Upload the ordered Threads carousel media (video first), preserving order.
+  // Upload the ordered Threads carousel media (video first), preserving order. The hero is uploaded
+  // here independently of the X upload (mirrors the pre-#828 per-platform upload semantics).
   const threadsMediaIds: string[] = [];
   for (const p of threadsMediaPaths) {
     threadsMediaIds.push(await client.uploadMedia(SOCIAL_SET_ID, p));
   }
 
-  const body = buildDraftBody(xThread, threadsText, slots, mediaIds, threadsMediaIds);
+  const body = buildDraftBody(platforms, xThread, threadsText, slots, mediaIds, threadsMediaIds);
   const res = await client.createDraft(SOCIAL_SET_ID, body);
+  const xCount = body.platforms.x?.posts.length ?? 0;
+  const tCount = body.platforms.threads?.posts.length ?? 0;
   console.log(
-    `\nPUBLISH-TYPEFULLY-POST3: mode=live draft_id=${res.id} status=${res.status} posts=x:4,threads:1 ` +
-      `media=${slots.length + threadsMediaPaths.length}`,
+    `\nPUBLISH-TYPEFULLY-POST3: mode=live draft_id=${res.id} status=${res.status} ` +
+      `posts=x:${xCount},threads:${tCount} media=${xMediaPaths.length + threadsMediaPaths.length}`,
   );
 
   // ── LIVE URL WRITEBACK (non-fatal). Post #3 was NOT yet live; once published, MERGE the publish

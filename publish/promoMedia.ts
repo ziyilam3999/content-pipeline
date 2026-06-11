@@ -482,9 +482,13 @@ export interface HeroVideoRef {
  * The full publish assembly handed to the ONE fidelity gate (#797). It carries EVERYTHING the gate
  * needs so a caller cannot omit a check by forgetting an argument:
  *  - `xThread`: the X thread (`PromoThread`) — the X-launch realization (hook=video, body=cards).
+ *    OPTIONAL (#828): a PLATFORM-SUBSET publish (e.g. a Threads-only partial-publish recovery) omits
+ *    X entirely; when `xThread` is absent the gate simply does not run the X-thread checks. When
+ *    present it is checked exactly as before.
  *  - `platformPosts`: the platform PRIMARY posts (`PlatformPrimaryPost[]`) — Threads/LinkedIn/any
  *    future platform. The gate runs the per-platform video-first invariant over EVERY entry, so a
- *    new platform added here is automatically covered (no per-platform wiring to forget).
+ *    new platform added here is automatically covered (no per-platform wiring to forget). A subset
+ *    publish that excludes Threads simply passes an empty array (#828).
  *  - `heroVideos`: every lead/hero VIDEO across the assembly whose aspect must be the hero cut —
  *    the X hook video AND each platform post's lead video. The caller lists them so the gate need
  *    not guess which slot is the hero on each shape.
@@ -492,7 +496,8 @@ export interface HeroVideoRef {
  *    `CONFIG.publish.heroVideoAspect`, the full-bleed phone cut). Every hero video must match it.
  */
 export interface PostAssembly {
-  xThread: PromoThread;
+  /** OPTIONAL (#828) — omit on a platform-subset publish that excludes X. */
+  xThread?: PromoThread;
   platformPosts: PlatformPrimaryPost[];
   heroVideos: HeroVideoRef[];
   heroAspectTag?: AspectTag;
@@ -552,8 +557,9 @@ export function assertSubmittedOrderMatchesIntent(post: PlatformPrimaryPost): vo
 export function assertPostAssemblyFidelity(assembly: PostAssembly): void {
   const heroTag: AspectTag = assembly?.heroAspectTag ?? "9x16";
 
-  // (a) video-leads + per-unit cards + no-mixing — over the X thread AND every platform post.
-  assertPromoMediaComplete(assembly.xThread);
+  // (a) video-leads + per-unit cards + no-mixing — over the X thread (when present, #828) AND every
+  // platform post.
+  if (assembly.xThread) assertPromoMediaComplete(assembly.xThread);
   for (const post of assembly.platformPosts ?? []) {
     assertPromoMediaComplete(post);
   }
