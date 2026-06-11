@@ -16,6 +16,8 @@ import * as path from "path";
 
 import {
   archivePost,
+  archivePostAll,
+  buildArchiveRecord,
   upsertArchiveIndex,
   type PostArchiveRecord,
 } from "../postArchive";
@@ -200,5 +202,85 @@ describe("upsertArchiveIndex", () => {
     expect(countSections(md)).toBe(2);
     expect(md).toContain("_(pending publish)_");
     expect(md).toContain("# Launch Posts Archive");
+  });
+});
+
+describe("archivePostAll (dual-write: external durable + in-repo mirror, #821)", () => {
+  /** Make TWO fresh isolated temp dirs — a stand-in "external" and "in-repo" — for one test. */
+  function freshPair(): { external: string; inRepo: string } {
+    return {
+      external: fs.mkdtempSync(path.join(os.tmpdir(), "posts-archive-ext-")),
+      inRepo: fs.mkdtempSync(path.join(os.tmpdir(), "posts-archive-repo-")),
+    };
+  }
+
+  it("writes the copy JSON + meta + index into BOTH the external AND the in-repo dir", () => {
+    const { external, inRepo } = freshPair();
+    const res = archivePostAll(post1Record(), {
+      externalDirOverride: external,
+      inRepoDirOverride: inRepo,
+    });
+
+    for (const target of [res.external, res.inRepo]) {
+      // copy JSON written from the inline copy object.
+      expect(target.copyPath).not.toBeNull();
+      expect(fs.existsSync(target.copyPath!)).toBe(true);
+      const copy = JSON.parse(fs.readFileSync(target.copyPath!, "utf8"));
+      expect(copy.x_thread).toEqual(["hook", "body"]);
+      // meta written.
+      expect(fs.existsSync(target.metaPath)).toBe(true);
+      const meta = JSON.parse(fs.readFileSync(target.metaPath, "utf8"));
+      expect(meta.slug).toBe("lfah-post1");
+      // index regenerated with the section.
+      const md = fs.readFileSync(target.indexPath, "utf8");
+      expect(md).toContain("## Post #1 — lfah is a BUG-FIXER  (INTRODUCTION)");
+      expect(countSections(md)).toBe(1);
+    }
+
+    // the two targets are genuinely DISTINCT dirs (mirror, not the same write twice).
+    expect(res.external.archiveDir).toBe(external);
+    expect(res.inRepo.archiveDir).toBe(inRepo);
+    expect(res.external.archiveDir).not.toBe(res.inRepo.archiveDir);
+  });
+
+  it("is idempotent on re-run: both dirs keep exactly one meta + one section", () => {
+    const { external, inRepo } = freshPair();
+    const opts = { externalDirOverride: external, inRepoDirOverride: inRepo };
+    archivePostAll(post1Record({ subject: "first" }), opts);
+    archivePostAll(post1Record({ subject: "second" }), opts);
+
+    for (const dir of [external, inRepo]) {
+      const metaFiles = fs.readdirSync(dir).filter((f) => f.endsWith(".meta.json"));
+      expect(metaFiles).toEqual(["lfah-post1.meta.json"]);
+      const md = readIndex(dir);
+      expect(countSections(md)).toBe(1);
+      expect(md).toContain("second");
+      expect(md).not.toContain("first subject");
+    }
+  });
+
+  it("renders Post #3 as published (LIVE) with the Threads URL and NO invented X URL", () => {
+    const { external, inRepo } = freshPair();
+    // Build the real record from the ARCHIVE_POSTS SSOT (copy source may be absent in CI — the index
+    // still renders from the meta record). Write into temp dirs only.
+    const res = archivePostAll(buildArchiveRecord("forge-harness-post3"), {
+      externalDirOverride: external,
+      inRepoDirOverride: inRepo,
+    });
+
+    for (const dir of [external, inRepo]) {
+      const md = readIndex(dir);
+      expect(md).toContain("## Post #3 — ");
+      expect(md).toContain("**Published:** 2026-06-11 (LIVE).");
+      expect(md).toContain("https://www.threads.com/@gotextrameal/post/DZcUScDAIy3");
+      // honesty: NO X status URL is invented — the index never shows an x.com status link for post3.
+      expect(md).not.toMatch(/X https?:\/\/(x|twitter)\.com/);
+    }
+
+    // the merged meta record honestly has no `x` live URL.
+    const meta = JSON.parse(fs.readFileSync(res.inRepo.metaPath, "utf8"));
+    expect(meta.publishedDate).toBe("2026-06-11");
+    expect(meta.liveUrls.threads).toBe("https://www.threads.com/@gotextrameal/post/DZcUScDAIy3");
+    expect(meta.liveUrls.x).toBeUndefined();
   });
 });

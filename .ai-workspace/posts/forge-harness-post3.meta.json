@@ -1,0 +1,17 @@
+{
+  "slug": "forge-harness-post3",
+  "postNumber": 3,
+  "title": "forge-harness (\"only 1 of 8 talks to the model\")",
+  "subject": "8 composable MCP primitives, only 1 ever calls the LLM; deterministic verdicts; a real 13-story project's whole plan ~$0.80.",
+  "category": "introduction",
+  "producedDate": "2026-06-11",
+  "publishedDate": "2026-06-11",
+  "mediaBundleDir": "~/coding_projects/_launch-assets/forge-harness-post3-20260611",
+  "publishManifestRef": "content-pipeline/publish/manifests/forge-harness-post3.publish-manifest.json",
+  "copyArchiveBasename": "post3-forge-harness-copy.json",
+  "liveUrls": {
+    "threads": "https://www.threads.com/@gotextrameal/post/DZcUScDAIy3"
+  },
+  "numbers": "8 primitives / 1 LLM tool; 16 calls / 2 paid; $0.80 plan / ~$0.20 story; MIT, public.",
+  "note": "X thread is LIVE (operator published 2026-06-11) but its exact status URL was not captured (the Typefully draft was deleted post-publish); Threads read-back verified."
+}

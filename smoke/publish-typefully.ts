@@ -66,7 +66,7 @@ import {
   type PublishAsset,
 } from "../publish/publishProvenance";
 import { POST_ASSETS } from "../publish/publishAssets";
-import { ARCHIVE_POSTS, buildArchiveRecord, safeArchivePost } from "../publish/postArchive";
+import { ARCHIVE_POSTS, buildArchiveRecord, safeArchivePostAll } from "../publish/postArchive";
 import { CONFIG } from "../config";
 
 // ── Sources ────────────────────────────────────────────────────────────
@@ -341,8 +341,11 @@ async function main() {
   // so save its canonical copy + metadata into the DURABLE, non-repo archive NOW — automatically, no
   // human step — so a `git clean` of the gitignored out/copy can never lose it. Wrapped so an archive
   // write error NEVER breaks the publish.
-  const archived = safeArchivePost(buildArchiveRecord("lfah-post1", { primaryRoot: PRIMARY_ROOT }));
-  if (archived) console.log(`ARCHIVE: lfah-post1 copy+metadata saved → ${archived.archiveDir}`);
+  const archived = safeArchivePostAll(buildArchiveRecord("lfah-post1", { primaryRoot: PRIMARY_ROOT }));
+  if (archived)
+    console.log(
+      `ARCHIVE: lfah-post1 copy+metadata saved → ${archived.external.archiveDir} (+ in-repo ${archived.inRepo.archiveDir})`,
+    );
 
   // The ORDERED Threads carousel media-id list (index 0 = the lead HERO video).
   const threadsMediaPaths = THREADS_ORDERED_MEDIA.map((m) => m.path);
@@ -397,13 +400,16 @@ async function main() {
   // ── LIVE URL WRITEBACK (non-fatal). After the publish, MERGE the live x/threads URLs into the
   // durable record (a true read-back via smoke/verify-published.ts yields fresh URLs; here they come
   // from the post's SSOT). Merge — never erase the rest of the record.
-  const liveArchived = safeArchivePost(
+  const liveArchived = safeArchivePostAll(
     buildArchiveRecord("lfah-post1", {
       primaryRoot: PRIMARY_ROOT,
       dynamic: { liveUrls: ARCHIVE_POSTS["lfah-post1"].liveUrls },
     }),
   );
-  if (liveArchived) console.log(`ARCHIVE: lfah-post1 live URLs written back → ${liveArchived.metaPath}`);
+  if (liveArchived)
+    console.log(
+      `ARCHIVE: lfah-post1 live URLs written back → ${liveArchived.external.metaPath} (+ in-repo ${liveArchived.inRepo.metaPath})`,
+    );
   process.exit(0);
 }
 

@@ -104,6 +104,21 @@ export function resolveArchiveDir(override?: string): string {
   return raw;
 }
 
+/**
+ * Resolve the IN-REPO archive mirror dir (#821) — the GIT-TRACKED second home for the same archive
+ * content (`.ai-workspace/posts`), so a fresh clone / CI has the canonical copy too. Precedence:
+ * explicit `override` arg > `$POSTS_INREPO_ARCHIVE_DIR` env > `CONFIG.publish.inRepoArchiveDir`
+ * (already an absolute path against the repo root). Mirrors `resolveArchiveDir`'s `~` expansion so a
+ * `~`-prefixed override still works; tests pass a temp dir so they never write the real repo archive.
+ */
+export function resolveInRepoArchiveDir(override?: string): string {
+  const raw =
+    override ?? process.env.POSTS_INREPO_ARCHIVE_DIR ?? CONFIG.publish.inRepoArchiveDir;
+  if (raw === "~") return os.homedir();
+  if (raw.startsWith("~/")) return path.join(os.homedir(), raw.slice(2));
+  return raw;
+}
+
 // ── Per-post static SSOT ─────────────────────────────────────────────────
 
 /** Static (known-at-build-time) metadata for each launch post. */
@@ -167,17 +182,22 @@ export const ARCHIVE_POSTS: Record<PostSlug, StaticArchiveMeta> = {
       "8 composable MCP primitives, only 1 ever calls the LLM; deterministic verdicts; a real 13-story project's whole plan ~$0.80.",
     category: "introduction",
     producedDate: "2026-06-11",
-    publishedDate: null,
+    publishedDate: "2026-06-11",
     mediaBundleDir: "~/coding_projects/_launch-assets/forge-harness-post3-20260611",
     publishManifestRef:
       "content-pipeline/publish/manifests/forge-harness-post3.publish-manifest.json",
     copyArchiveBasename: "post3-forge-harness-copy.json",
     copySourceBasename: "forge-harness-post3-content.json",
-    liveUrls: {},
+    // X thread is LIVE but its exact status URL was NOT captured (the Typefully draft was deleted
+    // post-publish), so `x` is intentionally ABSENT — never invent a URL we can't read back. Threads
+    // URL is read-back VERIFIED.
+    liveUrls: {
+      threads: "https://www.threads.com/@gotextrameal/post/DZcUScDAIy3",
+    },
     numbers:
       "8 primitives / 1 LLM tool; 16 calls / 2 paid; $0.80 plan / ~$0.20 story; MIT, public.",
     note:
-      "PRODUCED + operator-approved creative; Typefully DRAFT pending (BUILD-4 #815, gated). NOT yet live.",
+      "X thread is LIVE (operator published 2026-06-11) but its exact status URL was not captured (the Typefully draft was deleted post-publish); Threads read-back verified.",
   },
 };
 
@@ -404,6 +424,61 @@ export function safeArchivePost(
   } catch (err) {
     console.warn(
       `ARCHIVE WARN: failed to archive post ${record.slug} (non-fatal — publish continues): ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
+// ── Dual-write (external durable + in-repo mirror) ───────────────────────
+
+/** Optional per-target dir overrides for the dual-write (tests point both at temp dirs). */
+export interface ArchiveAllOptions {
+  /** Override the EXTERNAL durable dir (else $POSTS_ARCHIVE_DIR / CONFIG.publish.archiveDir). */
+  externalDirOverride?: string;
+  /** Override the IN-REPO mirror dir (else $POSTS_INREPO_ARCHIVE_DIR / CONFIG.publish.inRepoArchiveDir). */
+  inRepoDirOverride?: string;
+}
+
+/** Result of a dual-write — the per-target ArchiveResults. */
+export interface ArchiveAllResult {
+  /** The external durable archive (outside the repo — survives `git clean`). */
+  external: ArchiveResult;
+  /** The in-repo git-tracked mirror (so a fresh clone / CI has the canonical copy too, #821). */
+  inRepo: ArchiveResult;
+}
+
+/**
+ * DUAL-WRITE (#821): archive a post into BOTH durable homes — the EXTERNAL non-repo archive AND the
+ * IN-REPO git-tracked mirror — by calling the existing single-dir `archivePost` once per target. This
+ * reuses ALL of `archivePost`'s logic (idempotent merge, copy-JSON copy, index regeneration) for each
+ * dir; the single-dir `archivePost`/`safeArchivePost` stay intact for the temp-dir `override` contract.
+ * Throws if either write fails — use `safeArchivePostAll` on the publish path.
+ */
+export function archivePostAll(
+  record: PostArchiveRecord,
+  opts: ArchiveAllOptions = {},
+): ArchiveAllResult {
+  const external = archivePost(record, resolveArchiveDir(opts.externalDirOverride));
+  const inRepo = archivePost(record, resolveInRepoArchiveDir(opts.inRepoDirOverride));
+  return { external, inRepo };
+}
+
+/**
+ * Non-fatal dual-write — like `safeArchivePost`, archiving must NEVER break a publish. Logs a clear
+ * warning and returns null on any error; returns the per-target results on success. The publish smokes
+ * call THIS so every future post auto-persists in BOTH the external durable archive and the in-repo
+ * git-tracked mirror.
+ */
+export function safeArchivePostAll(
+  record: PostArchiveRecord,
+  opts: ArchiveAllOptions = {},
+): ArchiveAllResult | null {
+  try {
+    return archivePostAll(record, opts);
+  } catch (err) {
+    console.warn(
+      `ARCHIVE WARN: failed to dual-archive post ${record.slug} (non-fatal — publish continues): ` +
         `${err instanceof Error ? err.message : String(err)}`,
     );
     return null;

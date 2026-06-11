@@ -1,0 +1,20 @@
+{
+  "video_script": "What if the part of your AI coding agent that does the heavy lifting cost you nothing? We tested a local-first agent harness on 13 real SWE-bench Verified bugs. Here's the deal: the file-editing role — the one that grinds through the actual code changes — runs on a local model. That's a 0% cost share for the hardest-working part of the chain. The result? The local-first hybrid resolved 62% of the bugs — 8 out of 13 — while cloud fallback steps in to rescue the toughest ones. Full-cloud relay does land higher at 77%, 10 out of 13, but it costs $35.0. The hybrid? Just $15.7. That's a 55% cost saving on the same chain. And for comparison, a single-shot Opus run only solved 54%, 7 of 13. Every fix here was graded by the real SWE-bench Docker test oracle — actual tests, never an LLM judge guessing. You keep the honest local result, and cloud only jumps in when it's truly needed. Want to try it? pip install git+https://github.com/ziyilam3999/local-first-agent-harness.",
+  "x_thread": [
+    "We moved the heavy file-editing role of an AI coding agent onto a LOCAL model. It runs at 0% cost share. On 13 real SWE-bench Verified bugs, the local-first hybrid still resolved 62%. Here's how the numbers shook out 🧵",
+    "The honest comparison on the same 13 tasks:\n• Full-cloud relay: 77% resolved (10/13)\n• Local-first hybrid: 62% resolved (8/13)\n• 1-shot Opus: 54% resolved (7/13)\n\nCloud fallback rescues the hardest bugs while keeping the honest local result.",
+    "Now the part that matters: cost.\n• Full-cloud relay: $35.0\n• Local-first hybrid: $15.7\n\nThat's a 55% cost saving vs full-cloud on the same chain — because the executor runs free on a local model.",
+    "No grading shortcuts. Every fix is graded by the real SWE-bench Docker test oracle — actual tests, never an LLM judge. The heavy file-editing role runs free locally; cloud only steps in for the bugs that need it.",
+    "Try it:\npip install git+https://github.com/ziyilam3999/local-first-agent-harness"
+  ],
+  "infographic_labels": [
+    "13 tasks evaluated (SWE-bench Verified)",
+    "Full-cloud relay: 77% resolved (10/13)",
+    "Local-first hybrid: 62% resolved (8/13)",
+    "1-shot Opus: 54% resolved (7/13)",
+    "Full-cloud relay cost: $35.0",
+    "Local-first hybrid cost: $15.7",
+    "55% cost saving vs full-cloud (same chain)",
+    "Executor (local) cost share: 0%"
+  ]
+}
