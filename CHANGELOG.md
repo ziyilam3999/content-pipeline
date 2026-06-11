@@ -1,3 +1,9 @@
+## [0.19.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.18.1...v0.19.0) (2026-06-11)
+
+### Features
+
+* **frames:** add a typed, validated frame-ingest path so the pipeline can render an ordered set of REAL captured screenshot PNGs as the per-scene HERO of a "demonstration" video (`objectFit: contain`, never crop), reusing the existing narration scene-sync, Adam caption band, audio-sync provenance guard (#774), and multi-aspect render unchanged. Adds `inputs/frames.ts` (FrameManifest + `validateFrameManifest` parity hard-throw + `assertBrandClean` + `assertUiFrameFit`), `adapters/frames.ts` (`embedFrames`/`renderFrameCard`, reuses exported `toDataUri`), `video/demoFrameTimeline.ts`, `image/frameCard.ts`, a `demo-frames` Remotion composition, and a free silent `smoke:demo-frames`. Phases 1-4 of the demonstration category (#824). ([#89](https://github.com/ziyilam3999/content-pipeline/pull/89))
+
 ## [0.18.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.18.0...v0.18.1) (2026-06-11)
 
 ### Miscellaneous
