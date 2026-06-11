@@ -140,6 +140,16 @@ export function assertPublishAssetsMatchManifest(
     }
   }
 
+  const uploadBasenames = new Set(assets.map((a) => path.basename(a.path)));
+  for (const basename of Object.keys(manifest.assets)) {
+    if (!uploadBasenames.has(basename)) {
+      offenders.push(
+        `${basename} (${manifest.assets[basename].role}) is in the ${manifest.postSlug} manifest but ABSENT ` +
+          `from the publish set — a manifest-approved asset would be silently dropped`,
+      );
+    }
+  }
+
   if (offenders.length > 0) {
     throw new Error(
       `#810 provenance violation — the publish set does NOT match the approved render for ` +

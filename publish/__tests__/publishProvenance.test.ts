@@ -127,6 +127,20 @@ describe("assertPublishAssetsMatchManifest", () => {
     expect(() => assertPublishAssetsMatchManifest(assets, manifest)).toThrow(/rogue-card\.png.*NOT in/s);
   });
 
+  it("HARD-FAILS when a manifest asset is absent from the upload set (reverse coverage)", () => {
+    const manifest = manifestFromFixtures("lfah-post2", [
+      { role: "hero-video", basename: "builder-demo-9x16.mp4", contents: "HERO" },
+      { role: "card", basename: "card-post2-A.png", contents: "CARD" },
+    ]);
+    // Only supply the hero — card is in the manifest but dropped from the publish set.
+    const assets: PublishAsset[] = [
+      { role: "hero-video", path: path.join(tmp, "builder-demo-9x16.mp4") },
+    ];
+    expect(() => assertPublishAssetsMatchManifest(assets, manifest)).toThrow(
+      /card-post2-A\.png.*ABSENT from the publish set/s,
+    );
+  });
+
   it("HARD-FAILS when a manifest-listed file is missing on disk", () => {
     const manifest = manifestFromFixtures("lfah-post2", [
       { role: "hero-video", basename: "builder-demo-9x16.mp4", contents: "HERO" },
