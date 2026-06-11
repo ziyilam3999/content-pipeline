@@ -1,3 +1,9 @@
+## [0.16.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.16.0...v0.16.1) (2026-06-11)
+
+### Bug Fixes
+
+* **post3:** horizontal title-safe band so a full-screen tall-phone crop never clips content ([#79](https://github.com/ziyilam3999/content-pipeline/pull/79))
+
 ## [0.16.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.15.0...v0.16.0) (2026-06-11)
 
 ### Features
