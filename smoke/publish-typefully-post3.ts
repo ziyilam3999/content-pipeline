@@ -118,10 +118,9 @@ const FALLBACK_X_THREAD: string[] = [
 
 const FALLBACK_THREADS_TEXT = `Most AI coding agents call the model for everything — routing, grading, even "did this pass?". Tokens stack up, verdicts drift.
 
-forge-harness flips it: 8 primitives, only 1 ever talks to the model. The other 7 are deterministic code running your real tests.
+forge-harness flips it: 8 primitives, only 1 ever talks to the model. The other 7 are deterministic code running your tests.
 
-Receipt from a real 13-story project: 16 calls, 2 paid — $0.80 for the whole plan (~$0.20/story). "Did it pass?" is decided by your tests, not the model's mood.
-
+Receipt from a real 13-story project: 16 calls, 2 paid — $0.80 for the plan (~$0.20/story). "Did it pass?" is decided by your tests, not the model's mood.
 Public, MIT, early — feedback welcome.
 github.com/ziyilam3999/forge-harness`;
 
