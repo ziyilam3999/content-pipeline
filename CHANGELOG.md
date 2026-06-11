@@ -1,3 +1,9 @@
+## [0.16.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.15.0...v0.16.0) (2026-06-11)
+
+### Features
+
+* auto-archive every post into the durable POSTS-ARCHIVE on publish ([#77](https://github.com/ziyilam3999/content-pipeline/pull/77))
+
 # Changelog
 
 All notable changes to content-pipeline are documented here. The format follows

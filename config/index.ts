@@ -1,3 +1,6 @@
+import * as os from "os";
+import * as path from "path";
+
 export type AspectRatio = "16:9" | "9:16" | "1:1" | "4:5";
 
 export const CONFIG = {
@@ -67,6 +70,14 @@ export const CONFIG = {
   publish: {
     dryRunDefault: true,
     socialSetIdEnv: "TYPEFULLY_SOCIAL_SET_ID",
+    // POST AUTO-ARCHIVE — the DURABLE, non-repo home for every produced post's canonical copy +
+    // metadata. The canonical copy text lives ONLY in `out/copy/*.json`, which is GITIGNORED (a
+    // `git clean` deletes it). The archive is the durable home so a post is NEVER lost: it sits
+    // OUTSIDE the repo (under ~/coding_projects/_launch-assets/) so no git operation can touch it.
+    // `~` is resolved to os.homedir() here (never a literal "~" the FS can't expand). Override at
+    // runtime with $POSTS_ARCHIVE_DIR (read by publish/postArchive.ts) — e.g. tests point it at a
+    // temp dir so they never write the real home archive.
+    archiveDir: path.join(os.homedir(), "coding_projects", "_launch-assets", "POSTS-ARCHIVE"),
     // HERO video aspect — the full-bleed phone-native cut (9:16, 1080x1920) is the lead
     // video EVERYWHERE it leads (X hook tweet, Threads/LinkedIn hero post). This is the
     // most-watched cut (#744/#765/#773). Per-aspect renders still exist; the assembly
