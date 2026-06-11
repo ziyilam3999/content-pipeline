@@ -13,3 +13,7 @@ out/
 .ai-workspace/*
 !.ai-workspace/PROJECT-INDEX.md
 !.ai-workspace/PROJECT-INDEX-reference.md
+# TRACK the in-repo posts archive mirror so a fresh clone / CI has the canonical
+# post copy + index in git too (the external durable archive lives outside the repo, #821).
+!.ai-workspace/posts/
+!.ai-workspace/posts/**

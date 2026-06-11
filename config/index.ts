@@ -78,6 +78,15 @@ export const CONFIG = {
     // runtime with $POSTS_ARCHIVE_DIR (read by publish/postArchive.ts) — e.g. tests point it at a
     // temp dir so they never write the real home archive.
     archiveDir: path.join(os.homedir(), "coding_projects", "_launch-assets", "POSTS-ARCHIVE"),
+    // IN-REPO ARCHIVE MIRROR (#821) — a SECOND, GIT-TRACKED home for the same per-post copy +
+    // metadata + index, so a fresh clone / CI has the canonical wording too (the external
+    // `archiveDir` above lives OUTSIDE the repo and is never in git). It is `.ai-workspace/posts`
+    // resolved to an ABSOLUTE path against the REPO ROOT (the dir that contains `config/`, i.e. the
+    // parent of THIS file's dir) so the FS can always write it, exactly like `archiveDir`. The repo
+    // `.gitignore` allow-lists `.ai-workspace/posts/**` so the mirror is committed. Override at
+    // runtime with $POSTS_INREPO_ARCHIVE_DIR (read by publish/postArchive.ts) — tests point it at a
+    // temp dir so they never write the real repo archive.
+    inRepoArchiveDir: path.resolve(__dirname, "..", ".ai-workspace", "posts"),
     // HERO video aspect — the full-bleed phone-native cut (9:16, 1080x1920) is the lead
     // video EVERYWHERE it leads (X hook tweet, Threads/LinkedIn hero post). This is the
     // most-watched cut (#744/#765/#773). Per-aspect renders still exist; the assembly

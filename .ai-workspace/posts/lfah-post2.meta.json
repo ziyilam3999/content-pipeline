@@ -1,0 +1,17 @@
+{
+  "slug": "lfah-post2",
+  "postNumber": 2,
+  "title": "lfah is a BUILDER",
+  "subject": "lfah doesn't just fix bugs — it builds whole apps test-first; proof = content-pipeline was built BY lfah.",
+  "category": "introduction",
+  "producedDate": "2026-06-11",
+  "publishedDate": "2026-06-11",
+  "mediaBundleDir": "~/coding_projects/_launch-assets/lfah-post2-20260610",
+  "publishManifestRef": "content-pipeline/publish/manifests/lfah-post2.publish-manifest.json",
+  "copyArchiveBasename": "post2-lfah-builder-copy.json",
+  "liveUrls": {
+    "x": "https://x.com/anson3999/status/2064861439471636632",
+    "threads": "https://www.threads.com/@gotextrameal/post/DZbMNpElIzu"
+  },
+  "numbers": "13 build phases, all shipped; ~85% solved by free local model; $12.56 total cloud; cloud rescued bp2+bp5."
+}

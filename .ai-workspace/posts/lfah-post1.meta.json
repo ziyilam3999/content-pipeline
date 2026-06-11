@@ -1,0 +1,18 @@
+{
+  "slug": "lfah-post1",
+  "postNumber": 1,
+  "title": "lfah is a BUG-FIXER",
+  "subject": "local-first-agent-harness fixes real SWE-bench bugs cheaply (local-first, cloud-rescue).",
+  "category": "introduction",
+  "producedDate": "2026-06-10",
+  "publishedDate": "2026-06-10",
+  "mediaBundleDir": "~/coding_projects/_launch-assets/lfah-20260610",
+  "publishManifestRef": "content-pipeline/publish/manifests/lfah-post1.publish-manifest.json",
+  "copyArchiveBasename": "post1-lfah-bugfixer-copy.json",
+  "liveUrls": {
+    "x": "https://x.com/anson3999/status/2064573597633728583",
+    "threads": "https://www.threads.com/@gotextrameal/post/DZZJUkrCkw"
+  },
+  "numbers": "13 SWE-bench Verified bugs; hybrid 62% ($15.7) vs full-cloud 77% ($35.0); 55% cheaper; real Docker oracle.",
+  "note": "the live X thread published OUT OF ORDER (5 tweets same second + heavy video on t1) — operator CLOSED, no repost. Square-vs-9:16 hero bug fixed for future posts (#794)."
+}

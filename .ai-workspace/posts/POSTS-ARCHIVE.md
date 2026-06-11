@@ -1,0 +1,60 @@
+# Launch Posts Archive
+
+Persistent record of every promo post produced by content-pipeline — copy, live URLs, media, numbers —
+so any post can later be re-purposed for another platform (e.g. LinkedIn) without reconstructing it.
+
+> WHY this file exists: the canonical copy text lives only in `content-pipeline/out/copy/*.json`, which is
+> **gitignored** (a `git clean` would delete it). This archive is the durable home. It is produced
+> AUTOMATICALLY by the pipeline (`publish/postArchive.ts` — every post is archived on assembly/publish),
+> reconciling the original hand-made archive.
+
+## Categories
+- **Product INTRODUCTION** — explain what it is: value prop, real numbers, explainer animation.
+- **Product DEMONSTRATION** — show it in action: real screen-capture + narrated play-by-play.
+
+> This file is GENERATED from the `*.meta.json` records in this directory — do not hand-edit; edits are
+> overwritten on the next archive. Change the source in `publish/postArchive.ts` (ARCHIVE_POSTS) instead.
+
+Last updated: 2026-06-11
+
+---
+
+## Post #1 — lfah is a BUG-FIXER  (INTRODUCTION)
+- **Subject:** local-first-agent-harness fixes real SWE-bench bugs cheaply (local-first, cloud-rescue).
+- **Produced:** 2026-06-10
+- **Published:** 2026-06-10 (LIVE).
+- **Live URLs:** X https://x.com/anson3999/status/2064573597633728583 · Threads https://www.threads.com/@gotextrameal/post/DZZJUkrCkw
+- **Copy:** `post1-lfah-bugfixer-copy.json` (this dir)
+- **Media bundle:** `~/coding_projects/_launch-assets/lfah-20260610/`
+- **Publish manifest:** `content-pipeline/publish/manifests/lfah-post1.publish-manifest.json`
+- **Numbers:** 13 SWE-bench Verified bugs; hybrid 62% ($15.7) vs full-cloud 77% ($35.0); 55% cheaper; real Docker oracle.
+- **Note:** the live X thread published OUT OF ORDER (5 tweets same second + heavy video on t1) — operator CLOSED, no repost. Square-vs-9:16 hero bug fixed for future posts (#794).
+
+## Post #2 — lfah is a BUILDER  (INTRODUCTION)
+- **Subject:** lfah doesn't just fix bugs — it builds whole apps test-first; proof = content-pipeline was built BY lfah.
+- **Produced:** 2026-06-11
+- **Published:** 2026-06-11 (LIVE).
+- **Live URLs:** X https://x.com/anson3999/status/2064861439471636632 · Threads https://www.threads.com/@gotextrameal/post/DZbMNpElIzu
+- **Copy:** `post2-lfah-builder-copy.json` (this dir)
+- **Media bundle:** `~/coding_projects/_launch-assets/lfah-post2-20260610/`
+- **Publish manifest:** `content-pipeline/publish/manifests/lfah-post2.publish-manifest.json`
+- **Numbers:** 13 build phases, all shipped; ~85% solved by free local model; $12.56 total cloud; cloud rescued bp2+bp5.
+
+## Post #3 — forge-harness ("only 1 of 8 talks to the model")  (INTRODUCTION)
+- **Subject:** 8 composable MCP primitives, only 1 ever calls the LLM; deterministic verdicts; a real 13-story project's whole plan ~$0.80.
+- **Produced:** 2026-06-11
+- **Published:** 2026-06-11 (LIVE).
+- **Live URLs:** Threads https://www.threads.com/@gotextrameal/post/DZcUScDAIy3
+- **Copy:** `post3-forge-harness-copy.json` (this dir)
+- **Media bundle:** `~/coding_projects/_launch-assets/forge-harness-post3-20260611/`
+- **Publish manifest:** `content-pipeline/publish/manifests/forge-harness-post3.publish-manifest.json`
+- **Numbers:** 8 primitives / 1 LLM tool; 16 calls / 2 paid; $0.80 plan / ~$0.20 story; MIT, public.
+- **Note:** X thread is LIVE (operator published 2026-06-11) but its exact status URL was not captured (the Typefully draft was deleted post-publish); Threads read-back verified.
+
+---
+
+## LinkedIn re-purpose readiness
+For each post the durable inputs exist: full copy JSON (X thread + Threads variants + video narration
+scenes + card labels + number_verification), the media bundle, the cards, and the art base. A LinkedIn
+variant would reuse the numbers + honesty guards verbatim and re-flow the X-thread copy into a single
+longer-form post — copy re-flow, not a rebuild. Posting to LinkedIn is a DEFERRED operator decision.

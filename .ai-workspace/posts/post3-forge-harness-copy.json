@@ -1,0 +1,45 @@
+{
+  "_what": "Post #3 copy — 'forge-harness: only 1 of 8 ever talks to the model'. Authored by BUILD-1 from .ai-workspace/plans/2026-06-11-post3-forge-harness-design.md. Every number verified vs forge-harness/README.md (see number_verification). Brand-clean (MIT, public, no employer brand). Every X tweet + the Threads post PROVEN within the #809 per-platform length validator (publish/copyLimits.ts). DRAFT for operator review before any paid voiceover / art / live draft.",
+  "_honesty_guards": [
+    "'only 1 of 8 ever talks to the model' mirrors the README's own headline framing (the dominant path). Edge modes exist (forge_evaluate has a rarely-used coherence sub-mode; forge_reconcile can route downstream to forge_plan) — README footnotes 1+2. Wording stays 'ever talks to the model' / 'on the normal path'; we do NOT claim it is literally impossible for the other 7 to ever reach the LLM.",
+    "The receipt is ONE real dogfood project (monday-bot, 4 of 13 stories shipped at README time). Copy says 'a real 13-story project' and '~$0.20/story so far'. We do NOT imply broad adoption (repo has 0 stars); framed as 'early — feedback welcome'.",
+    "$0.80 is API-equivalent cost, covered by a Max subscription ($0 out-of-pocket). Copy says '$0.80 for the whole plan' — accurate per README line 22.",
+    "Brand-clean: MIT license, public repo github.com/ziyilam3999/forge-harness. No employer brand mentioned anywhere.",
+    "The implementation work runs in YOUR Claude Code session (README line 17) — forge only plans, grades, and coordinates. CTA says exactly that."
+  ],
+  "x_thread": [
+    "Most AI coding agents call the model for everything — routing, grading, even \"did this pass?\". Tokens pile up and verdicts drift between runs.\n\nforge-harness flips it: 8 building blocks, only 1 ever talks to the model. The other 7 are plain deterministic code. 🧵",
+    "The receipt, from a real 13-story side project built with it:\n\n16 tool calls → only 2 cost tokens (both the planning step). $0.80 for the whole phase plan. ~$0.20 a story. On a Max plan that's $0 out of pocket.",
+    "\"Did the story pass?\" isn't a question the model answers.\n\nforge_evaluate runs the actual commands from your plan — your build, your tests. Test passes → story passes. Same inputs, same result every run. No grader having a bad day.",
+    "8 composable primitives. Use one, or snap them together. Your Claude Code session does the real implementation work — forge just plans, grades, and coordinates.\n\nPublic, MIT, early — feedback welcome. Try it → github.com/ziyilam3999/forge-harness"
+  ],
+  "threads_post": "Most AI coding agents call the model for everything — routing, grading, even \"did this pass?\". Tokens stack up, verdicts drift.\n\nforge-harness flips it: 8 primitives, only 1 ever talks to the model. The other 7 are deterministic code running your tests.\n\nReceipt from a real 13-story project: 16 calls, 2 paid — $0.80 for the plan (~$0.20/story). \"Did it pass?\" is decided by your tests, not the model's mood.\nPublic, MIT, early — feedback welcome.\ngithub.com/ziyilam3999/forge-harness",
+  "_video_target_seconds": 90,
+  "video_script_scenes": [
+    "This is forge-harness. Think of it as the foreman on a build site — it doesn't lay the bricks, it tells the builder what to do next and checks the work. The harness coordinates; your coding agent does the actual building.",
+    "Here's the problem it fixes. Most AI coding helpers phone the big language model for every little thing — which step is next, did this work, what now. Each call costs tokens, and the bill just keeps stacking up.",
+    "forge-harness flips that around. It has 8 building blocks. Seven of them are plain, predictable code that never calls the model — they just read files and run commands. Only one block, the planning step, ever talks to the model.",
+    "So what does that cost? On a real thirteen-story project, the whole thing ran 16 tool calls. Only 2 of them cost tokens — both the planning step. That's eighty cents for the entire plan, about twenty cents a story.",
+    "And it doesn't guess whether your work passed. The grading block runs the exact commands you wrote — your build, your tests. If your test passes, the story passes. Same inputs, same answer, every single time. No model having a bad day.",
+    "It's eight blocks you can use one at a time or snap together. It's open source, MIT licensed, and early — so feedback is welcome. Grab it at github dot com slash ziyilam three-nine-nine-nine slash forge dash harness."
+  ],
+  "card_labels": {
+    "A_only_1_of_8_costs_tokens": ["ONLY 1 OF 8 COSTS TOKENS", "16 tool calls · 2 paid · 14 free", "$0.80 for the whole plan", "~$0.20 per story so far"],
+    "B_verdicts_you_can_trust": ["VERDICTS YOU CAN TRUST", "forge_evaluate runs YOUR commands", "test passes → story passes", "no LLM grading · same in, same out"],
+    "C_8_composable_primitives": ["8 COMPOSABLE PRIMITIVES", "use one, or snap them together", "your agent does the real work", "MIT · public · feedback welcome"]
+  },
+  "number_verification": {
+    "8 primitives / building blocks": "README line 7 'Eight MCP primitives' + line 51 tool table lists all 8 ✓",
+    "only 1 of 8 talks to the model (forge_plan)": "README line 15 'only forge_plan actually talks to Claude' + line 51 'Only forge_plan costs tokens. The other seven are deterministic' ✓ (edge modes footnoted lines 53-54 — guarded by wording)",
+    "16 tool calls / 2 paid / 14 free": "README line 21 '16 tool calls, 2 paid, 14 free — the two paid calls were both forge_plan invocations' ✓",
+    "$0.80 total for the whole plan": "README line 22 '$0.80 total for the entire phase plan' ✓",
+    "~$0.20 per story": "README line 22 'amortized to $0.20 per story so far' ✓",
+    "$0 out of pocket on Max": "README line 23 'On Max plan: $0 out-of-pocket — the $0.80 is API-equivalent cost, covered by the subscription' ✓",
+    "a real 13-story project (monday-bot, 4 shipped)": "README line 19 'a real 13-story project shipped with forge-harness (monday-bot, 4 stories shipped at time of writing)' ✓ — framed 'early', no adoption claim",
+    "forge_evaluate runs your plan's commands, deterministic PASS/FAIL": "README line 26 'forge_evaluate runs the commands you wrote in your execution plan's acceptance criteria ... If your test passes, the story passes' + line 15 'Same inputs, same outputs. No LLM re-judging' ✓",
+    "Claude Code session does the real implementation work": "README line 17 'The implementation work itself runs in your Claude Code session ... forge-harness never calls Claude on your behalf to write code' ✓",
+    "MIT license": "README line 260 'MIT' ✓",
+    "public repo url github.com/ziyilam3999/forge-harness": "README line 31 'git clone https://github.com/ziyilam3999/forge-harness.git' ✓",
+    "install = git clone + ./setup.sh": "README lines 30-34 Quick Start: git clone, cd, ./setup.sh ✓ (not surfaced in copy, verified for completeness)"
+  }
+}

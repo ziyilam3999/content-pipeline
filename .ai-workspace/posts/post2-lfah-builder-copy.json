@@ -1,0 +1,42 @@
+{
+  "_what": "Post #2 copy — 'lfah is a BUILDER'. Hand-authored by the orchestrator (meta/story shape, not the stats-table shape the pipeline copy-gen is tuned for). Every stat number-verified vs .ai-workspace/LFAH-BUILDER-DOGFOOD-METRICS.json (harvested 2026-06-08) + lfah README §'Greenfield builds'. Brand-clean. DRAFT for operator review before paid voiceover.",
+  "_honesty_guards": [
+    "$12.56 = TOTAL CLOUD spend (planner+evaluator+2 handoffs); local executor is free-of-API-cost, NOT 'the whole build was free'.",
+    "bp2 + bp5 were CLOUD-HANDOFF (claude-sonnet-4-6) — copy names 'the cloud rescued the 2 hardest phases'.",
+    "Two-13s disambiguated: Post#2 = 13 BUILD PHASES of this app; Post#1 = 13 SWE-bench BUGS. T2 states it explicitly.",
+    "loop_signal=both rendered as 'real test suite AND an independent check both agree'.",
+    "CTA verified honest: 'lfah build' is a public, pushed CLI subcommand documented as the README headline feature."
+  ],
+  "x_thread": [
+    "Last week: our coding agent fixes real bugs cheaply.\n\nThe bigger story — it doesn't just fix bugs. It BUILDS whole apps, test-first.\n\nProof: the pipeline that produced last week's launch video & cards was built by the agent itself, one phase at a time. All green. 🧵",
+    "We handed it failing tests and let it build the thing.\n\n• 13 build phases → all 13 shipped (100%)\n• 11 passed on the first try\n• every phase graded by the project's REAL test suite (jest), never an LLM judge\n\n(13 build phases of one app — not last week's 13 bugs.)",
+    "The cost is the punchline:\n\n• $12.56 total cloud spend for the entire build\n• ~85% of phases solved by a FREE local model\n• the cloud only stepped in for the 2 hardest phases\n• about $0.97 per phase\n\nHeavy lifting runs local. Cloud is the rescue, not the default.",
+    "The loop: a failing test → a local model writes code until it goes green → ships only when the real test suite AND an independent check agree → next phase.\n\nSame local-first DNA as the bug-fixer, now building whole apps.\n\nTry it → pip install git+https://github.com/ziyilam3999/local-first-agent-harness"
+  ],
+  "threads_post": "Our coding agent doesn't just fix bugs — it builds whole apps, test-first.\n\nThe proof: the pipeline that made last week's launch video was built by the agent itself. 13 phases, all shipped, $12.56 total cloud spend — ~85% by a free local model, cloud only rescuing the 2 hardest.\n\nEvery phase had to pass the project's real jest suite, not an LLM judge. Same local-first DNA, now pointed at greenfield work.\n\nTry it: pip install git+https://github.com/ziyilam3999/local-first-agent-harness",
+  "_video_target_seconds": 90,
+  "video_script_scenes": [
+    "This is local-first agent harness — say it 'alpha.' Last week, it fixed real bugs cheaply. But it does something bigger: it builds whole apps, from scratch, test-first.",
+    "It doesn't free-style code. Every feature starts life as a failing test — a plain-English goal, plus a test that's only true when the feature actually works. The test is both the spec and the proof.",
+    "You hand it a list of phases. It scaffolds an empty project and drops in the first failing test. Red — there's no code yet.",
+    "Then a local model, running free on your own machine, writes code until the project's real test suite goes green. Not an LLM judge guessing — the actual test runner: jest, or pytest.",
+    "A phase ships only when the test is green AND an independent reviewer agrees. Then it commits and moves on. If a phase can't go green, the build halts — so you never stack features on a broken one.",
+    "We pointed it at a real job: build the very pipeline that produced this video — the copy, the cards, the render. Thirteen phases. Every single one shipped.",
+    "All thirteen green. Eleven on the first try. Twelve dollars and fifty-six cents in total cloud cost — and about eighty-five percent of the phases were solved by the free local model. The cloud only stepped in to rescue the two hardest.",
+    "Your tests are the spec and the proof. This is local-first, pointed at greenfield. Try it — pip install local-first agent harness, then lfah build."
+  ],
+  "card_labels": {
+    "A_dogfood_headline": ["13 build phases — all 13 shipped (100%)", "11 phases passed on the first try", "graded by the REAL jest test suite, never an LLM judge", "the pipeline that built this post built itself"],
+    "B_cost_local_split": ["$12.56 total cloud spend for the whole build", "~85% of phases solved by a FREE local model", "cloud rescued only the 2 hardest phases", "≈ $0.97 per phase"],
+    "C_the_how": ["failing test → local model makes it green", "ships only when the test suite AND an independent check agree", "a broken phase halts the build", "same local-first DNA — now building whole apps"]
+  },
+  "number_verification": {
+    "13 phases / 13 shipped / 100%": "metrics.headline.build_phases_total=13, build_phases_shipped=13, ship_rate_pct=100 ✓",
+    "11 one-shot": "metrics.headline.one_shot_phases=11 ✓",
+    "~85% local": "metrics.headline.local_share_pct=84.6 ✓",
+    "2 cloud-rescued (bp2,bp5)": "metrics.per_phase bp2+bp5 solved_by=cloud-handoff, handoff_model=claude-sonnet-4-6 ✓",
+    "$12.56 total": "metrics.headline.total_cost_usd=12.56 ✓",
+    "$0.97/phase": "metrics.headline.avg_cost_per_phase_usd=0.97 ✓",
+    "both-gate / real jest oracle": "metrics.method_notes loop_signal=both + README §Greenfield 'real test runner, never an LLM' ✓"
+  }
+}

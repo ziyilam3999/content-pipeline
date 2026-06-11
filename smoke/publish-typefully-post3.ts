@@ -81,7 +81,7 @@ import {
   type PublishAsset,
 } from "../publish/publishProvenance";
 import { POST_ASSETS } from "../publish/publishAssets";
-import { buildArchiveRecord, safeArchivePost } from "../publish/postArchive";
+import { buildArchiveRecord, safeArchivePostAll } from "../publish/postArchive";
 import { CONFIG } from "../config";
 
 // ── Sources ────────────────────────────────────────────────────────────
@@ -400,10 +400,13 @@ async function main() {
   // ── POST AUTO-ARCHIVE (both modes, non-fatal). Post #3 is assembled + passed the fidelity gate,
   // so save its canonical copy + metadata into the DURABLE, non-repo archive NOW — automatically, no
   // human step — so a `git clean` of the gitignored out/copy can never lose it. Non-fatal-wrapped.
-  const archived = safeArchivePost(
+  const archived = safeArchivePostAll(
     buildArchiveRecord("forge-harness-post3", { primaryRoot: PRIMARY_ROOT }),
   );
-  if (archived) console.log(`ARCHIVE: forge-harness-post3 copy+metadata saved → ${archived.archiveDir}`);
+  if (archived)
+    console.log(
+      `ARCHIVE: forge-harness-post3 copy+metadata saved → ${archived.external.archiveDir} (+ in-repo ${archived.inRepo.archiveDir})`,
+    );
 
   if (!live) {
     // DRY-RUN: print the exact draft body with placeholder media ids; ZERO network calls. No
@@ -462,14 +465,16 @@ async function main() {
   // ── LIVE URL WRITEBACK (non-fatal). Post #3 was NOT yet live; once published, MERGE the publish
   // date + live x/threads URLs into the durable record (fresh URLs come from a read-back via
   // smoke/verify-published.ts — pass them here). Merge — never erase the rest of the record.
-  const liveArchived = safeArchivePost(
+  const liveArchived = safeArchivePostAll(
     buildArchiveRecord("forge-harness-post3", {
       primaryRoot: PRIMARY_ROOT,
       dynamic: { publishedDate: new Date().toISOString().slice(0, 10) },
     }),
   );
   if (liveArchived) {
-    console.log(`ARCHIVE: forge-harness-post3 publish state written back → ${liveArchived.metaPath}`);
+    console.log(
+      `ARCHIVE: forge-harness-post3 publish state written back → ${liveArchived.external.metaPath} (+ in-repo ${liveArchived.inRepo.metaPath})`,
+    );
   }
   process.exit(0);
 }
