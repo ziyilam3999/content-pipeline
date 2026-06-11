@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.12.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.11.0...v0.12.0) (2026-06-11)
+
+### Features
+
+* **publish:** post-publish read-back verifier + short-thread advisory (#793) — an outward publish is NOT verified until you READ BACK the live result; Post #1 reported "published" off the SUBMITTED state alone and came out scrambled on X. Typefully's GET-draft response, AFTER publish, now populates `status: "published"`, `published_at`, `x_published_url` and `threads_published_url` (absent at draft time), so a read-back is finally possible. New `publish/publishVerify.ts`: pure `assertPublishedDraftShape(draft, intent)` asserts `status === "published"`, a non-empty `x_published_url`, `threads_published_url` when Threads was enabled, AND that the STORED X post media-id order matches the caller-supplied intent (the video hero on tweet 1, cards on 2..n) — throwing a clear per-case message on a scrambled or miscounted order; and NON-FATAL `threadLengthAdvisory(xThread)` returning a NOTE when the X thread exceeds the new `CONFIG.publish.threadShape.xSoftMaxTweets` (5) soft cap (longer threads raise same-second scramble risk), never throwing. New runnable smoke `smoke/verify-published.ts <draftId>` (npm script `smoke:verify-published`) does a read-only Typefully GET, runs the assert, prints the live URLs and a greppable `PUBLISH-VERIFY:` line; the LIVE per-tweet reply order is honestly marked `live-per-tweet-order=UNVERIFIED(needs X API)` — Typefully returns only the root tweet URL, so full live-order verification is documented as an X-API follow-up, NOT faked. The advisory is wired non-fatally into both publish smokes and the copy stage smoke. 34 suites / 360 tests green (was 33 / 352; assertPublishedDraftShape PASS + 4 failure modes, threadLengthAdvisory null/NOTE/boundary); tsc clean; no paid calls ([#66](https://github.com/ziyilam3999/content-pipeline/pull/66))
+
 ## [0.11.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.10.0...v0.11.0) (2026-06-10)
 
 ### Features
