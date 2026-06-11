@@ -74,6 +74,7 @@ import {
   type PublishAsset,
 } from "../publish/publishProvenance";
 import { POST_ASSETS } from "../publish/publishAssets";
+import { buildArchiveRecord, safeArchivePost } from "../publish/postArchive";
 import { CONFIG } from "../config";
 
 // ── Sources ────────────────────────────────────────────────────────────
@@ -356,6 +357,14 @@ async function main() {
   );
   if (!vf.videoUnitIsFirst && vf.message) console.warn(vf.message);
 
+  // ── POST AUTO-ARCHIVE (both modes, non-fatal). Post #3 is assembled + passed the fidelity gate,
+  // so save its canonical copy + metadata into the DURABLE, non-repo archive NOW — automatically, no
+  // human step — so a `git clean` of the gitignored out/copy can never lose it. Non-fatal-wrapped.
+  const archived = safeArchivePost(
+    buildArchiveRecord("forge-harness-post3", { primaryRoot: PRIMARY_ROOT }),
+  );
+  if (archived) console.log(`ARCHIVE: forge-harness-post3 copy+metadata saved → ${archived.archiveDir}`);
+
   // The ORDERED Threads carousel media-id list (index 0 = the lead HERO video).
   const threadsMediaPaths = THREADS_ORDERED_MEDIA.map((m) => m.path);
 
@@ -405,6 +414,19 @@ async function main() {
     `\nPUBLISH-TYPEFULLY-POST3: mode=live draft_id=${res.id} status=${res.status} posts=x:4,threads:1 ` +
       `media=${slots.length + threadsMediaPaths.length}`,
   );
+
+  // ── LIVE URL WRITEBACK (non-fatal). Post #3 was NOT yet live; once published, MERGE the publish
+  // date + live x/threads URLs into the durable record (fresh URLs come from a read-back via
+  // smoke/verify-published.ts — pass them here). Merge — never erase the rest of the record.
+  const liveArchived = safeArchivePost(
+    buildArchiveRecord("forge-harness-post3", {
+      primaryRoot: PRIMARY_ROOT,
+      dynamic: { publishedDate: new Date().toISOString().slice(0, 10) },
+    }),
+  );
+  if (liveArchived) {
+    console.log(`ARCHIVE: forge-harness-post3 publish state written back → ${liveArchived.metaPath}`);
+  }
   process.exit(0);
 }
 
