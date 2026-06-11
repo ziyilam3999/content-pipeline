@@ -1,3 +1,9 @@
+## [0.18.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.18.0...v0.18.1) (2026-06-11)
+
+### Miscellaneous
+
+* **smoke:** dedupe the `DEMO_BG_IMAGE` bg-image path derivation into a single `resolveBgImagePath()` helper so the #817 art-bound guard and `loadBackground` can never desync, and surface the #817 shared-source guard bypass with a `console.warn` when a `DEMO_BG_IMAGE` override is active (it was correct but silent) ([#87](https://github.com/ziyilam3999/content-pipeline/pull/87))
+
 ## [0.18.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.17.0...v0.18.0) (2026-06-11)
 
 ### Features
