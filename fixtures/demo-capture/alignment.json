@@ -1,0 +1,11 @@
+{
+  "_note": "#824 COMMITTED alignment fixture for the demo-capture tape (beat 4). The pre-baked narration + sceneEndTimes shape the demo-frames smoke already embeds, `cat`-ed on screen to show caption↔voice timing WITHOUT an ElevenLabs synth (no smoke:voice / caption-sync-real in CI). sceneEndTimesSec is monotonic and ends at audioDurationSec.",
+  "audioDurationSec": 12.0,
+  "narration": [
+    { "sceneId": "hook", "text": "Meet lfah — fixes real bugs, test-first, on your own machine." },
+    { "sceneId": "copy", "text": "First it writes the copy." },
+    { "sceneId": "cards", "text": "Then it lays out the cards." },
+    { "sceneId": "cta", "text": "Open and MIT. Link below." }
+  ],
+  "sceneEndTimesSec": [4.5, 6.75, 9.5, 12.0]
+}

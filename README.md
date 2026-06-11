@@ -144,6 +144,27 @@ npm run typecheck   # strict TypeScript check
 npm test            # run the full jest suite (9 suites, 87 tests)
 ```
 
+## Capturing a demonstration video (local-only)
+
+A "demonstration" post's hero is an ordered set of **real terminal screenshots** — one per spoken
+narration line. The capture harness drives a scripted terminal with **VHS** (a Go tool that records a
+terminal from a `.tape` script) and snaps one clean frame per beat (`step-01.png … step-NN.png`),
+which the shipped frame-ingest path then turns into the video.
+
+- **VHS is a dev/tooling dependency, installed with `brew install vhs`** — it is a **Go binary, NOT an
+  npm package**, so it is intentionally absent from `package.json`/`package-lock.json`.
+- `npm run capture:demo` is **local-only**: VHS boots a localhost `ttyd` + a headless browser, so it
+  needs loopback/network and **cannot run in a network-sandboxed CI step**. CI instead checks the
+  capture *logic* (one shot per beat, ends with a `Sleep`, frame count matches the narration, paid
+  commands refused, brand words rejected) against fixture frames — never by running VHS. The real take
+  runs on your laptop (`VHS_CAPTURE_RUN=1 npm run capture:demo` once `vhs` is installed).
+- Every captured command is a verified-free smoke or inert shell; a `PAID_COMMANDS` gate hard-refuses
+  any tape that would bill Claude / ElevenLabs / nano-banana, so the captured run is free by gate.
+- **Run the real take with the recording's working directory set to THIS repo.** The captured
+  `npm run smoke:image` / `npm run smoke:demo-frames` only exist here, so point the tape `cwd` at the
+  repo path (the generator's default `~/demo/pipeline` is a neutral display dir — for the real take pass
+  the repo as `cwd`, or the recorded terminal shows `npm error Missing script` instead of the demo).
+
 ## Contributing
 
 - Work on a branch, open a pull request — the repo doesn't take direct pushes to `master`.
