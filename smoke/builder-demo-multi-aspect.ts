@@ -12,7 +12,14 @@
  * VOICED: defaults DEMO_BUNDLE to the bundle smoke:builder-demo-narrated writes; or set DEMO_BUNDLE
  *   to a bundle JSON carrying { audioPath, sceneEndTimesSec, durationSec, script, charEndTimesSec }.
  *
+ * #817 ART-SOURCE-BOUND: this demo INTENDS generative art (CONFIG.demo.animatedBackgroundDefault).
+ *   The art-base image (`_art-base-post2.png`) MUST exist and be bound to the render, OR you must set
+ *   DEMO_BG=0 for an intentional solid. A missing/unbound art base HARD-FAILS (assertDemoArtBound)
+ *   instead of silently shipping a solid background that the #807 motion gate cannot catch. The video
+ *   bg + the post-2 cards must derive from the SAME _art-base-post2.png (assertSharedArtSource).
+ *
  * Run: `npm run smoke:builder-demo-multi`  |  `DEMO_BUNDLE=<path> npm run smoke:builder-demo-multi`
+ *      `DEMO_BG=0 npm run smoke:builder-demo-multi`  (intentional solid, no art needed)
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -27,9 +34,11 @@ import {
   assertMobileProxy,
 } from "../video/renderProbe";
 import { resolveDemoBackground } from "../video/demoBackground";
+import { assertDemoArtBound, assertSharedArtSource } from "../video/demoArtBinding";
 import { makeMobileProxy } from "../video/mobileProxy";
 import { CONFIG } from "../config";
 import { builderSpec } from "../inputs/builderSpec";
+import { artBasePngPath } from "./launch-card";
 
 /** Where smoke:builder-demo-narrated writes its full alignment bundle. */
 const DEFAULT_BUNDLE_PATH = path.join("out", "review", "lfah", "demo-builder", "scene-sync-check.json");
@@ -67,7 +76,12 @@ function loadBackground(): { backgroundImagePath: string; backgroundScrimOpacity
     if (off) {
       console.log("[builder-demo-multi] #808 animated bg disabled via DEMO_BG — solid bg.");
     } else if (!fs.existsSync(img)) {
-      console.warn(`[builder-demo-multi] art-base image not found (${img}); rendering solid bg.`);
+      // #817 — do NOT claim "rendering solid bg" here: art is INTENDED, so assertDemoArtBound (run
+      // in main, before any render) hard-fails on this missing art. Set DEMO_BG=0 for an intentional solid.
+      console.warn(
+        `[builder-demo-multi] art-base image not found (${img}); #817 art-source-bound guard will BLOCK ` +
+          `(set DEMO_BG=0 for an intentional solid render, or generate the post art first).`,
+      );
     }
   }
   return bg;
@@ -101,9 +115,37 @@ function loadBundle(): NarrationBundle | null {
 
 async function main() {
   const bundle = loadBundle();
+  const bgImage = process.env.DEMO_BG_IMAGE ?? DEFAULT_BG_IMAGE;
   const background = loadBackground();
   const outDir = path.join(process.cwd(), "out", "review", "lfah", "demo-builder", "multi-aspect");
   fs.mkdirSync(outDir, { recursive: true });
+
+  // #817 ART-SOURCE-BOUND guard (DISTINCT from the #807 motion gate). This demo INTENDS generative
+  // art (CONFIG.demo.animatedBackgroundDefault); unless the operator opts out via DEMO_BG=0/off, the
+  // render MUST be bound to a REAL, existing art base — else it would silently ship a SOLID background
+  // and the motion gate would NOT catch it (a moving solid passes motion). Blocks BEFORE any render so
+  // a render-video-before-cards run-order (which loses the bg) hard-fails instead of shipping solid.
+  assertDemoArtBound({
+    demoBgEnv: process.env.DEMO_BG,
+    artImageExists: fs.existsSync(bgImage),
+    artImagePath: bgImage,
+    resolvedBackground: background,
+  });
+
+  // #817 ONE-SHARED-SOURCE: the post-2 demo video bg and the post-2 cards MUST derive from the SAME
+  // _art-base-post2.png (one per-post art — prevents forgetting the video bg AND paying for art twice).
+  // Skipped when DEMO_BG_IMAGE overrides to a custom (non-art-base) image, or when art is intentionally
+  // disabled (background === null via DEMO_BG=0). The cards art path is the canonical post-scoped cache
+  // key from launch-card.ts so this enforces the real convention, not a duplicate string.
+  if (background && !process.env.DEMO_BG_IMAGE) {
+    const cardsOutDir = path.join(process.cwd(), "out", "review", "lfah", "image");
+    const cardsArt = artBasePngPath(cardsOutDir, "post2");
+    assertSharedArtSource(background.backgroundImagePath, cardsArt, "post2");
+    console.log(
+      `[builder-demo-multi] #817 shared-source OK — video bg + post-2 cards both derive from ` +
+        `${path.basename(cardsArt)}`,
+    );
+  }
 
   if (background) {
     console.log(
