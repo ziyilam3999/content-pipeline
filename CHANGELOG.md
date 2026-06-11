@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.13.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.12.0...v0.13.0) (2026-06-11)
+
+### Features
+
+* **publish:** publish-asset provenance guard blocks stale renders (#810) (#68) — a sha256-based gate (`publish/publishProvenance.ts`) hard-fails before any upload unless every publish asset matches the operator-approved render frozen in a committed per-post manifest. Adds `npm run publish:freeze-manifest`, a per-post asset SSOT (`publish/publishAssets.ts`), and committed receipts; wired into both publish smokes before assembly/upload. Prevents the stale-render drift near-miss (an approved re-render lived only in the durable bundle while out/review held the old cut). Human-approval gate unchanged.
+
 ## [0.12.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.11.0...v0.12.0) (2026-06-11)
 
 ### Features
