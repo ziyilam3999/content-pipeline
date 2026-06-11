@@ -74,6 +74,15 @@ export const CONFIG = {
       // X discounts every URL to a FIXED weight regardless of real length (t.co shortener).
       xUrlWeight: 23,
     },
+    // #793 — SHORT-THREAD ADVISORY (SOFT cap, SSOT). Post #1 came out SCRAMBLED on X (5 tweets
+    // fired the same second → X chained the reply order by ingestion, not by our submitted order).
+    // We cannot prove the exact mechanism, but a SHORTER thread has fewer same-second collisions,
+    // so `publish/publishVerify.ts` surfaces a NON-FATAL NOTE when an X thread exceeds this soft
+    // max. This is a CREATIVE call, never a hard limit — the advisory only flags risk, it NEVER
+    // fails the build. Read here, never a magic constant.
+    threadShape: {
+      xSoftMaxTweets: 5, // X threads longer than this raise same-second scramble risk (advisory only)
+    },
   },
   voice: {
     // CHANNEL VOICE — locked MALE voice for consistency across ALL content.

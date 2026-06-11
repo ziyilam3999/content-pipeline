@@ -11,6 +11,7 @@
 
 import { writeCopy } from "../adapters/copy";
 import { type ContentSpec } from "../inputs/contentspec";
+import { threadLengthAdvisory } from "../publish/publishVerify";
 
 // A small, PUBLIC spec about lfah (no employer brand; numbers are public benchmark facts).
 const spec: ContentSpec = {
@@ -56,6 +57,10 @@ async function main() {
 
   console.log("\n--- generated X thread ---");
   out.thread.forEach((post, i) => console.log(`  [${i + 1}] ${post}`));
+  // #793 SHORT-THREAD ADVISORY (NON-FATAL): flag a long thread at the copy stage so the same-second
+  // scramble risk surfaces BEFORE assembly/publish. Never fails the build (thread length is creative).
+  const threadNote = threadLengthAdvisory(out.thread);
+  if (threadNote) console.log(threadNote);
   console.log("\n--- video script ---\n  " + out.script);
   console.log("\n--- infographic labels ---\n  " + out.labels.join(" | "));
   console.log(`\nattempts=${out.attempts}  numbers-verified=${out.verify.ok}` +
