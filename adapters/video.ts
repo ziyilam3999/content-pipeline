@@ -19,6 +19,9 @@ import { buildCaptionTrack } from "../video/captions";
 import { buildRenderSpecs, ASPECTS, type Aspect } from "../video/renderSpec";
 import { buildDemoTimeline } from "../video/demoTimeline";
 import { buildBuilderTimeline } from "../video/builderDemoTimeline";
+import { buildFrameDemoTimeline } from "../video/demoFrameTimeline";
+import { embedFrames } from "./frames";
+import { type FrameManifest, UI_FRAME_FIT, assertUiFrameFit } from "../inputs/frames";
 import { demoLayout } from "../video/demoLayout";
 import {
   buildDemoCaptionCues,
@@ -60,8 +63,13 @@ export function makeSilentWav(durationSec: number, sampleRate = 8000): Buffer {
   return buf;
 }
 
-/** Embed a local asset as a data URI — Remotion's Chromium refuses arbitrary file:// resources. */
-function toDataUri(filePath: string): string {
+/**
+ * Embed a local asset as a data URI — Remotion's Chromium refuses arbitrary file:// resources.
+ *
+ * #824 — EXPORTED (was module-private) so the frame-ingest adapter (`adapters/frames.ts`) reuses
+ * the SAME base64 encoder instead of writing a second one (plan review amendment #1).
+ */
+export function toDataUri(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase();
   const mime =
     ext === ".png" ? "image/png"
@@ -410,6 +418,125 @@ export async function renderBuilderDemoVideo(spec: ContentSpec, opts?: RenderDem
   return renderRemotion({
     entryPoint,
     id: "builder-demo",
+    inputProps,
+    outPath,
+    maxAttempts: opts?.renderAttempts ?? 3,
+  });
+}
+
+export interface RenderFrameDemoOpts {
+  outDir?: string;
+  fileName?: string;
+  /** "1:1" | "9:16" | "4:5" (default "9:16"); resolved via `ASPECTS`, unknown throws. */
+  aspectName?: string;
+  durationSec?: number; // default the free cut; set to the voiceover length for the paid cut
+  fps?: number; // default 30
+  audioPath?: string; // optional voiceover; omitted → silent (free)
+  /**
+   * The spoken narration script + its per-character end-times (from the SAME synth). When present,
+   * the demo renders SYNCED CAPTIONS in a reserved band AND the frame scenes follow the narrator.
+   * PARITY: a voiced render (`audioPath` set) MUST carry a script — else this throws.
+   */
+  script?: string;
+  charEndTimesSec?: number[];
+  renderAttempts?: number;
+}
+
+/**
+ * #824 — render the DEMONSTRATION MP4 (composition id="demo-frames"): the hero is an ORDERED set of
+ * REAL captured PNGs (one per narrated step) rendered full-frame `objectFit: "contain"` on a calm
+ * brand panel — never `cover` (no terminal text cropped). DISTINCT from `renderDemoVideo` (synthetic
+ * 4-way) and `renderBuilderDemoVideo` but SHARES every render mechanic: per-aspect frame-fill
+ * (`demoLayout`), the audio↔sync provenance guard (#774), and the synced-caption band + parity
+ * invariant (#775). Scene cuts follow the REAL narration via `narrationSceneEndTimes`.
+ *
+ * Defaults to a free silent 9:16 cut; pass `audioPath` (+ `script`, `charEndTimesSec` from the same
+ * synth) for the paid voiceover cut. `frames` parity (one per narration segment) is enforced in
+ * `buildFrameDemoTimeline`; the hero fit is locked to `UI_FRAME_FIT` ("contain") via `assertUiFrameFit`.
+ */
+export async function renderFrameDemoVideo(
+  frames: FrameManifest,
+  segments: ReadonlyArray<{ text: string }>,
+  opts?: RenderFrameDemoOpts,
+): Promise<string> {
+  // Lock the hero <Img> fit through the SAME gated assertion the AC-5 test checks (review amendment
+  // #2): the composition reads `UI_FRAME_FIT`, and this proves it is "contain" before any render.
+  assertUiFrameFit(UI_FRAME_FIT);
+
+  const fps = opts?.fps ?? 30;
+  const timeline = buildFrameDemoTimeline(frames, segments, {
+    durationSec: opts?.durationSec,
+    fps,
+    charEndTimesSec: opts?.charEndTimesSec,
+  });
+  const durationSec = timeline.durationSec;
+
+  // #774 provenance guard — a voiced render's audio MUST be the synth the timeline came from. The
+  // frame scenes derive from the narration end-times, so the last scene end ≈ durationSec.
+  if (opts?.audioPath) {
+    assertAudioMatchesSync(
+      opts.audioPath,
+      timeline.scenes.map((s) => s.fromSec + s.durationSec),
+    );
+  }
+
+  const aspectName = opts?.aspectName ?? "9:16";
+  const aspect: Aspect | undefined = ASPECTS.find((a) => a.name === aspectName);
+  if (!aspect) throw new Error(`unknown aspect "${aspectName}"`);
+  const width = aspect.width;
+  const height = aspect.height;
+  const baseLayout = demoLayout(width, height);
+  const durationInFrames = Math.max(1, Math.round(durationSec * fps));
+
+  // #775 parity — a voiced render (audioPath) MUST carry a script → non-empty captions spanning clip.
+  const hasScript = typeof opts?.script === "string" && opts.script.trim().length > 0;
+  if (opts?.audioPath && !hasScript) {
+    throw new Error(
+      "#775 parity: a voiced demo-frames render (audioPath set) must carry captions — pass opts.script (the spoken narration).",
+    );
+  }
+  let layout = baseLayout;
+  let captionCues: ReturnType<typeof buildDemoCaptionCues> = [];
+  let captionBandY = 0;
+  if (hasScript) {
+    const clip = { durationSec, charEndTimesSec: opts!.charEndTimesSec };
+    captionCues = buildDemoCaptionCues(opts!.script!, clip);
+    assertVoicedDemoHasCaptions(captionCues, clip);
+    layout = reserveCaptionBand(baseLayout);
+    captionBandY = captionBandTopY(layout, height);
+  }
+
+  // Embed each captured PNG as a data URI (validates exists + non-empty + brand-clean labels).
+  const embedded = embedFrames(frames);
+
+  const inputProps = {
+    // The per-scene hero frame: the embedded image + its step label + window, in scene order.
+    scenes: timeline.scenes.map((s) => ({
+      frameSrc: embedded[s.frameIndex].dataUri,
+      stepLabel: embedded[s.frameIndex].stepLabel,
+      fromSec: s.fromSec,
+      durationSec: s.durationSec,
+    })),
+    // The hero fit, single-sourced from `UI_FRAME_FIT` (the view applies it verbatim — no `cover`).
+    frameFit: UI_FRAME_FIT,
+    audioSrc: opts?.audioPath ? toDataUri(opts.audioPath) : undefined,
+    captions: captionCues,
+    captionBandY,
+    layout,
+    width,
+    height,
+    fps,
+    durationInFrames,
+  };
+
+  const outDir = opts?.outDir ?? path.join(process.cwd(), "out", "video");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, opts?.fileName ?? `demo-frames-${aspectName.replace(":", "x")}.mp4`);
+
+  const entryPoint = path.join(__dirname, "..", "remotion", "index.tsx");
+  return renderRemotion({
+    entryPoint,
+    id: "demo-frames",
     inputProps,
     outPath,
     maxAttempts: opts?.renderAttempts ?? 3,
