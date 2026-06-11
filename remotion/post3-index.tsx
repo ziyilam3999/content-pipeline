@@ -1,0 +1,590 @@
+/**
+ * Post #3 — forge-harness demo composition (id="post3-demo").
+ *
+ * "only 1 of 8 ever talks to the model" — a 6-scene kinetic-typography story over the SHARED,
+ * dimmed, ANIMATED card art (the same `_art-base-forge-harness-post3.png` the cards use). DISTINCT
+ * from the Post #1 `demo` and Post #2 `builder-demo` compositions: those are hard-wired to their own
+ * stories (4-way comparison / test-first builder), so Post #3 gets its OWN composition rather than
+ * re-skinning theirs (which would ship mismatched visuals).
+ *
+ * Self-contained ON PURPOSE: this file is a SEPARATE Remotion entry point with its own
+ * `registerRoot`, so it never double-registers against `remotion/index.tsx` and never collides with
+ * concurrent edits there. It re-implements the small shared primitives (SceneShell / entrance /
+ * caption band / animated art background) inline and imports ONLY the unit-tested motion curve
+ * (`video/artBackgroundMotion.ts`) so the background stays perceptible (#807).
+ *
+ * Every scene's COPY is data-driven from `video/post3Timeline.ts` (sourced from
+ * `inputs/forgeHarnessSpec.ts` facts) — no number or claim is hard-coded here.
+ */
+
+import * as React from "react";
+import {
+  AbsoluteFill,
+  Audio,
+  Composition,
+  Img,
+  Sequence,
+  interpolate,
+  spring,
+  useCurrentFrame,
+  useVideoConfig,
+  registerRoot,
+} from "remotion";
+
+import { artBackgroundTransform } from "../video/artBackgroundMotion";
+
+// ───────────────────────────── shared primitives ────────────────────────────
+
+const BG = "#0a0f1e";
+const FONT = "Inter, Helvetica, Arial, sans-serif";
+const MONO = "SFMono-Regular, Menlo, Consolas, monospace";
+const GREEN = "#34d399"; // the lit / deterministic-pass accent
+const BLUE = "#60a5fa";
+const AMBER = "#fbbf24";
+const MUTED = "#94a3b8";
+const KICKER = "#64748b";
+const DIM_TILE = "#1e293b";
+const DIM_BORDER = "#334155";
+
+interface CaptionCue {
+  text: string;
+  startSec: number;
+  endSec: number;
+}
+
+interface Layout {
+  aspectRatio: number;
+  fill: boolean;
+  justify: "center" | "space-evenly" | "space-between";
+  padTopFraction: number;
+  padBottomFraction: number;
+  typeScale: number;
+  gapScale: number;
+  usableSpanFraction: number;
+}
+
+const DEFAULT_LAYOUT_9X16: Layout = {
+  aspectRatio: 1920 / 1080,
+  fill: true,
+  justify: "space-between",
+  padTopFraction: 0.045,
+  padBottomFraction: 0.045,
+  typeScale: 1.34,
+  gapScale: 1.1,
+  usableSpanFraction: 0.91,
+};
+
+/** Fade + rise driven by a spring; returns inline style for an entrance. */
+function entrance(frame: number, fps: number, delay = 0, rise = 36) {
+  const s = spring({ frame: frame - delay, fps, config: { damping: 200 }, durationInFrames: 18 });
+  const opacity = interpolate(frame - delay, [0, 10], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  return { opacity, transform: `translateY(${interpolate(s, [0, 1], [rise, 0])}px)` };
+}
+
+/** Per-scene font scaler — multiplies a base px size by the aspect's type scale. */
+function scaler(layout: Layout): (px: number) => number {
+  return (px: number) => Math.round(px * layout.typeScale);
+}
+
+/** The per-aspect frame box every scene lives in (fills tall cuts; centers the square cut). */
+const SceneShell: React.FC<{
+  layout: Layout;
+  header?: React.ReactNode;
+  gap?: number;
+  children: React.ReactNode;
+}> = ({ layout, header, gap = 0, children }) => {
+  const { width, height } = useVideoConfig();
+  const items = React.Children.toArray(children);
+  return (
+    <AbsoluteFill
+      style={{
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingTop: Math.round(layout.padTopFraction * height),
+        paddingBottom: Math.round(layout.padBottomFraction * height),
+        paddingLeft: 56,
+        paddingRight: 56,
+      }}
+    >
+      <div
+        style={{
+          width: Math.min(984, width - 96),
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: layout.fill ? "flex-start" : "center",
+          gap,
+        }}
+      >
+        {header ? <div style={{ width: "100%", flex: "0 0 auto" }}>{header}</div> : null}
+        {items.map((it, i) => (
+          <div
+            key={i}
+            style={{
+              width: "100%",
+              flex: layout.fill ? "1 1 0" : "0 0 auto",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+            }}
+          >
+            {it}
+          </div>
+        ))}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const Pill: React.FC<{ color: string; filled?: boolean; size: number; children: React.ReactNode }> = ({
+  color,
+  filled = false,
+  size,
+  children,
+}) => (
+  <div
+    style={{
+      color: filled ? BG : color,
+      background: filled ? color : "transparent",
+      border: `2px solid ${color}`,
+      fontFamily: FONT,
+      fontWeight: 800,
+      fontSize: size,
+      padding: "10px 22px",
+      borderRadius: 999,
+      display: "inline-block",
+      textAlign: "center",
+    }}
+  >
+    {children}
+  </div>
+);
+
+const Kicker: React.FC<{ children: React.ReactNode; size: number; frame: number; fps: number }> = ({
+  children,
+  size,
+  frame,
+  fps,
+}) => (
+  <div
+    style={{
+      ...entrance(frame, fps),
+      color: KICKER,
+      fontFamily: FONT,
+      fontSize: size,
+      fontWeight: 700,
+      letterSpacing: 5,
+      textAlign: "center",
+    }}
+  >
+    {children}
+  </div>
+);
+
+// ───────────────────────────── animated art background ──────────────────────
+
+const AnimatedArtBackground: React.FC<{ src: string; scrimOpacity: number; blurPx: number }> = ({
+  src,
+  scrimOpacity,
+  blurPx,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { scale, panXPct, panYPct } = artBackgroundTransform(frame, fps);
+  return (
+    <AbsoluteFill style={{ backgroundColor: BG, overflow: "hidden" }}>
+      <Img
+        src={src}
+        style={{
+          position: "absolute",
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          transform: `scale(${scale}) translate(${panXPct}%, ${panYPct}%)`,
+          transformOrigin: "center center",
+          filter: blurPx > 0 ? `blur(${blurPx}px)` : undefined,
+        }}
+      />
+      <AbsoluteFill style={{ backgroundColor: BG, opacity: scrimOpacity }} />
+    </AbsoluteFill>
+  );
+};
+
+// ───────────────────────────── caption band ─────────────────────────────────
+
+const CaptionBand: React.FC<{ captions: CaptionCue[]; bandY: number; fps: number; typeScale: number }> = ({
+  captions,
+  bandY,
+  fps,
+  typeScale,
+}) => (
+  <>
+    {captions.map((c, i) => {
+      const from = Math.round(c.startSec * fps);
+      const durationInFrames = Math.max(1, Math.round((c.endSec - c.startSec) * fps));
+      return (
+        <Sequence key={i} from={from} durationInFrames={durationInFrames} name={`caption-${i}`}>
+          <div style={{ position: "absolute", top: bandY, left: 0, width: "100%", display: "flex", justifyContent: "center" }}>
+            <div
+              style={{
+                background: "rgba(0,0,0,0.68)",
+                color: "#fff",
+                fontSize: Math.round(40 * typeScale),
+                fontFamily: FONT,
+                fontWeight: 600,
+                lineHeight: 1.25,
+                padding: "14px 26px",
+                borderRadius: 14,
+                maxWidth: "86%",
+                textAlign: "center",
+              }}
+            >
+              {c.text}
+            </div>
+          </div>
+        </Sequence>
+      );
+    })}
+  </>
+);
+
+// ───────────────────────────── scenes ───────────────────────────────────────
+
+interface SceneContent {
+  title: string;
+  tagline: string;
+  foreman: { headline: string; sub: string; pill: string };
+  problem: { kicker: string; headline: string; items: string[]; footer: string };
+  flip: { kicker: string; total: number; lit: number; litLabel: string; caption: string; sub: string };
+  receipt: { kicker: string; headline: string; rows: { label: string; value: string }[]; footer: string };
+  determinism: { kicker: string; headline: string; pass: string; sub: string; footer: string };
+  cta: { headline: string; lines: string[]; badge: string; cta: string; repoUrl?: string };
+}
+
+const ForemanScene: React.FC<{ c: SceneContent; layout: Layout }> = ({ c, layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  return (
+    <SceneShell layout={layout} gap={Math.round(22 * layout.gapScale)}>
+      <div style={{ ...entrance(frame, fps), color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(82), textAlign: "center", lineHeight: 1.05 }}>
+        {c.title}
+      </div>
+      <div style={{ ...entrance(frame, fps, 8), color: KICKER, fontFamily: FONT, fontSize: f(30), letterSpacing: 3, textAlign: "center" }}>
+        {c.tagline}
+      </div>
+      <div style={{ ...entrance(frame, fps, 16), color: "#fff", fontFamily: FONT, fontWeight: 700, fontSize: f(48), lineHeight: 1.2, textAlign: "center" }}>
+        {c.foreman.headline}
+      </div>
+      <div style={{ ...entrance(frame, fps, 24), color: MUTED, fontFamily: FONT, fontSize: f(32), lineHeight: 1.3, textAlign: "center" }}>
+        {c.foreman.sub}
+      </div>
+      <div style={{ ...entrance(frame, fps, 32), textAlign: "center" }}>
+        <Pill color={GREEN} filled size={f(34)}>{c.foreman.pill}</Pill>
+      </div>
+    </SceneShell>
+  );
+};
+
+const ProblemScene: React.FC<{ c: SceneContent; layout: Layout }> = ({ c, layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  const p = c.problem;
+  return (
+    <SceneShell layout={layout} gap={Math.round(22 * layout.gapScale)} header={<Kicker size={f(32)} frame={frame} fps={fps}>{p.kicker}</Kicker>}>
+      <div style={{ ...entrance(frame, fps, 6), color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(54), lineHeight: 1.15, textAlign: "center" }}>
+        {p.headline}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: Math.round(16 * layout.gapScale) }}>
+        {p.items.map((it, i) => (
+          <div
+            key={i}
+            style={{
+              ...entrance(frame, fps, 14 + i * 8),
+              color: BLUE,
+              fontFamily: MONO,
+              fontSize: f(36),
+              fontWeight: 600,
+              background: "rgba(96,165,250,0.10)",
+              border: `2px solid ${BLUE}`,
+              borderRadius: 16,
+              padding: "12px 26px",
+              textAlign: "center",
+            }}
+          >
+            {it} <span style={{ color: AMBER }}>→ calls the model</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ ...entrance(frame, fps, 44), color: AMBER, fontFamily: FONT, fontSize: f(34), fontWeight: 700, lineHeight: 1.25, textAlign: "center" }}>
+        {p.footer}
+      </div>
+    </SceneShell>
+  );
+};
+
+const FlipScene: React.FC<{ c: SceneContent; layout: Layout }> = ({ c, layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  const flip = c.flip;
+  const tiles = Array.from({ length: Math.max(1, flip.total) }, (_, i) => i);
+  // The single lit block (the planning step) is the LAST tile so the eye lands on the "1 of 8".
+  const litIndex = flip.total - 1;
+  const pulse = 0.5 + 0.5 * Math.sin((frame / fps) * Math.PI * 1.2); // perceptible glow on the lit tile
+  const tilePx = f(132);
+  return (
+    <SceneShell layout={layout} gap={Math.round(20 * layout.gapScale)} header={<Kicker size={f(32)} frame={frame} fps={fps}>{flip.kicker}</Kicker>}>
+      <div style={{ ...entrance(frame, fps, 6), color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(46), lineHeight: 1.15, textAlign: "center" }}>
+        {flip.caption}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: Math.round(14 * layout.gapScale), maxWidth: "100%" }}>
+        {tiles.map((i) => {
+          const lit = i === litIndex;
+          return (
+            <div
+              key={i}
+              style={{
+                ...entrance(frame, fps, 10 + i * 4),
+                width: tilePx,
+                height: tilePx,
+                borderRadius: 18,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                background: lit ? GREEN : DIM_TILE,
+                border: `2px solid ${lit ? GREEN : DIM_BORDER}`,
+                boxShadow: lit ? `0 0 ${Math.round(18 + 30 * pulse)}px ${GREEN}` : "none",
+                color: lit ? BG : MUTED,
+                fontFamily: MONO,
+                fontWeight: 800,
+              }}
+            >
+              <div style={{ fontSize: f(40) }}>{lit ? "★" : "○"}</div>
+              {lit ? <div style={{ fontSize: f(20), marginTop: 4 }}>{flip.litLabel}</div> : null}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ ...entrance(frame, fps, 40), color: MUTED, fontFamily: FONT, fontSize: f(32), lineHeight: 1.3, textAlign: "center" }}>
+        {flip.sub}
+      </div>
+    </SceneShell>
+  );
+};
+
+const ReceiptScene: React.FC<{ c: SceneContent; layout: Layout }> = ({ c, layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  const r = c.receipt;
+  return (
+    <SceneShell layout={layout} gap={Math.round(20 * layout.gapScale)} header={<Kicker size={f(32)} frame={frame} fps={fps}>{r.kicker}</Kicker>}>
+      <div style={{ ...entrance(frame, fps, 6), color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(50), lineHeight: 1.15, textAlign: "center" }}>
+        {r.headline}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: Math.round(16 * layout.gapScale) }}>
+        {r.rows.map((row, i) => (
+          <div
+            key={i}
+            style={{
+              ...entrance(frame, fps, 12 + i * 8),
+              width: f(300),
+              background: "rgba(255,255,255,0.05)",
+              border: `2px solid ${DIM_BORDER}`,
+              borderRadius: 18,
+              padding: "18px 20px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+          >
+            <div style={{ color: GREEN, fontFamily: FONT, fontWeight: 800, fontSize: f(52) }}>{row.value}</div>
+            <div style={{ color: MUTED, fontFamily: FONT, fontSize: f(26), marginTop: 4 }}>{row.label}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ ...entrance(frame, fps, 48), color: "#fff", fontFamily: FONT, fontSize: f(34), fontWeight: 700, textAlign: "center" }}>
+        {r.footer}
+      </div>
+    </SceneShell>
+  );
+};
+
+const DeterminismScene: React.FC<{ c: SceneContent; layout: Layout }> = ({ c, layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  const d = c.determinism;
+  return (
+    <SceneShell layout={layout} gap={Math.round(22 * layout.gapScale)} header={<Kicker size={f(32)} frame={frame} fps={fps}>{d.kicker}</Kicker>}>
+      <div style={{ ...entrance(frame, fps, 6), color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(50), lineHeight: 1.15, textAlign: "center" }}>
+        {d.headline}
+      </div>
+      <div style={{ ...entrance(frame, fps, 16), display: "flex", justifyContent: "center" }}>
+        <div
+          style={{
+            color: BG,
+            background: GREEN,
+            fontFamily: MONO,
+            fontWeight: 800,
+            fontSize: f(44),
+            padding: "16px 34px",
+            borderRadius: 16,
+            textAlign: "center",
+          }}
+        >
+          ✓ {d.pass}
+        </div>
+      </div>
+      <div style={{ ...entrance(frame, fps, 26), color: MUTED, fontFamily: FONT, fontSize: f(32), lineHeight: 1.3, textAlign: "center" }}>
+        {d.sub}
+      </div>
+      <div style={{ ...entrance(frame, fps, 36), color: "#fff", fontFamily: FONT, fontSize: f(34), fontWeight: 700, letterSpacing: 1, textAlign: "center" }}>
+        {d.footer}
+      </div>
+    </SceneShell>
+  );
+};
+
+const CtaScene: React.FC<{ c: SceneContent; layout: Layout }> = ({ c, layout }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const f = scaler(layout);
+  const cta = c.cta;
+  return (
+    <SceneShell layout={layout} gap={Math.round(24 * layout.gapScale)}>
+      <div style={{ ...entrance(frame, fps), color: "#fff", fontFamily: FONT, fontWeight: 800, fontSize: f(64), lineHeight: 1.1, textAlign: "center" }}>
+        {cta.headline}
+      </div>
+      {cta.lines.map((ln, i) => (
+        <div key={i} style={{ ...entrance(frame, fps, 10 + i * 8), color: MUTED, fontFamily: FONT, fontSize: f(34), lineHeight: 1.3, textAlign: "center" }}>
+          {ln}
+        </div>
+      ))}
+      <div style={{ ...entrance(frame, fps, 30), textAlign: "center" }}>
+        <Pill color={GREEN} filled size={f(32)}>{cta.badge}</Pill>
+      </div>
+      <div style={{ ...entrance(frame, fps, 40), color: GREEN, fontFamily: FONT, fontWeight: 800, fontSize: f(40), textAlign: "center" }}>
+        {cta.cta}
+      </div>
+      {cta.repoUrl ? (
+        <div style={{ ...entrance(frame, fps, 48), color: "#fff", fontFamily: MONO, fontSize: f(28), textAlign: "center", wordBreak: "break-all" }}>
+          {cta.repoUrl.replace(/^https?:\/\//, "")}
+        </div>
+      ) : null}
+    </SceneShell>
+  );
+};
+
+// ───────────────────────────── composition ──────────────────────────────────
+
+interface Post3Props extends SceneContent {
+  scenes: { id: string; fromSec: number; durationSec: number }[];
+  audioSrc?: string;
+  captions?: CaptionCue[];
+  captionBandY?: number;
+  layout: Layout;
+  width: number;
+  height: number;
+  fps: number;
+  durationInFrames: number;
+  backgroundSrc?: string;
+  backgroundScrimOpacity?: number;
+  backgroundBlurPx?: number;
+}
+
+const Post3DemoVideo: React.FC<Post3Props> = (props) => {
+  const { scenes, fps } = props;
+  const layout = props.layout ?? DEFAULT_LAYOUT_9X16;
+  const c: SceneContent = props;
+  const sceneEl: Record<string, React.ReactNode> = {
+    foreman: <ForemanScene c={c} layout={layout} />,
+    problem: <ProblemScene c={c} layout={layout} />,
+    flip: <FlipScene c={c} layout={layout} />,
+    receipt: <ReceiptScene c={c} layout={layout} />,
+    determinism: <DeterminismScene c={c} layout={layout} />,
+    cta: <CtaScene c={c} layout={layout} />,
+  };
+  const captions = props.captions ?? [];
+  const hasAnimatedBg = typeof props.backgroundSrc === "string" && props.backgroundSrc.length > 0;
+  const scrimOpacity = props.backgroundScrimOpacity ?? 0.72;
+  const blurPx = props.backgroundBlurPx ?? 0;
+  return (
+    <AbsoluteFill style={{ backgroundColor: BG }}>
+      {hasAnimatedBg ? (
+        <AnimatedArtBackground src={props.backgroundSrc!} scrimOpacity={scrimOpacity} blurPx={blurPx} />
+      ) : null}
+      {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
+      {scenes.map((s) => {
+        const from = Math.round(s.fromSec * fps);
+        const durationInFrames = Math.max(1, Math.round(s.durationSec * fps));
+        return (
+          <Sequence key={s.id} from={from} durationInFrames={durationInFrames} name={s.id}>
+            {sceneEl[s.id] ?? null}
+          </Sequence>
+        );
+      })}
+      {captions.length > 0 ? (
+        <CaptionBand
+          captions={captions}
+          bandY={props.captionBandY ?? Math.round((props.height ?? 1920) * 0.82)}
+          fps={fps}
+          typeScale={layout.typeScale}
+        />
+      ) : null}
+    </AbsoluteFill>
+  );
+};
+
+const EMPTY_CONTENT: SceneContent = {
+  title: "forge-harness",
+  tagline: "",
+  foreman: { headline: "", sub: "", pill: "" },
+  problem: { kicker: "", headline: "", items: [], footer: "" },
+  flip: { kicker: "", total: 8, lit: 1, litLabel: "", caption: "", sub: "" },
+  receipt: { kicker: "", headline: "", rows: [], footer: "" },
+  determinism: { kicker: "", headline: "", pass: "", sub: "", footer: "" },
+  cta: { headline: "", lines: [], badge: "", cta: "", repoUrl: undefined },
+};
+
+const Root: React.FC = () => (
+  <Composition
+    id="post3-demo"
+    component={Post3DemoVideo}
+    durationInFrames={2700}
+    fps={30}
+    width={1080}
+    height={1920}
+    defaultProps={{
+      ...EMPTY_CONTENT,
+      scenes: [] as { id: string; fromSec: number; durationSec: number }[],
+      audioSrc: undefined,
+      captions: [] as CaptionCue[],
+      captionBandY: Math.round(1920 * 0.82),
+      layout: DEFAULT_LAYOUT_9X16,
+      width: 1080,
+      height: 1920,
+      fps: 30,
+      durationInFrames: 2700,
+      backgroundSrc: undefined,
+      backgroundScrimOpacity: 0.72,
+      backgroundBlurPx: 0,
+    }}
+    calculateMetadata={({ props }) => ({
+      durationInFrames: props.durationInFrames,
+      width: props.width,
+      height: props.height,
+      fps: props.fps,
+    })}
+  />
+);
+
+registerRoot(Root);
