@@ -146,6 +146,11 @@ interface DemoLayout {
   typeScale: number;
   gapScale: number;
   usableSpanFraction: number;
+  // HORIZONTAL title-safe band (keep in sync with video/demoLayout.ts DemoLayout). Optional here
+  // because this composition's SceneShell takes an explicit `contentWidth` prop; carried for shape
+  // parity with the shared layout the adapter passes in.
+  safeAreaXFraction?: number;
+  contentMaxWidthPx?: number;
 }
 
 const DEFAULT_LAYOUT_9X16: DemoLayout = {
@@ -157,6 +162,8 @@ const DEFAULT_LAYOUT_9X16: DemoLayout = {
   typeScale: 1.34,
   gapScale: 1.1,
   usableSpanFraction: 0.91,
+  safeAreaXFraction: 0.8,
+  contentMaxWidthPx: Math.floor(1080 * 0.8),
 };
 
 interface DemoProps {
@@ -1234,6 +1241,8 @@ const DEFAULT_LAYOUT_1X1: DemoLayout = {
   typeScale: 1,
   gapScale: 1,
   usableSpanFraction: 0.64,
+  safeAreaXFraction: 0.8,
+  contentMaxWidthPx: Math.floor(1080 * 0.8),
 };
 
 const BuilderDemoVideo: React.FC<BuilderProps> = (props) => {

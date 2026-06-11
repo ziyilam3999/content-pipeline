@@ -49,6 +49,17 @@ export const CONFIG = {
     durationTargetSec: 90,
     durationAcceptanceMinSec: 80,
     durationAcceptanceMaxSec: 100,
+
+    // RULE 4 — HORIZONTAL TITLE-SAFE band for croppable (vertical) cuts. A 9:16 (1080x1920)
+    // video played FULL-SCREEN on a tall phone (taller than 16:9, ~9:19.5–9:21) is filled to
+    // HEIGHT → it becomes wider than the screen → ~9-12% is cropped off EACH side. So text /
+    // tiles / cards / CTA laid edge-to-edge get CLIPPED even though the file dimension is correct.
+    // Keep all CONTENT inside this fraction of the width (0.80 = ~10% clear margin each side =
+    // ~108px at 1080w); the BACKGROUND art stays full-bleed (cropping bg is cosmetically fine).
+    // The layout (`video/demoLayout.ts`) reads this and `assertHorizontalSafeArea` HARD-FAILS any
+    // croppable layout whose content extent exceeds the band. See
+    // feedback_vertical_video_needs_horizontal_titlesafe_band_for_fullscreen_crop.
+    safeAreaXFraction: 0.8,
   },
   models: {
     copy: {

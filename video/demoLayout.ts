@@ -20,6 +20,8 @@
  *     frame, the larger the usable span and the bigger the type (9:16 is the fullest).
  */
 
+import { CONFIG } from "../config";
+
 /** How a scene's vertical content is distributed inside the padded frame box. */
 export type VerticalDistribution = "center" | "space-evenly" | "space-between";
 
@@ -40,6 +42,65 @@ export interface DemoLayout {
   gapScale: number;
   /** convenience: 1 - padTopFraction - padBottomFraction (the usable vertical span). */
   usableSpanFraction: number;
+  /**
+   * HORIZONTAL title-safe band: max fraction of the frame WIDTH that text/tiles/cards/CTA may
+   * occupy, so a full-screen tall-phone crop (~9-12%/side) never clips content. SSOT =
+   * `CONFIG.demo.safeAreaXFraction`. The background art stays full-bleed (not constrained by this).
+   */
+  safeAreaXFraction: number;
+  /** The px content width the scene's inner column uses: floor(width * safeAreaXFraction). */
+  contentMaxWidthPx: number;
+}
+
+/** Frame ratios at/under this read as square — low crop risk, no horizontal-safe assertion. */
+export const SAFE_SQUARE_MAX_RATIO = 1.05;
+
+/**
+ * The horizontal title-safe content width (px) for a frame `width`, given the band fraction.
+ * Single source for both the renderer (inner-column width) and the assertion below.
+ */
+export function contentSafeWidthPx(width: number, safeAreaXFraction: number): number {
+  if (!(width > 0)) throw new Error(`contentSafeWidthPx: width must be positive (got ${width})`);
+  return Math.floor(width * safeAreaXFraction);
+}
+
+/**
+ * MECHANICAL PREVENTION (both-ends boolean) — assert a layout's horizontal content extent stays
+ * within the title-safe band for CROPPABLE (taller-than-square) aspects. A 9:16 / 4:5 cut played
+ * full-screen on a tall phone is filled to height and cropped ~9-12% each side; content wider than
+ * `safeAreaXFraction` of the frame width gets clipped. Throws so a too-wide layout HARD-FAILS in
+ * the render path (wired in `adapters/video-post3.ts`). Square cuts (ratio ≤ SAFE_SQUARE_MAX_RATIO)
+ * are not full-screen-cropped horizontally, so they pass regardless (the inset is still applied,
+ * just not asserted). See feedback_vertical_video_needs_horizontal_titlesafe_band_for_fullscreen_crop.
+ */
+export function assertHorizontalSafeArea(args: {
+  width: number;
+  /** Widest horizontal content extent in px (inner-column width incl. padding/maxWidth). */
+  contentExtentPx: number;
+  safeAreaXFraction: number;
+  /** height/width of the frame — decides whether the full-screen crop applies. */
+  aspectRatio: number;
+  label?: string;
+}): void {
+  const { width, contentExtentPx, safeAreaXFraction, aspectRatio } = args;
+  const label = args.label ?? `${aspectRatio.toFixed(3)}:1`;
+  if (!(width > 0)) throw new Error(`assertHorizontalSafeArea: width must be positive (got ${width})`);
+  if (!(safeAreaXFraction > 0 && safeAreaXFraction <= 1)) {
+    throw new Error(`assertHorizontalSafeArea: safeAreaXFraction must be in (0,1] (got ${safeAreaXFraction})`);
+  }
+  // Square (or wider) cuts are not horizontally cropped on full-screen playback — skip the assert.
+  if (aspectRatio <= SAFE_SQUARE_MAX_RATIO) return;
+  const bandPx = width * safeAreaXFraction;
+  const EPS = 0.5; // sub-pixel slack (contentMaxWidthPx is floored)
+  if (contentExtentPx > bandPx + EPS) {
+    const marginPctEachSide = (((width - contentExtentPx) / 2) / width) * 100;
+    throw new Error(
+      `horizontal title-safe band violated for aspect "${label}": content extent ${contentExtentPx}px ` +
+        `exceeds band ${bandPx.toFixed(0)}px (${(safeAreaXFraction * 100).toFixed(0)}% of ${width}px). ` +
+        `Only ${marginPctEachSide.toFixed(1)}% margin each side — a full-screen tall-phone crop (~9-12%/side) ` +
+        `would clip it. Inset content to ≤ ${(safeAreaXFraction * 100).toFixed(0)}% of width.`,
+    );
+  }
 }
 
 function clamp(x: number, lo: number, hi: number): number {
@@ -55,7 +116,7 @@ function lerp(a: number, b: number, t: number): number {
 // tallness (a taller frame never fills LESS than a shorter one).
 const RATIO_45 = 1350 / 1080; // 1.25
 const RATIO_916 = 1920 / 1080; // ~1.7778
-const SQUARE_MAX_RATIO = 1.05;
+const SQUARE_MAX_RATIO = SAFE_SQUARE_MAX_RATIO; // 1.05 — one threshold for "square, low crop risk"
 
 /**
  * Compute the layout params for a frame of the given pixel size.
@@ -66,6 +127,8 @@ export function demoLayout(width: number, height: number): DemoLayout {
     throw new Error(`demoLayout: width and height must be positive (got ${width}x${height})`);
   }
   const aspectRatio = height / width;
+  const safeAreaXFraction = CONFIG.demo.safeAreaXFraction;
+  const contentMaxWidthPx = contentSafeWidthPx(width, safeAreaXFraction);
 
   // Square (or wider): center, no scale-up. The frame itself is ~square so there is
   // little vertical real estate to "fill"; centring the block reads as intentional.
@@ -80,6 +143,8 @@ export function demoLayout(width: number, height: number): DemoLayout {
       typeScale: 1,
       gapScale: 1,
       usableSpanFraction: 1 - 2 * pad, // 0.64
+      safeAreaXFraction,
+      contentMaxWidthPx,
     };
   }
 
@@ -102,5 +167,7 @@ export function demoLayout(width: number, height: number): DemoLayout {
     typeScale,
     gapScale,
     usableSpanFraction: 1 - 2 * pad, // 4:5 → 0.88 ; 9:16 → 0.91
+    safeAreaXFraction,
+    contentMaxWidthPx,
   };
 }
