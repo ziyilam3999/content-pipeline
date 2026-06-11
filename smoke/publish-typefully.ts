@@ -31,9 +31,14 @@
  * with the real media ids. This path is for the PARENT session to run — it actually spends a live
  * Typefully call. The dry-run path makes none.
  *
+ * #810 PROVENANCE: this smoke hard-fails (before any network) unless every file it uploads matches the
+ * approved render frozen in publish/manifests/lfah-post1.publish-manifest.json. Order of operations:
+ * operator APPROVES the renders → freeze the receipt → publish. Re-render+re-approve ⇒ RE-FREEZE first.
+ *
  * Run:
- *   npm run smoke:publish-typefully        (dry-run, zero network)
- *   npm run smoke:publish-typefully:live   (LIVE — parent only)
+ *   npm run publish:freeze-manifest -- lfah-post1   (freeze approved hashes — run AFTER approval)
+ *   npm run smoke:publish-typefully                 (dry-run, zero network)
+ *   npm run smoke:publish-typefully:live            (LIVE — parent only)
  *
  * social_set_id from env TYPEFULLY_SOCIAL_SET_ID (default 312308).
  */
@@ -55,6 +60,12 @@ import {
 } from "../publish/promoMedia";
 import { assertCopyWithinPlatformLimits, heroVideoAdvisory } from "../publish/copyLimits";
 import { threadLengthAdvisory } from "../publish/publishVerify";
+import {
+  assertPublishAssetsMatchManifest,
+  loadManifest,
+  type PublishAsset,
+} from "../publish/publishProvenance";
+import { POST_ASSETS } from "../publish/publishAssets";
 import { CONFIG } from "../config";
 
 // ── Sources ────────────────────────────────────────────────────────────
@@ -231,6 +242,21 @@ async function main() {
   const live = process.env.TYPEFULLY_LIVE === "1";
   const xThread = readXThread();
   const slots = xThreadSlots();
+
+  // ── #810 PUBLISH-ASSET PROVENANCE GATE — runs in BOTH dry-run and live, BEFORE any assembly/upload.
+  // Re-hashes EVERY file this smoke is about to upload (the hero video + each card, resolved from the
+  // POST_ASSETS SSOT) and asserts each sha256 matches the operator-approved render frozen in
+  // publish/manifests/lfah-post1.publish-manifest.json. HARD-FAILS if any file is stale/divergent or
+  // the manifest is missing — so a drifted out/review render (the #810 near-miss) can NEVER be posted.
+  // Freeze the manifest AFTER operator approval: `npm run publish:freeze-manifest -- lfah-post1`.
+  const provenanceAssets: PublishAsset[] = POST_ASSETS["lfah-post1"].assets.map((a) => ({
+    role: a.role,
+    path: path.join(a.role === "hero-video" ? DEMO_DIR : IMAGE_DIR, a.basename),
+  }));
+  assertPublishAssetsMatchManifest(provenanceAssets, loadManifest("lfah-post1"));
+  console.log(
+    `PROVENANCE: PASS — ${provenanceAssets.length} assets match the lfah-post1 approved manifest (#810)`,
+  );
 
   // ── #809 COPY-LENGTH GATE — runs in BOTH dry-run and live, BEFORE any assembly/upload, so an
   // over-limit post can NEVER reach a live Typefully draft (the Post #2 incident). Each X tweet

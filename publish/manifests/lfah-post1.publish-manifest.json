@@ -1,0 +1,37 @@
+{
+  "postSlug": "lfah-post1",
+  "frozenAt": "2026-06-11T00:44:49.569Z",
+  "sourceDir": "/Users/ansonlam/coding_projects/_launch-assets/lfah-20260610",
+  "assets": {
+    "demo-9x16.mp4": {
+      "role": "hero-video",
+      "sha256": "2a0b0ab03dd39b1325fe4852715498c4ebb76924180ee1c8274c9a67f11308a0",
+      "bytes": 8865020
+    },
+    "card-tweet-2.png": {
+      "role": "card",
+      "sha256": "2be342faf3d44b916c2521caa6c5cfeb32be6e6e4fd621610c4c75203840f9b5",
+      "bytes": 1006161
+    },
+    "card-tweet-3.png": {
+      "role": "card",
+      "sha256": "30079b6081b514b90474ebe55ac925d1fe8582646a34c47ca66d5d79d47846c1",
+      "bytes": 1005682
+    },
+    "card-tweet-4.png": {
+      "role": "card",
+      "sha256": "283a3ac2b5b4b237a46a2dcfe52a0f3b7dd917be891c67613a0d26d4fef9c59a",
+      "bytes": 1002306
+    },
+    "card-tweet-5.png": {
+      "role": "card",
+      "sha256": "a9aca4779fbb9eebd820db404e9988957621fe5510bbc666c9920028318f7496",
+      "bytes": 978985
+    },
+    "card-over-art-4x5.png": {
+      "role": "card",
+      "sha256": "fad0aa067ea5e907190ef6f0f14676228cf2b21e55781752b2e9460fefd627f4",
+      "bytes": 1186501
+    }
+  }
+}

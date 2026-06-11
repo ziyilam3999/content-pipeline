@@ -69,6 +69,31 @@ image+video; a soft `checkVideoFirst` warning flags when the video does not lead
 The per-tweet card set is rendered by `smoke/launch-card.ts` (`launchCardSet()`), which fans ONE
 generated background out behind all the distinct info-cards.
 
+### Asset provenance: post only the EXACT approved render (#810)
+
+A separate hard gate guarantees the publisher uploads **byte-for-byte the render the operator
+approved** — never a stale or swapped copy. The near-miss it prevents: an approved re-render landed
+only in the durable launch bundle, while the gitignored `out/review/...` working dir the publisher
+reads from still held the OLD, rejected cut. The two folders **drifted**, and only a hand-run md5
+compare caught it before upload.
+
+The flow (the human-approval step is **unchanged** — this only adds a machine check after it):
+
+1. **Operator approves** the renders (as before).
+2. **Freeze** the approved hashes into a small committed receipt:
+   `npm run publish:freeze-manifest -- <postSlug>` (`lfah-post1` | `lfah-post2`). This snapshots each
+   approved asset's **sha256** from the durable bundle into
+   `publish/manifests/<postSlug>.publish-manifest.json`.
+3. **Publish.** Both publish smokes, BEFORE any assembly or upload, re-hash every file they are about
+   to upload and call `assertPublishAssetsMatchManifest` (`publish/publishProvenance.ts`). If any
+   file's hash differs from the receipt — or the receipt is missing — the smoke **hard-fails before a
+   single network call**, naming the offending file. A match prints `PROVENANCE: PASS`.
+
+So if you re-render and re-approve, you must **re-freeze** (step 2) before publishing — otherwise the
+new bytes won't match the old receipt and the gate stops you. The per-post asset list (which files
+each post publishes, with roles) is the single source of truth in `publish/publishAssets.ts`, read by
+both the freeze step and the smokes.
+
 ### Art doctrine: per-post UNIQUE art, within-post shared, cross-post guarded
 
 **Every NEW post gets its OWN distinct background artwork.** Cards in the SAME post may share one

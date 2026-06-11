@@ -27,6 +27,7 @@
     "pipeline/**/*.ts",
     "publish/**/*.ts",
     "smoke/**/*.ts",
+    "tools/**/*.ts",
     "video/**/*.ts"
   ],
   "exclude": [

@@ -1,0 +1,27 @@
+{
+  "postSlug": "lfah-post2",
+  "frozenAt": "2026-06-11T00:44:49.856Z",
+  "sourceDir": "/Users/ansonlam/coding_projects/_launch-assets/lfah-post2-20260610",
+  "assets": {
+    "builder-demo-9x16.mp4": {
+      "role": "hero-video",
+      "sha256": "1a68c9025a103ec01155f3a88f805224a7c45ce8daac2315db5792aada64f1bd",
+      "bytes": 37701474
+    },
+    "card-post2-A.png": {
+      "role": "card",
+      "sha256": "6a4d9fddee733b62c036ae8071a84b85b3f3f66c5cee564e628da1813bf8d54a",
+      "bytes": 1052544
+    },
+    "card-post2-B.png": {
+      "role": "card",
+      "sha256": "cc76589fe63489925a6776128e6d848d74fbc052574719898991aa05ac409965",
+      "bytes": 1049856
+    },
+    "card-post2-C.png": {
+      "role": "card",
+      "sha256": "61d868c4904a1293948a00522326549a6ec7e318290347b41503d548267786dd",
+      "bytes": 1049336
+    }
+  }
+}
