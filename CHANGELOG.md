@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.15.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.14.0...v0.15.0) (2026-06-11)
+
+### Features
+
+* **post3:** forge-harness Post #3 launch pipeline source + publish path (#819) (#75) — adds the Post #3 ("forge-harness — only 1 of 8 ever talks to the model") launch pipeline. Render source: `inputs/forgeHarnessSpec.ts`, `video/post3Narration.ts`, `video/post3Timeline.ts`, `remotion/post3-index.tsx`, `adapters/video-post3.ts`, plus the card + demo render smokes (`smoke/launch-card-post3.ts`, `smoke/post3-demo-narrated.ts`, `smoke/post3-demo-multi-aspect.ts`). Publish path `smoke/publish-typefully-post3.ts` mirrors the post2 sibling: assembles the DRAFT with X t1=video + t2/t3/t4=cards A/B/C and Threads=[9:16 hero video, card A], running the #797 fidelity, #809 copy-length, and #810 provenance gates in both modes before any network; LIVE is gated behind `TYPEFULLY_LIVE=1` (orchestrator only) and dry-run makes zero network calls. Adds `forge-harness-post3` to the `PostSlug` SSOT (`publish/publishAssets.ts`), a frozen provenance manifest (`publish/manifests/forge-harness-post3.publish-manifest.json`), the post3 art-uniqueness hash (`smoke/fixtures/art-registry.json`, #802), and the `smoke:publish-typefully-post3(:live)` scripts. 36 suites / 394 tests green; tsc clean; dry-run smoke PASSes all three gates ([#75](https://github.com/ziyilam3999/content-pipeline/pull/75)).
+
 ## [0.14.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.13.0...v0.14.0) (2026-06-11)
 
 ### Features
