@@ -1,3 +1,9 @@
+## [0.17.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.16.2...v0.17.0) (2026-06-11)
+
+### Features
+
+* **publish:** platform-subset publishing (`PLATFORMS` env) so a partial-publish recovery draft targets only the unpublished platform(s) — an excluded platform's block is omitted entirely, preventing a re-post of an already-live thread ([#83](https://github.com/ziyilam3999/content-pipeline/pull/83))
+
 ## [0.16.2](https://github.com/ziyilam3999/content-pipeline/compare/v0.16.1...v0.16.2) (2026-06-11)
 
 ### Bug Fixes
