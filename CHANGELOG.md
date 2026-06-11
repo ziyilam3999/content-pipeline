@@ -1,3 +1,9 @@
+## [0.18.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.17.0...v0.18.0) (2026-06-11)
+
+### Features
+
+* **archive:** mirror every post's canonical copy + index into a git-tracked in-repo archive (`.ai-workspace/posts`) so a fresh clone / CI has the canonical wording too; dual-write wrappers (`archivePostAll`/`safeArchivePostAll`) persist to both the external durable archive and the in-repo mirror, and Post #3 is reconciled to published (Threads URL read-back verified; X status URL intentionally absent) ([#85](https://github.com/ziyilam3999/content-pipeline/pull/85))
+
 ## [0.17.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.16.2...v0.17.0) (2026-06-11)
 
 ### Features
