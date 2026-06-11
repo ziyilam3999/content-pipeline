@@ -1,3 +1,9 @@
+## [0.16.2](https://github.com/ziyilam3999/content-pipeline/compare/v0.16.1...v0.16.2) (2026-06-11)
+
+### Bug Fixes
+
+* **copyLimits:** count each newline as 2 chars (CRLF) in the per-platform length validator + add a CONFIG safety margin, so a multi-paragraph Threads post can't slip over-limit ([#81](https://github.com/ziyilam3999/content-pipeline/pull/81))
+
 ## [0.16.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.16.0...v0.16.1) (2026-06-11)
 
 ### Bug Fixes
