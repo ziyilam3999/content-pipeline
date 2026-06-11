@@ -89,12 +89,24 @@ export const CONFIG = {
     // superlatives but NEVER character limits, so Post #2's hand-authored copy reached a LIVE
     // Typefully draft over-limit (X tweet 4 = 282 X-weighted chars vs 280; Threads = 524 vs 500).
     // `publish/copyLimits.ts` reads these — never a magic constant. X counts every URL as 23
-    // (t.co wrapping); Threads counts plain Unicode codepoints.
+    // (t.co wrapping).
+    //
+    // #827 — NEWLINE = 2 CHARS. Threads/Typefully (and X) count each LINE BREAK as 2 characters
+    // (a CRLF `\r\n`), NOT 1. A codepoint-only count UNDER-counts a multi-paragraph post: Post #3's
+    // Threads copy was 497 codepoints with 7 newlines → 504 in Typefully's count → over 500, yet the
+    // codepoint-only gate PASSED it. So the validator now adds the newline count to BOTH the Threads
+    // length and the X-weighted length (codepoints + number of `\n`). See
+    // feedback_threads_counts_newlines_as_two_chars_in_length_validator.
     copyLimits: {
-      xTweet: 280, // max X-weighted chars per tweet (URLs discounted to 23 each)
-      threads: 500, // max Unicode codepoints per Threads post
+      xTweet: 280, // max X-weighted chars per tweet (URLs=23 each; each `\n` counts as 2)
+      threads: 500, // max effective chars per Threads post (codepoints + 1 per `\n`)
       // X discounts every URL to a FIXED weight regardless of real length (t.co shortener).
       xUrlWeight: 23,
+      // #827 — SAFETY MARGIN reserved below each platform limit. The gate fails when the effective
+      // length exceeds (limit - safetyMargin), so a BORDERLINE post (e.g. Threads effective 496-500)
+      // is flagged BEFORE it ships — it can never slip on any other un-modeled counting quirk. Authors
+      // therefore target ≤ (limit - safetyMargin): Threads ≤495, X tweet ≤275.
+      safetyMargin: 5,
     },
     // #793 — SHORT-THREAD ADVISORY (SOFT cap, SSOT). Post #1 came out SCRAMBLED on X (5 tweets
     // fired the same second → X chained the reply order by ingestion, not by our submitted order).
