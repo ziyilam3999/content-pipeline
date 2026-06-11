@@ -24,6 +24,7 @@
     "smoke:builder-demo-narrated": "tsx smoke/builder-demo-narrated.ts",
     "smoke:builder-demo-narrated:paid": "BUILDER_DEMO_PAID=1 tsx smoke/builder-demo-narrated.ts",
     "smoke:builder-demo-multi": "tsx smoke/builder-demo-multi-aspect.ts",
+    "smoke:demo-frames": "tsx smoke/demo-frames.ts",
     "smoke:publish-typefully": "tsx smoke/publish-typefully.ts",
     "smoke:publish-typefully:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully.ts",
     "smoke:publish-typefully-post2": "tsx smoke/publish-typefully-post2.ts",

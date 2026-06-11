@@ -1297,6 +1297,99 @@ const BuilderDemoVideo: React.FC<BuilderProps> = (props) => {
   );
 };
 
+// ─────────────────── demonstration: real captured frames (#824) ─────────────
+// The HERO is an ordered set of REAL captured PNGs (one per narrated step), rendered full-frame
+// `objectFit: "contain"` on a calm brand panel — NEVER `cover` (no terminal text cropped). Each
+// frame is held under one narration segment; the screen swaps on the narration scene-sync. Mirrors
+// `LaunchVideo`'s contain pattern (:57), NOT `AnimatedArtBackground`'s cover. The fit comes in as a
+// prop (`frameFit`) single-sourced from `inputs/frames.ts` `UI_FRAME_FIT` via the adapter, so the
+// gated `assertUiFrameFit` test and this view can't drift.
+
+interface FrameDemoScene {
+  frameSrc: string;
+  stepLabel: string;
+  fromSec: number;
+  durationSec: number;
+}
+
+interface FrameDemoProps {
+  scenes: FrameDemoScene[];
+  /** "contain" | "cover" — single-sourced from inputs/frames.ts UI_FRAME_FIT; always "contain". */
+  frameFit?: "contain" | "cover";
+  audioSrc?: string;
+  captions?: CaptionCue[];
+  captionBandY?: number;
+  layout: DemoLayout;
+  width: number;
+  height: number;
+  fps: number;
+  durationInFrames: number;
+}
+
+/** A single captured frame held full-frame `contain` on a calm brand panel, with a step-label pill. */
+const FrameScene: React.FC<{ frameSrc: string; stepLabel: string; fit: "contain" | "cover"; typeScale: number }> = ({
+  frameSrc,
+  stepLabel,
+  fit,
+  typeScale,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  return (
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
+      {/* The real UI frame: shrink-to-fit inside the tall frame (contain), never crop (cover). */}
+      <Img src={frameSrc} style={{ maxWidth: "92%", maxHeight: "92%", objectFit: fit, borderRadius: 12 }} />
+      {/* Annotation pill: the step label, top-center, brand-clean (scrubbed at ingest). */}
+      <div style={{ ...entrance(frame, fps), position: "absolute", top: "6%", left: 0, width: "100%", display: "flex", justifyContent: "center" }}>
+        <div
+          style={{
+            background: "rgba(0,0,0,0.62)",
+            color: "#fff",
+            fontFamily: FONT,
+            fontSize: Math.round(34 * typeScale),
+            fontWeight: 600,
+            padding: "12px 24px",
+            borderRadius: 999,
+            maxWidth: "86%",
+            textAlign: "center",
+          }}
+        >
+          {stepLabel}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const FrameDemoVideo: React.FC<FrameDemoProps> = (props) => {
+  const { scenes, fps } = props;
+  const layout = props.layout ?? DEFAULT_LAYOUT_9X16;
+  const fit = props.frameFit ?? "contain";
+  const captions = props.captions ?? [];
+  return (
+    <AbsoluteFill style={{ backgroundColor: BG }}>
+      {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
+      {scenes.map((s, i) => {
+        const from = Math.round(s.fromSec * fps);
+        const durationInFrames = Math.max(1, Math.round(s.durationSec * fps));
+        return (
+          <Sequence key={i} from={from} durationInFrames={durationInFrames} name={`frame-${i}`}>
+            <FrameScene frameSrc={s.frameSrc} stepLabel={s.stepLabel} fit={fit} typeScale={layout.typeScale} />
+          </Sequence>
+        );
+      })}
+      {captions.length > 0 ? (
+        <DemoCaptionBand
+          captions={captions}
+          bandY={props.captionBandY ?? Math.round((props.height ?? 1920) * 0.82)}
+          fps={fps}
+          typeScale={layout.typeScale}
+        />
+      ) : null}
+    </AbsoluteFill>
+  );
+};
+
 // ───────────────────────────── root ─────────────────────────────────────────
 
 const Root: React.FC = () => {
@@ -1390,6 +1483,33 @@ const Root: React.FC = () => {
           backgroundSrc: undefined,
           backgroundScrimOpacity: 0.7,
           backgroundBlurPx: 0,
+        }}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.durationInFrames,
+          width: props.width,
+          height: props.height,
+          fps: props.fps,
+        })}
+      />
+
+      <Composition
+        id="demo-frames"
+        component={FrameDemoVideo}
+        durationInFrames={1800}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          scenes: [] as FrameDemoScene[],
+          frameFit: "contain" as const,
+          audioSrc: undefined,
+          captions: [] as CaptionCue[],
+          captionBandY: Math.round(1920 * 0.82),
+          layout: DEFAULT_LAYOUT_9X16,
+          width: 1080,
+          height: 1920,
+          fps: 30,
+          durationInFrames: 1800,
         }}
         calculateMetadata={({ props }) => ({
           durationInFrames: props.durationInFrames,
