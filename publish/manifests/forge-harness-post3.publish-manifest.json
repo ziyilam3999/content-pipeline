@@ -1,0 +1,27 @@
+{
+  "postSlug": "forge-harness-post3",
+  "frozenAt": "2026-06-11T05:52:51.644Z",
+  "sourceDir": "/Users/ansonlam/coding_projects/_launch-assets/forge-harness-post3-20260611",
+  "assets": {
+    "post3-demo-9x16.mp4": {
+      "role": "hero-video",
+      "sha256": "a4412476524c94a3a76e8127665eebb427f1b82559b37bd02edfbfe48a16d29f",
+      "bytes": 39344483
+    },
+    "card-post3-A.png": {
+      "role": "card",
+      "sha256": "ad4d1436733ce6d901b03d52eded5bbd296861a8deb2b4bf2534bfc9772a5c5c",
+      "bytes": 1058138
+    },
+    "card-post3-B.png": {
+      "role": "card",
+      "sha256": "742414fc10e6202aad38eaeb8b57782646fc1a370581f631a79e7c9bd1490679",
+      "bytes": 1058422
+    },
+    "card-post3-C.png": {
+      "role": "card",
+      "sha256": "e89dca98a0557be6a6ab5df60dbe6d5de25063d21d4369c8a203603dadddbc8e",
+      "bytes": 1055937
+    }
+  }
+}

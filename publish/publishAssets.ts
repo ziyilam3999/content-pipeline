@@ -14,7 +14,7 @@
 import * as os from "os";
 import * as path from "path";
 
-export type PostSlug = "lfah-post1" | "lfah-post2";
+export type PostSlug = "lfah-post1" | "lfah-post2" | "forge-harness-post3";
 
 /** The role of a published asset — drives the hero-aspect/fidelity story + clearer error messages. */
 export type AssetRole = "hero-video" | "card";
@@ -62,9 +62,19 @@ export const POST_ASSETS: Record<PostSlug, PostAssetSpec> = {
       { role: "card", basename: "card-post2-C.png" },
     ],
   },
+  "forge-harness-post3": {
+    slug: "forge-harness-post3",
+    defaultBundleDir: path.join(LAUNCH_ASSETS_ROOT, "forge-harness-post3-20260611"),
+    assets: [
+      { role: "hero-video", basename: "post3-demo-9x16.mp4" }, // full-bleed 9:16 forge-harness hero
+      { role: "card", basename: "card-post3-A.png" },
+      { role: "card", basename: "card-post3-B.png" },
+      { role: "card", basename: "card-post3-C.png" },
+    ],
+  },
 };
 
 /** Type-guard: is `s` a known post slug? */
 export function isPostSlug(s: string): s is PostSlug {
-  return s === "lfah-post1" || s === "lfah-post2";
+  return s === "lfah-post1" || s === "lfah-post2" || s === "forge-harness-post3";
 }
