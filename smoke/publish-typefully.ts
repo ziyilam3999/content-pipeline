@@ -54,6 +54,7 @@ import {
   type PlatformPrimaryPost,
 } from "../publish/promoMedia";
 import { assertCopyWithinPlatformLimits, heroVideoAdvisory } from "../publish/copyLimits";
+import { threadLengthAdvisory } from "../publish/publishVerify";
 import { CONFIG } from "../config";
 
 // ── Sources ────────────────────────────────────────────────────────────
@@ -248,6 +249,12 @@ async function main() {
   const heroDims = CONFIG.aspects[CONFIG.publish.heroVideoAspect];
   const advisory = heroVideoAdvisory(heroDims);
   if (advisory.flagged) console.log(advisory.message);
+
+  // ── #793 SHORT-THREAD ADVISORY (NON-FATAL). A longer X thread raises same-second scramble risk
+  // (Post #1 fired its tweets the same second → X chained the reply order by ingestion). This only
+  // SURFACES the risk via the CONFIG soft cap; it NEVER fails the build (thread length is creative).
+  const threadNote = threadLengthAdvisory(xThread);
+  if (threadNote) console.log(threadNote);
 
   // Assert every media file exists + print the per-tweet media map (both modes — what we'd upload).
   console.log("X-launch-thread media map (hook=video, body=cards):");

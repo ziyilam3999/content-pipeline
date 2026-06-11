@@ -28,6 +28,7 @@
     "smoke:publish-typefully:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully.ts",
     "smoke:publish-typefully-post2": "tsx smoke/publish-typefully-post2.ts",
     "smoke:publish-typefully-post2:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully-post2.ts",
+    "smoke:verify-published": "tsx smoke/verify-published.ts",
     "e2e:lfah": "tsx smoke/e2e-lfah.ts"
   },
   "license": "UNLICENSED",
