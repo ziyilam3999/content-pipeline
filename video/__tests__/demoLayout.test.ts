@@ -8,8 +8,14 @@
  * centered, and "fill" is monotonic in tallness.
  */
 
-import { demoLayout } from "../demoLayout";
+import {
+  demoLayout,
+  assertHorizontalSafeArea,
+  contentSafeWidthPx,
+  SAFE_SQUARE_MAX_RATIO,
+} from "../demoLayout";
 import { ASPECTS } from "../renderSpec";
+import { CONFIG } from "../../config";
 
 const byName = (name: string) => {
   const a = ASPECTS.find((x) => x.name === name);
@@ -84,6 +90,91 @@ describe("#765 demoLayout — per-aspect frame fill", () => {
       typeScale: 1.34,
       gapScale: 1.1,
       usableSpanFraction: 1 - 2 * 0.045,
+      safeAreaXFraction: 0.8,
+      contentMaxWidthPx: 864, // floor(1080 * 0.8)
     });
+  });
+});
+
+describe("horizontal title-safe band (full-screen tall-phone crop prevention)", () => {
+  test("the safe band fraction is read from CONFIG (SSOT — no magic number)", () => {
+    const l = demoLayout(PHONE.width, PHONE.height);
+    expect(l.safeAreaXFraction).toBe(CONFIG.demo.safeAreaXFraction);
+    expect(l.contentMaxWidthPx).toBe(contentSafeWidthPx(PHONE.width, CONFIG.demo.safeAreaXFraction));
+    // ~10% clear margin each side at 1080w.
+    const marginEachSidePct = (((PHONE.width - l.contentMaxWidthPx) / 2) / PHONE.width) * 100;
+    expect(marginEachSidePct).toBeGreaterThanOrEqual(9);
+  });
+
+  test("every aspect's content extent stays within its own band (9:16, 4:5, 1:1)", () => {
+    for (const a of [PHONE, PORTRAIT, SQUARE]) {
+      const l = demoLayout(a.width, a.height);
+      expect(() =>
+        assertHorizontalSafeArea({
+          width: a.width,
+          contentExtentPx: l.contentMaxWidthPx,
+          safeAreaXFraction: l.safeAreaXFraction,
+          aspectRatio: l.aspectRatio,
+          label: a.name,
+        }),
+      ).not.toThrow();
+    }
+  });
+
+  test("BYPASS: content WIDER than the band THROWS for a croppable (9:16) aspect", () => {
+    // The old edge-to-edge layout (~984px / 91% of 1080) must now hard-fail.
+    expect(() =>
+      assertHorizontalSafeArea({
+        width: 1080,
+        contentExtentPx: 984,
+        safeAreaXFraction: 0.8,
+        aspectRatio: 1920 / 1080,
+        label: "9:16",
+      }),
+    ).toThrow(/horizontal title-safe band violated/);
+    // Full-bleed (edge-to-edge) content also throws.
+    expect(() =>
+      assertHorizontalSafeArea({
+        width: 1080,
+        contentExtentPx: 1080,
+        safeAreaXFraction: 0.8,
+        aspectRatio: 1350 / 1080, // 4:5 is also croppable
+        label: "4:5",
+      }),
+    ).toThrow(/horizontal title-safe band/);
+  });
+
+  test("WITHIN: content exactly at the band passes (boundary)", () => {
+    expect(() =>
+      assertHorizontalSafeArea({
+        width: 1080,
+        contentExtentPx: 864, // exactly 80%
+        safeAreaXFraction: 0.8,
+        aspectRatio: 1920 / 1080,
+      }),
+    ).not.toThrow();
+  });
+
+  test("a SQUARE (1:1) cut is not horizontally cropped → over-band content does NOT throw", () => {
+    // 1:1 ratio is ≤ SAFE_SQUARE_MAX_RATIO, so the assertion skips it even when wide.
+    expect(SAFE_SQUARE_MAX_RATIO).toBeGreaterThanOrEqual(1);
+    expect(() =>
+      assertHorizontalSafeArea({
+        width: 1080,
+        contentExtentPx: 1080,
+        safeAreaXFraction: 0.8,
+        aspectRatio: 1,
+        label: "1:1",
+      }),
+    ).not.toThrow();
+  });
+
+  test("rejects a bad safeAreaXFraction or non-positive width", () => {
+    expect(() =>
+      assertHorizontalSafeArea({ width: 0, contentExtentPx: 100, safeAreaXFraction: 0.8, aspectRatio: 1.78 }),
+    ).toThrow();
+    expect(() =>
+      assertHorizontalSafeArea({ width: 1080, contentExtentPx: 100, safeAreaXFraction: 1.5, aspectRatio: 1.78 }),
+    ).toThrow();
   });
 });

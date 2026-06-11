@@ -61,6 +61,10 @@ interface Layout {
   typeScale: number;
   gapScale: number;
   usableSpanFraction: number;
+  // HORIZONTAL title-safe band (keep in sync with video/demoLayout.ts DemoLayout). Content stays
+  // inside `contentMaxWidthPx` so a full-screen tall-phone crop (~9-12%/side) never clips it.
+  safeAreaXFraction: number;
+  contentMaxWidthPx: number;
 }
 
 const DEFAULT_LAYOUT_9X16: Layout = {
@@ -72,6 +76,8 @@ const DEFAULT_LAYOUT_9X16: Layout = {
   typeScale: 1.34,
   gapScale: 1.1,
   usableSpanFraction: 0.91,
+  safeAreaXFraction: 0.8, // SSOT = CONFIG.demo.safeAreaXFraction
+  contentMaxWidthPx: Math.floor(1080 * 0.8), // 864 at 1080w → ~108px (10%) clear each side
 };
 
 /** Fade + rise driven by a spring; returns inline style for an entrance. */
@@ -98,6 +104,12 @@ const SceneShell: React.FC<{
 }> = ({ layout, header, gap = 0, children }) => {
   const { width, height } = useVideoConfig();
   const items = React.Children.toArray(children);
+  // HORIZONTAL title-safe band: content lives inside contentMaxWidthPx (≈80% of width), so a
+  // full-screen tall-phone crop (~9-12%/side) never clips it. Bg art is rendered separately and
+  // stays full-bleed. The horizontal padding equals the safe margin (belt-and-suspenders against
+  // any child that tries to overflow the inner column).
+  const contentWidth = layout.contentMaxWidthPx ?? Math.floor(width * (layout.safeAreaXFraction ?? 0.8));
+  const sideMargin = Math.round((width - contentWidth) / 2);
   return (
     <AbsoluteFill
       style={{
@@ -106,13 +118,13 @@ const SceneShell: React.FC<{
         justifyContent: "center",
         paddingTop: Math.round(layout.padTopFraction * height),
         paddingBottom: Math.round(layout.padBottomFraction * height),
-        paddingLeft: 56,
-        paddingRight: 56,
+        paddingLeft: sideMargin,
+        paddingRight: sideMargin,
       }}
     >
       <div
         style={{
-          width: Math.min(984, width - 96),
+          width: contentWidth,
           height: "100%",
           display: "flex",
           flexDirection: "column",
@@ -217,12 +229,13 @@ const AnimatedArtBackground: React.FC<{ src: string; scrimOpacity: number; blurP
 
 // ───────────────────────────── caption band ─────────────────────────────────
 
-const CaptionBand: React.FC<{ captions: CaptionCue[]; bandY: number; fps: number; typeScale: number }> = ({
-  captions,
-  bandY,
-  fps,
-  typeScale,
-}) => (
+const CaptionBand: React.FC<{
+  captions: CaptionCue[];
+  bandY: number;
+  fps: number;
+  typeScale: number;
+  maxWidthPx: number;
+}> = ({ captions, bandY, fps, typeScale, maxWidthPx }) => (
   <>
     {captions.map((c, i) => {
       const from = Math.round(c.startSec * fps);
@@ -240,7 +253,7 @@ const CaptionBand: React.FC<{ captions: CaptionCue[]; bandY: number; fps: number
                 lineHeight: 1.25,
                 padding: "14px 26px",
                 borderRadius: 14,
-                maxWidth: "86%",
+                maxWidth: maxWidthPx, // HORIZONTAL title-safe band — within the crop-safe width
                 textAlign: "center",
               }}
             >
@@ -538,6 +551,7 @@ const Post3DemoVideo: React.FC<Post3Props> = (props) => {
           bandY={props.captionBandY ?? Math.round((props.height ?? 1920) * 0.82)}
           fps={fps}
           typeScale={layout.typeScale}
+          maxWidthPx={layout.contentMaxWidthPx ?? Math.floor((props.width ?? 1080) * (layout.safeAreaXFraction ?? 0.8))}
         />
       ) : null}
     </AbsoluteFill>

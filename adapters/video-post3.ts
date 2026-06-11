@@ -22,7 +22,7 @@ import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 
 import { buildPost3Timeline } from "../video/post3Timeline";
-import { demoLayout } from "../video/demoLayout";
+import { demoLayout, assertHorizontalSafeArea } from "../video/demoLayout";
 import {
   buildDemoCaptionCues,
   assertVoicedDemoHasCaptions,
@@ -121,6 +121,15 @@ export async function renderPost3DemoVideo(spec: ContentSpec, opts?: RenderPost3
   const width = aspect.width;
   const height = aspect.height;
   const baseLayout = demoLayout(width, height);
+  // HORIZONTAL title-safe band — hard-fail a layout whose content would be clipped by a
+  // full-screen tall-phone crop (~9-12%/side). Bg art stays full-bleed; only content is inset.
+  assertHorizontalSafeArea({
+    width,
+    contentExtentPx: baseLayout.contentMaxWidthPx,
+    safeAreaXFraction: baseLayout.safeAreaXFraction,
+    aspectRatio: baseLayout.aspectRatio,
+    label: aspectName,
+  });
   const durationInFrames = Math.max(1, Math.round(durationSec * fps));
 
   // #775 parity — a voiced render (audioPath) MUST carry a script → non-empty captions spanning clip.
