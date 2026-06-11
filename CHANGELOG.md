@@ -1,3 +1,9 @@
+## [0.20.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.19.0...v0.20.0) (2026-06-12)
+
+### Features
+
+* **capture:** add a VHS automated screen-capture harness so the demonstration video's ordered per-step screenshot frames are produced automatically (deterministic, headless, repeatable) instead of hand-recorded, feeding the v0.19.0 frame-ingest manifest. `tools/captureTape.ts` (pure `.tape` generator: one Screenshot per narration beat, mandatory trailing Sleep, pixel dims ≥120, frames-dir-prefixed Screenshot path), `tools/captureDemo.ts` (LOCAL-only runner + a `PAID_COMMANDS` denylist that refuses any tape command that would bill Claude/ElevenLabs/nano-banana — free by gate; reuses `validateFrameManifest`+`assertBrandClean`), committed brand-clean fixtures, a CI-safe logic test (no VHS/network) with regression guards for two live-VHS bugs, a `capture:demo` script, and README VHS dev-dep docs. No paid calls in this build; VHS never runs in CI (#824). ([#92](https://github.com/ziyilam3999/content-pipeline/pull/92))
+
 ## [0.19.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.18.1...v0.19.0) (2026-06-11)
 
 ### Features
