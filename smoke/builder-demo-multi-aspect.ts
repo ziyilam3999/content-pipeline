@@ -62,8 +62,16 @@ const ASPECTS = ["9:16", "1:1", "4:5"];
  * this wrapper only injects the fs/env reads.
  */
 const DEFAULT_BG_IMAGE = path.join("out", "review", "lfah", "image", "_art-base-post2.png");
-function loadBackground(): { backgroundImagePath: string; backgroundScrimOpacity: number; backgroundBlurPx: number } | null {
-  const img = process.env.DEMO_BG_IMAGE ?? DEFAULT_BG_IMAGE;
+
+/**
+ * #818 — resolve the bg-image path ONCE. Both loadBackground() and main()'s #817 art-bound guard
+ * consume this value, so they MUST always agree; computing it in two places risked a future edit
+ * silently desyncing them. Single source: DEMO_BG_IMAGE override, else the post-2 art base.
+ */
+function resolveBgImagePath(): string {
+  return process.env.DEMO_BG_IMAGE ?? DEFAULT_BG_IMAGE;
+}
+function loadBackground(img: string): { backgroundImagePath: string; backgroundScrimOpacity: number; backgroundBlurPx: number } | null {
   const bg = resolveDemoBackground({
     artImageExists: fs.existsSync(img),
     artImagePath: img,
@@ -115,8 +123,8 @@ function loadBundle(): NarrationBundle | null {
 
 async function main() {
   const bundle = loadBundle();
-  const bgImage = process.env.DEMO_BG_IMAGE ?? DEFAULT_BG_IMAGE;
-  const background = loadBackground();
+  const bgImage = resolveBgImagePath(); // #818 — single source, shared with loadBackground + the #817 guard
+  const background = loadBackground(bgImage);
   const outDir = path.join(process.cwd(), "out", "review", "lfah", "demo-builder", "multi-aspect");
   fs.mkdirSync(outDir, { recursive: true });
 
@@ -137,6 +145,11 @@ async function main() {
   // Skipped when DEMO_BG_IMAGE overrides to a custom (non-art-base) image, or when art is intentionally
   // disabled (background === null via DEMO_BG=0). The cards art path is the canonical post-scoped cache
   // key from launch-card.ts so this enforces the real convention, not a duplicate string.
+  //
+  // #818 — DEMO_BG_IMAGE override bypasses the shared-source guard BY DESIGN: an explicit custom-bg
+  // override is, by definition, no longer the cards' art-base, the same opt-out class as DEMO_BG=0.
+  // The skip is CORRECT — its only flaw was being SILENT, so it is now surfaced via console.warn so
+  // it's never invisible. #818.
   if (background && !process.env.DEMO_BG_IMAGE) {
     const cardsOutDir = path.join(process.cwd(), "out", "review", "lfah", "image");
     const cardsArt = artBasePngPath(cardsOutDir, "post2");
@@ -144,6 +157,15 @@ async function main() {
     console.log(
       `[builder-demo-multi] #817 shared-source OK — video bg + post-2 cards both derive from ` +
         `${path.basename(cardsArt)}`,
+    );
+  } else if (background && process.env.DEMO_BG_IMAGE) {
+    // Active background, but an explicit DEMO_BG_IMAGE override → the shared-source guard is
+    // intentionally skipped. Surface it (do NOT warn for the DEMO_BG=0 / background === null solid
+    // path — that's the intentional-solid case, already logged below).
+    console.warn(
+      `[builder-demo-multi] #817 shared-source guard SKIPPED — DEMO_BG_IMAGE override ` +
+        `(${process.env.DEMO_BG_IMAGE}) points at a custom bg, so video bg ≠ cards art-base by design. ` +
+        `Unset DEMO_BG_IMAGE to enforce shared-source.`,
     );
   }
 
