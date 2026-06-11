@@ -1,0 +1,12 @@
+{
+  "_note": "#824 COMMITTED copy fixture for the demo-capture tape (beat 2). A previously-produced, brand-clean thread/script artifact `cat`-ed on screen so the produced copy is visibly on disk WITHOUT re-running the paid smoke:copy (Claude Max). Do not regenerate from a live call in CI.",
+  "subject": "lfah",
+  "platform": "x-thread",
+  "thread": [
+    "Meet lfah — an AI helper that fixes real software bugs, test-first, right on your own machine.",
+    "The heavy work runs free on a local model; it only calls the cloud when it's truly stuck.",
+    "Headline: $2.24 per fixed bug — 55% less total cost than a full-cloud relay.",
+    "Open and MIT. Link below."
+  ],
+  "voiceover_script": "Meet lfah — an AI helper that fixes real software bugs, test-first, right on your own machine. The heavy work runs free; it only calls the cloud when stuck. Two dollars twenty-four cents per fixed bug — fifty-five percent less than a full-cloud relay."
+}
