@@ -7,6 +7,12 @@ release step (Stage 7) pulls the section for a tag `vX.Y.Z` out of this file as
 the GitHub Release notes, so this changelog is the single source of truth for
 "what changed".
 
+## [0.14.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.13.0...v0.14.0) (2026-06-11)
+
+### Features
+
+* **video:** art-source-bound guard blocks a silently-solid demo background (#817) (#73) — a demo can INTEND generative art (`CONFIG.demo.animatedBackgroundDefault`) yet render a SOLID background with no error when the art base `_art-base-<slug>.png` is missing or resolved away before the Remotion call; the #807 perceptibility test does not catch it (a moving solid passes the motion gate). New pure module `video/demoArtBinding.ts`: `assertDemoArtBound` HARD-FAILS when art is INTENDED but NOT BOUND (missing file OR null/empty `backgroundImagePath`), with the existing `DEMO_BG=0/off/false/no` escape hatch as a no-op for an intentional solid render; `assertSharedArtSource` enforces that the demo video background and the post's cards derive from the SAME `_art-base-<slug>.png` (one per-post art — prevents forgetting the video bg AND paying for art twice); plus `artBaseSlug`/`isSolidRenderOptOut` helpers. Wired into `smoke/builder-demo-multi-aspect.ts` before any render so a real producer run blocks instead of shipping solid. 36 suites / 393 tests green (+18 covering both ends incl. the `DEMO_BG` bypass forms); tsc clean; no paid calls ([#73](https://github.com/ziyilam3999/content-pipeline/pull/73)).
+
 ## [0.13.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.12.0...v0.13.0) (2026-06-11)
 
 ### Features
