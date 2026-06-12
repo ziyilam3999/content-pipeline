@@ -232,3 +232,64 @@ describe("brand-scrub — reuses the shipped assertBrandClean", () => {
     expect(() => assertCaptureBrandClean(DEFAULT_BEATS)).not.toThrow();
   });
 });
+
+describe("#824 owner/username-leak denylist — no captured command may print the OS login name", () => {
+  // The capture frames are the HERO of a PUBLIC product-demo post. A long-listing command (`ls -l`/`-la`)
+  // prints an OWNER column = the OS login name, leaking it into a public artefact. `whoami`/`id`/owner-
+  // printing `stat` leak it directly. This is the test-oracle half of the #824 residual fix: it FAILS if any
+  // future beat re-introduces an owner-leaking command. (Was RED against the prior beat-5 `ls -la ...`.)
+
+  /** True if an `ls` invocation's flags would print the owner column: a cluster containing `l` and NO `g`/`o`
+   *  (BSD `-g`/`-o` both suppress the owner in long format). Non-`ls` commands return false here. */
+  function lsShowsOwner(cmd: string): boolean {
+    if (!/(^|[\s;&|])ls(\s|$)/.test(cmd)) return false;
+    const flagClusters = (cmd.match(/(^|\s)-{1,2}[A-Za-z]+/g) ?? []).map((s) => s.trim().replace(/^-+/, ""));
+    const longFormat = flagClusters.some((c) => c.includes("l"));
+    const ownerSuppressed = flagClusters.some((c) => c.includes("g") || c.includes("o"));
+    return longFormat && !ownerSuppressed;
+  }
+
+  /** Direct username/owner-printing commands (independent of `ls`). */
+  const OWNER_LEAK_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
+    { name: "whoami", re: /(^|[\s;&|])whoami(\s|$|[;&|])/i },
+    { name: "id (resolves uid/gid -> username)", re: /(^|[\s;&|])id(\s|$|[;&|])/i },
+    // owner-printing `stat` formats: BSD `%Su`/numeric `%u`, GNU `%U`/`%u`
+    { name: "stat with owner format (%Su/%u/%U)", re: /\bstat\b[^|]*%-?\d*\.?\d*S?[uU]\b/i },
+  ];
+
+  /** A single owner/username-leak detector — returns the matched rule name, or null if clean. */
+  function ownerLeak(cmd: string): string | null {
+    if (lsShowsOwner(cmd)) return "ls long-format (owner column)";
+    for (const p of OWNER_LEAK_PATTERNS) if (p.re.test(cmd)) return p.name;
+    return null;
+  }
+
+  it("the shipped DEFAULT_BEATS contain NO owner/username-leaking command", () => {
+    const offenders = DEFAULT_BEATS.flatMap((b, bi) =>
+      b.commands.filter((c) => ownerLeak(c)).map((c) => `beat ${bi + 1}: "${c}" → ${ownerLeak(c)}`),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it("the detector CATCHES the forms it must forbid (denylist is real, not a no-op)", () => {
+    // each of these MUST be flagged (the RED cases — incl. the exact prior beat-5 leak)
+    expect(ownerLeak("ls -la out/review/demo-frames/*.mp4")).toBeTruthy(); // the prior leak
+    expect(ownerLeak("ls -l")).toBeTruthy();
+    expect(ownerLeak("ls -al foo")).toBeTruthy();
+    expect(ownerLeak("ls -lh out/image/*.png")).toBeTruthy();
+    expect(ownerLeak("whoami")).toBeTruthy();
+    expect(ownerLeak("echo hi; id")).toBeTruthy();
+    expect(ownerLeak("stat -f '%Su %z' file")).toBeTruthy();
+  });
+
+  it("the detector does NOT false-positive on the owner-less forms we actually use", () => {
+    // the chosen replacement + every other DEFAULT_BEATS listing form must read as CLEAN
+    expect(ownerLeak("ls -gh out/review/demo-frames/*.mp4")).toBeNull(); // the fix (-g suppresses owner)
+    expect(ownerLeak("ls")).toBeNull();
+    expect(ownerLeak("ls out/image/*.png")).toBeNull();
+    expect(ownerLeak("tree out/review")).toBeNull();
+    expect(ownerLeak("cat README.md | head -3")).toBeNull(); // no false hit on `head -...l...`? (none) / pipes
+    expect(ownerLeak("cat package.json | head -5")).toBeNull();
+    expect(ownerLeak("stat -f '%N  %z bytes' file")).toBeNull(); // owner-less stat format
+  });
+});

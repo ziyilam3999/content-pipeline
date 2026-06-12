@@ -141,10 +141,13 @@ export const DEFAULT_BEATS: ReadonlyArray<TapeBeat> = [
   },
   // 4 VOICE/SYNC — cat a COMMITTED alignment fixture (FREE; never smoke:voice/caption-sync-real)
   { commands: ["cat fixtures/demo-capture/alignment.json"], stepLabel: "captions ↔ voice timing" },
-  // 5 VIDEO — smoke:demo-frames is VERIFIED FREE (silent), then ls the MP4. HEAVY live render → big settle
+  // 5 VIDEO — smoke:demo-frames is VERIFIED FREE (silent), then list the MP4. HEAVY live render → big settle
   // override (else beats 5/6/7 freeze mid-render — #824). Stays GENUINELY LIVE (not a cat of a pre-baked file).
+  // List with `ls -gh` (NOT `ls -la`): BSD `ls -g` SUPPRESSES the owner column (the OS login name — a privacy
+  // leak on a PUBLIC demo frame), keeps the non-sensitive group + `-h` human-size. Payoff preserved ("a real
+  // rendered MP4 with a real size"), username gone. Enforced by the owner-leak denylist test (#824 residual).
   {
-    commands: ["npm run smoke:demo-frames", "ls -la out/review/demo-frames/*.mp4"],
+    commands: ["npm run smoke:demo-frames", "ls -gh out/review/demo-frames/*.mp4"],
     stepLabel: "video → MP4",
     settleSleepSec: DEMO_FRAMES_SETTLE_SEC,
   },
