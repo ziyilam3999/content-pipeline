@@ -1,3 +1,9 @@
+## [0.20.3](https://github.com/ziyilam3999/content-pipeline/compare/v0.20.2...v0.20.3) (2026-06-12)
+
+### Bug Fixes
+
+* **#824:** scrub OS-username leak in VHS capture beat 5 (`ls -la` → `ls -gh`) + bake owner-leak denylist test ([#98](https://github.com/ziyilam3999/content-pipeline/pull/98))
+
 ## [0.20.2](https://github.com/ziyilam3999/content-pipeline/compare/v0.20.1...v0.20.2) (2026-06-12)
 
 ### Bug Fixes
