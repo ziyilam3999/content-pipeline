@@ -18,6 +18,7 @@ import { renderFrameDemoVideo } from "../adapters/video";
 import { buildFrameDemoTimeline } from "../video/demoFrameTimeline";
 import { type FrameEntry } from "../inputs/frames";
 import { probeRender, assertVideoFrameCount } from "../video/renderProbe";
+import { toRepoRelative } from "./relpath";
 
 // A small brand-clean demonstration narration — one segment per placeholder frame.
 const NARRATION = [
@@ -64,7 +65,8 @@ async function main() {
     await makePlaceholderPng(p, COLORS[i % COLORS.length], STEP_LABELS[i]);
     manifest.push({ path: p, stepLabel: STEP_LABELS[i], narrationSegmentIndex: i });
   }
-  console.log(`[demo-frames] generated ${manifest.length} placeholder frames in ${tmpDir}`);
+  // tmpDir is an OS tmp path (/var/folders/…) — print a scrubbed form so the capture frame stays clean (#824).
+  console.log(`[demo-frames] generated ${manifest.length} placeholder frames in ${toRepoRelative(tmpDir)}`);
 
   const outDir = path.join(process.cwd(), "out", "review", "demo-frames");
   fs.mkdirSync(outDir, { recursive: true });
@@ -75,7 +77,8 @@ async function main() {
   const file = await renderFrameDemoVideo(manifest, NARRATION, { aspectName: "9:16", outDir, fps: RENDER_FPS });
 
   const bytes = fs.existsSync(file) ? fs.statSync(file).size : 0;
-  console.log(`DEMO-FRAMES-PATH: file="${file}" bytes=${bytes}`);
+  // Repo-relative so the captured frame never shows an absolute /Users/<name> path (#824 publish-clean).
+  console.log(`DEMO-FRAMES-PATH: file="${toRepoRelative(file)}" bytes=${bytes}`);
   if (!(bytes > 0)) {
     console.error("SMOKE FAIL: demo-frames render is empty (bytes <= 0)");
     process.exit(1);

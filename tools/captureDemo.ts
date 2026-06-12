@@ -99,6 +99,25 @@ export function assertCaptureBrandClean(beats: ReadonlyArray<TapeBeat>): void {
 // free silent) or inert shell (ls/cat/tree). Beats 2 (copy) + 4 (voice/sync) `cat` COMMITTED FIXTURES
 // (fixtures/demo-capture/*.json) — NEVER smoke:copy / smoke:genart / smoke:voice / caption-sync-real.
 
+// ── Per-beat settle floors for the LIVE-render beats ─────────────────────────────
+//
+// A live render BLOCKS the shell while it runs. If the screenshot fires before the render finishes,
+// (a) the captured frame shows a half-rendered screen AND (b) the still-running command starves every
+// following beat — its typed command is queued but never executes (the #824 live-capture autopsy: with
+// the 2s default, beats 5/6/7 all froze on the same mid-render screen). So each heavy live beat carries
+// a per-beat settle ≥ its OBSERVED runtime + margin. These constants ARE the regression contract — the
+// settle-config test asserts the render beats keep a settle ≥ the runtime they encode.
+
+/** `smoke:demo-frames` renders a 45–90s MP4 (Remotion + Playwright). Observed ~18s on the capture run. */
+export const DEMO_FRAMES_RUNTIME_SEC = 18;
+/** Settle for the VIDEO beat — observed runtime + generous margin so the MP4 listing lands cleanly. */
+export const DEMO_FRAMES_SETTLE_SEC = 30;
+
+/** `smoke:image` renders a card PNG via headless Chromium (cold browser launch). Observed ~8s. */
+export const IMAGE_SMOKE_RUNTIME_SEC = 8;
+/** Settle for the CARDS beat — observed runtime + margin so the PNG `ls` lands after render. */
+export const IMAGE_SMOKE_SETTLE_SEC = 15;
+
 export const DEFAULT_NARRATION: ReadonlyArray<TapeNarrationSegment> = [
   { text: "This is content-pipeline. One command turns a repo's numbers into a launch post." },
   { text: "First it writes the copy." },
@@ -114,12 +133,21 @@ export const DEFAULT_BEATS: ReadonlyArray<TapeBeat> = [
   { commands: ["ls", "cat package.json | head -5"], stepLabel: "content-pipeline" },
   // 2 COPY — cat a COMMITTED fixture (FREE; never smoke:copy)
   { commands: ["cat fixtures/demo-capture/copy.json"], stepLabel: "copy → copy.json" },
-  // 3 CARDS — smoke:image is VERIFIED FREE (pure Playwright), then ls the PNGs
-  { commands: ["npm run smoke:image", "ls out/image/*.png"], stepLabel: "cards → out/image" },
+  // 3 CARDS — smoke:image is VERIFIED FREE (pure Playwright), then ls the PNGs. LIVE render → settle override.
+  {
+    commands: ["npm run smoke:image", "ls out/image/*.png"],
+    stepLabel: "cards → out/image",
+    settleSleepSec: IMAGE_SMOKE_SETTLE_SEC,
+  },
   // 4 VOICE/SYNC — cat a COMMITTED alignment fixture (FREE; never smoke:voice/caption-sync-real)
   { commands: ["cat fixtures/demo-capture/alignment.json"], stepLabel: "captions ↔ voice timing" },
-  // 5 VIDEO — smoke:demo-frames is VERIFIED FREE (silent), then ls the MP4
-  { commands: ["npm run smoke:demo-frames", "ls -la out/review/demo-frames/*.mp4"], stepLabel: "video → MP4" },
+  // 5 VIDEO — smoke:demo-frames is VERIFIED FREE (silent), then ls the MP4. HEAVY live render → big settle
+  // override (else beats 5/6/7 freeze mid-render — #824). Stays GENUINELY LIVE (not a cat of a pre-baked file).
+  {
+    commands: ["npm run smoke:demo-frames", "ls -la out/review/demo-frames/*.mp4"],
+    stepLabel: "video → MP4",
+    settleSleepSec: DEMO_FRAMES_SETTLE_SEC,
+  },
   // 6 RECEIPT — inert
   { commands: ["tree out/review"], stepLabel: "one free deterministic bundle" },
   // 7 CTA — inert

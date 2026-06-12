@@ -36,6 +36,15 @@ export interface TapeBeat {
   commands: ReadonlyArray<string>;
   /** Short human label for the captured frame (drawn as the annotation pill downstream). */
   stepLabel: string;
+  /**
+   * Optional PER-BEAT settle pause (seconds) AFTER this beat's commands, BEFORE its Screenshot —
+   * overrides the global `settleSleepSec` for THIS beat only. Heavy LIVE-render beats (e.g. a beat
+   * that runs `npm run smoke:demo-frames`, ~18s) MUST set this ≥ the command's real runtime + margin,
+   * or the screenshot fires mid-render AND the still-running command blocks the shell so every
+   * following beat freezes on the same half-rendered screen (the #824 live-capture autopsy). Defaults
+   * to the global `settleSleepSec` when omitted.
+   */
+  settleSleepSec?: number;
 }
 
 /** Generator options — neutral header knobs (all have safe defaults). */
@@ -174,7 +183,10 @@ export function generateCaptureTape(
       lines.push(`Type "${escapeTypeArg(cmd)}"`);
       lines.push(`Enter`);
     }
-    lines.push(`Sleep ${o.settleSleepSec}s`);
+    // A heavy live-render beat overrides the global settle so its Screenshot waits for the render to
+    // FINISH (else it snaps mid-render AND the still-running command blocks every following beat — #824).
+    const settle = beat.settleSleepSec ?? o.settleSleepSec;
+    lines.push(`Sleep ${settle}s`);
     lines.push(`Screenshot ${outDir}/${stepName(oneBased)}`);
     lines.push(``);
   });
