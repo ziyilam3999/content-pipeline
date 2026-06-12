@@ -141,6 +141,19 @@ describe("assertPublishAssetsMatchManifest", () => {
     );
   });
 
+  it("HARD-FAILS when the file size differs from the frozen bytes field", () => {
+    const manifest = manifestFromFixtures("lfah-post2", [
+      { role: "hero-video", basename: "builder-demo-9x16.mp4", contents: "HERO-approved" },
+    ]);
+    // Overwrite with different-length bytes (same sha256 impossible but realistic size drift scenario).
+    // Patch the manifest bytes to simulate a recorded size different from the actual file.
+    manifest.assets["builder-demo-9x16.mp4"].bytes = 9999;
+    const assets: PublishAsset[] = [
+      { role: "hero-video", path: path.join(tmp, "builder-demo-9x16.mp4") },
+    ];
+    expect(() => assertPublishAssetsMatchManifest(assets, manifest)).toThrow(/bytes mismatch/);
+  });
+
   it("HARD-FAILS when a manifest-listed file is missing on disk", () => {
     const manifest = manifestFromFixtures("lfah-post2", [
       { role: "hero-video", basename: "builder-demo-9x16.mp4", contents: "HERO" },

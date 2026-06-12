@@ -138,6 +138,14 @@ export function assertPublishAssetsMatchManifest(
           `publish path is NOT the operator-approved one)`,
       );
     }
+    if (expected.bytes !== undefined) {
+      const actualBytes = fs.statSync(asset.path).size;
+      if (actualBytes !== expected.bytes) {
+        offenders.push(
+          `${basename} (${asset.role}) bytes mismatch (actual ${actualBytes} vs manifest ${expected.bytes})`,
+        );
+      }
+    }
   }
 
   const uploadBasenames = new Set(assets.map((a) => path.basename(a.path)));
