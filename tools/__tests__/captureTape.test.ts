@@ -20,9 +20,14 @@ import {
   assertCaptureCommandsFree,
   assertCaptureBrandClean,
   buildAndValidateManifest,
+  buildDefaultTape,
   DEFAULT_BEATS,
   DEFAULT_NARRATION,
   PAID_COMMANDS,
+  DEMO_FRAMES_RUNTIME_SEC,
+  DEMO_FRAMES_SETTLE_SEC,
+  IMAGE_SMOKE_RUNTIME_SEC,
+  IMAGE_SMOKE_SETTLE_SEC,
 } from "../captureDemo";
 import { validateFrameManifest, assertBrandClean, type FrameEntry } from "../../inputs/frames";
 
@@ -171,6 +176,48 @@ describe("PAID_COMMANDS gate — free-by-gate, not by hope", () => {
     // no paid token anywhere in the default beat commands
     const allCmds = DEFAULT_BEATS.flatMap((b) => b.commands).join(" ");
     for (const paid of PAID_COMMANDS) expect(allCmds).not.toContain(paid);
+  });
+});
+
+describe("#824 settle-config — heavy LIVE-render beats wait for the render before the screenshot", () => {
+  /** Default global settle a beat inherits when it sets no override — the value that froze beats 5/6/7. */
+  const GLOBAL_DEFAULT_SETTLE_SEC = 2;
+
+  /** Live-render beats keyed by the script they run + the runtime each MUST clear (the regression contract). */
+  const LIVE_RENDER_BEATS: ReadonlyArray<{ script: string; runtimeSec: number }> = [
+    { script: "smoke:demo-frames", runtimeSec: DEMO_FRAMES_RUNTIME_SEC },
+    { script: "smoke:image", runtimeSec: IMAGE_SMOKE_RUNTIME_SEC },
+  ];
+
+  it("the encoded settles clear their encoded runtimes (settle ≥ runtime)", () => {
+    expect(DEMO_FRAMES_SETTLE_SEC).toBeGreaterThanOrEqual(DEMO_FRAMES_RUNTIME_SEC);
+    expect(IMAGE_SMOKE_SETTLE_SEC).toBeGreaterThanOrEqual(IMAGE_SMOKE_RUNTIME_SEC);
+  });
+
+  it.each(LIVE_RENDER_BEATS)(
+    "the live-render beat running $script carries a per-beat settle ≥ its $runtimeSec s runtime (not the 2s default)",
+    ({ script, runtimeSec }) => {
+      const beat = DEFAULT_BEATS.find((b) => b.commands.some((c) => c.includes(script)));
+      expect(beat).toBeDefined();
+      // a future edit that drops the override back to the global 2s default FAILS here
+      expect(typeof beat!.settleSleepSec).toBe("number");
+      expect(beat!.settleSleepSec!).toBeGreaterThan(GLOBAL_DEFAULT_SETTLE_SEC);
+      expect(beat!.settleSleepSec!).toBeGreaterThanOrEqual(runtimeSec);
+    },
+  );
+
+  it("the VIDEO (smoke:demo-frames) beat is the critical one — its settle ≥ 18s render runtime", () => {
+    const video = DEFAULT_BEATS.find((b) => b.commands.some((c) => c.includes("smoke:demo-frames")));
+    expect(video).toBeDefined();
+    expect(video!.settleSleepSec!).toBeGreaterThanOrEqual(DEMO_FRAMES_RUNTIME_SEC);
+  });
+
+  it("the override flows through generateCaptureTape — buildDefaultTape() emits the big render Sleep", () => {
+    const tape = buildDefaultTape();
+    // the demo-frames settle appears as a literal `Sleep <DEMO_FRAMES_SETTLE_SEC>s` (not `Sleep 2s`)
+    expect(tape).toContain(`Sleep ${DEMO_FRAMES_SETTLE_SEC}s`);
+    // and the VIDEO beat stays GENUINELY LIVE — it still runs the smoke, not a cat/ls of a pre-baked file
+    expect(tape).toContain("npm run smoke:demo-frames");
   });
 });
 

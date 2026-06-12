@@ -9,6 +9,7 @@
 
 import * as fs from "fs";
 import { renderImage } from "../adapters/image";
+import { toRepoRelative } from "./relpath";
 import { CONFIG } from "../config";
 import { type ContentSpec } from "../inputs/contentspec";
 import { type CopyResult } from "../pipeline/run";
@@ -66,7 +67,8 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`SMOKE-PATH: renderer=playwright-chromium file=${outPath}`);
+  // Repo-relative so the captured frame never shows an absolute /Users/<name> path (#824 publish-clean).
+  console.log(`SMOKE-PATH: renderer=playwright-chromium file=${toRepoRelative(outPath)}`);
   console.log(`  valid PNG, ${dims.width}x${dims.height}, ${(buf.length / 1024).toFixed(1)} KB`);
   console.log("\nSMOKE PASS: real PNG card rendered at the correct dimensions.");
   process.exit(0);
