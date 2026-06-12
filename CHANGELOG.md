@@ -1,3 +1,9 @@
+## [0.20.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.20.0...v0.20.1) (2026-06-12)
+
+### Bug Fixes
+
+* **jest:** fence test discovery off the emitted `dist/` tree so a `npm run build` (tsc) followed by `npm test` no longer runs the 82 emitted `*.test.js` copies as duplicate, often-failing tests. Adds `testPathIgnorePatterns` + `modulePathIgnorePatterns` for `dist/` (#833). ([#94](https://github.com/ziyilam3999/content-pipeline/pull/94))
+
 ## [0.20.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.19.0...v0.20.0) (2026-06-12)
 
 ### Features
