@@ -35,6 +35,19 @@ export interface CaptionTrack {
   pathLine: string;
 }
 
+// ── tokenize ────────────────────────────────────────────────────────────
+
+/**
+ * Shared word tokenizer used by both the word-count side and the span-
+ * derivation side of realChunkEndTimes. Using a single tokenizer prevents
+ * token-count divergence on pathological input (e.g. multiple consecutive
+ * spaces) that would otherwise cause the spans.length !== totalWords guard
+ * to silently downgrade real-sync to even-split.
+ */
+function tokenize(s: string): string[] {
+  return s.trim().split(/\s+/).filter(Boolean);
+}
+
 // ── splitCaptionText ────────────────────────────────────────────────────
 
 /**
@@ -98,12 +111,25 @@ function realChunkEndTimes(
   if (Math.abs(finalEnd - clip.durationSec) > tolerance) return null;
 
   // Character span of each word in the RAW script (indices match `ends`).
-  const spans = Array.from(script.matchAll(/\S+/g)).map((m) => ({
-    start: m.index ?? 0,
-  }));
-  const wordsPerChunk = chunks.map((c) => c.trim().split(/\s+/).length);
+  // Uses the same tokenizer as the word-count side to prevent divergence on
+  // pathological whitespace (e.g. multiple consecutive spaces).
+  const scriptWords = tokenize(script);
+  const spans: Array<{ start: number }> = [];
+  let searchFrom = 0;
+  for (const word of scriptWords) {
+    const idx = script.indexOf(word, searchFrom);
+    spans.push({ start: idx });
+    searchFrom = idx + word.length;
+  }
+  const wordsPerChunk = chunks.map((c) => tokenize(c).length);
   const totalWords = wordsPerChunk.reduce((a, b) => a + b, 0);
-  if (spans.length !== totalWords) return null; // chunking ≠ raw tokenization
+  if (spans.length !== totalWords) {
+    // Alignment present but rejected — emit a note so this isn't silent.
+    console.warn(
+      `CAPTION-PATH: real-sync rejected — span count (${spans.length}) !== word count (${totalWords}); falling back to even-split`,
+    );
+    return null;
+  }
 
   // First word index of each chunk.
   const firstWordIdx: number[] = [];
