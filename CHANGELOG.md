@@ -1,3 +1,9 @@
+## [0.20.2](https://github.com/ziyilam3999/content-pipeline/compare/v0.20.1...v0.20.2) (2026-06-12)
+
+### Bug Fixes
+
+* **capture:** fix two VHS capture-harness bugs found by a live capture run (a tape-parse test cannot catch either). (A) Heavy live-render beats now carry a per-beat `settleSleepSec` so the screenshot waits for the render to finish — previously the 2s global settle snapped a half-rendered frame and starved beats 5/6/7 (their typed commands never ran). (B) Smoke stdout now prints repo-relative paths via `toRepoRelative()`, so no absolute `/Users/` or `/var/folders/` username-bearing path leaks into the captured frame. Both regress-proofed with jest tests (#824). ([#96](https://github.com/ziyilam3999/content-pipeline/pull/96))
+
 ## [0.20.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.20.0...v0.20.1) (2026-06-12)
 
 ### Bug Fixes
