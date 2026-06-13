@@ -1,3 +1,14 @@
+## [0.21.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.20.3...v0.21.0) (2026-06-13)
+
+### Features
+
+* **#824:** content-pipeline demonstration post — Fable-style agent-interface demo video (real Playwright capture of the tool running + Adam voiceover + synced captions, 3 aspects), 3 per-tweet cards over one unique abstract generative-art base, content-pipeline is now MIT-licensed (LICENSE + package.json + README), and 4 baked prevention gates: cross-layer caption-overlap (`assertNoCaptionMediaOverlap`), OCR art-text (`assertNoArtText`), real-artifact provenance (`fableProvenance`), and demonstration-hero asserts ([#101](https://github.com/ziyilam3999/content-pipeline/pull/101))
+
+### Bug Fixes
+
+* shared tokenizer in captions real-sync span derivation (#14) ([#65](https://github.com/ziyilam3999/content-pipeline/pull/65))
+* assert reverse manifest coverage in provenance gate (#69) ([#91](https://github.com/ziyilam3999/content-pipeline/pull/91))
+
 ## [0.20.3](https://github.com/ziyilam3999/content-pipeline/compare/v0.20.2...v0.20.3) (2026-06-12)
 
 ### Bug Fixes
