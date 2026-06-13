@@ -210,13 +210,81 @@ export interface FableBeatLayout {
 }
 
 /**
- * The CHAT-beat content box (SSOT). `tools/captureFable.ts` positions its #content container at these
- * exact spine px and space-distributes the conversation inside it, so the box IS the rendered extent by
- * construction. Spans the safe area top→bottom (no empty middle) and stays inside the 4-side safe band.
+ * The CHAT-beat content box (SSOT) — the panel CONTAINER. `tools/captureFable.ts` positions its
+ * #content container at these exact spine px, so the panel spans the safe area top→bottom and stays
+ * inside the 4-side safe band. NOTE: this box only proves the CONTAINER is full-bleed — whether the
+ * conversation INSIDE it fills the panel (vs bunching at the top over a dead band) is a SEPARATE
+ * invariant, asserted by `assertChatBeatInteriorFill` against `CHAT_FILL_CONTRACT` below.
  */
 export const CHAT_CONTENT_BOX: Rect = { left: 72, top: 120, right: CAP_W - 72, bottom: CAP_H - 120 };
 /** The raised lower-third label baseline (px from the BOTTOM). #823's 72px sat below the safe band. */
 export const LOWER_THIRD_BOTTOM_PX = 120;
+
+/**
+ * #824 — the chat beat's INTERIOR-fill contract. `assertBeatFill` on `CHAT_CONTENT_BOX` only proves the
+ * panel CONTAINER spans the frame — it is BLIND to whether the conversation INSIDE the panel fills it
+ * (the operator's "too much empty space": a few short messages bunched at the top over a dead middle
+ * band, while the panel border was full-bleed). This contract models the rendered message rows the
+ * capture HTML (`buildChatHtml`) produces — their count, min heights, and the flex `justify` mode — so
+ * the gate can compute the worst-case empty band BETWEEN rows and reject a sparse layout. Keep these in
+ * lock-step with the CSS in buildChatHtml.
+ */
+export interface ChatFillContract {
+  /** Top of the message area (below the header) in 9:16 spine px. */
+  innerTopPx: number;
+  /** Bottom of the message area (above the composer) in 9:16 spine px. */
+  innerBottomPx: number;
+  /** Min rendered height of each message row, top→bottom (greet, you-bubble, agent, deliverables). */
+  rowHeightsPx: number[];
+  /** The flex distribution the HTML uses — decides how slack pools into gaps. */
+  justify: "start" | "between" | "evenly";
+}
+
+export const CHAT_FILL_CONTRACT: ChatFillContract = {
+  // box.top(120) + panel padding-top(52) + header block(~96) + #chat padding-top(40)
+  innerTopPx: 120 + 52 + 96 + 40,
+  // box.bottom(1800) − panel padding-bottom(52) − composer block(~150) − #chat padding-bottom(6)
+  innerBottomPx: CAP_H - 120 - 52 - 150 - 6,
+  // greet, you-bubble, agent line, deliverables checklist (3 rows ≈ 462px) — mirror buildChatHtml min-heights.
+  rowHeightsPx: [86, 210, 84, 462],
+  justify: "between",
+};
+
+/** Worst-case empty band (px) between rendered rows, given the flex distribution of the slack. */
+export function worstInteriorGapPx(c: ChatFillContract): number {
+  const inner = Math.max(0, c.innerBottomPx - c.innerTopPx);
+  const sum = c.rowHeightsPx.reduce((a, b) => a + b, 0);
+  const slack = Math.max(0, inner - sum);
+  const n = c.rowHeightsPx.length;
+  if (n <= 1) return slack;
+  // `between` splits slack into n-1 interior gaps; `evenly` into n+1; `start` pools ALL slack into one
+  // trailing band (the old top-anchored bug) — so flush-top is judged by its single worst band.
+  if (c.justify === "between") return slack / (n - 1);
+  if (c.justify === "evenly") return slack / (n + 1);
+  return slack;
+}
+
+/**
+ * Throws if the chat beat's conversation leaves an interior dead band wider than the allowed fraction
+ * of the frame — the cross-check `assertBeatFill(CHAT_CONTENT_BOX)` cannot see this (it validates the
+ * panel container, not the rows inside). Both-ends: the shipped distributed layout PASSES; a
+ * top-anchored or too-few-short-rows layout FAILS.
+ */
+export function assertChatBeatInteriorFill(
+  c: ChatFillContract = CHAT_FILL_CONTRACT,
+  maxEdgeBandFraction = MAX_EDGE_BAND_FRACTION,
+  height = CAP_H,
+): void {
+  const gap = worstInteriorGapPx(c);
+  const limit = maxEdgeBandFraction * height;
+  if (gap > limit + 1e-4) {
+    throw new Error(
+      `#824 chat-beat interior dead band: worst empty gap is ${gap.toFixed(0)}px ` +
+        `(> ${limit.toFixed(0)}px allowed) for justify=${c.justify} with ${c.rowHeightsPx.length} rows. ` +
+        `The conversation reads sparse over a void — distribute/grow the message rows to fill the panel.`,
+    );
+  }
+}
 
 /**
  * The shipped per-beat layout boxes the gate validates. Title cards are intentionally centered
@@ -244,6 +312,9 @@ export function assertFableBeatsSafeAndFilled(layouts: ReadonlyArray<FableBeatLa
     const label = `beat ${l.beat} (${l.kind})`;
     assert4SideSafeArea({ content: l.content, label });
     if (l.fill) assertBeatFill({ content: l.content, label });
+    // The chat beat needs the cross-check the container box is blind to: its conversation must FILL the
+    // panel interior (no dead middle band), not just its border be full-bleed.
+    if (l.kind === "chat") assertChatBeatInteriorFill();
   }
 }
 

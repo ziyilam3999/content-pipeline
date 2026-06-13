@@ -30,6 +30,9 @@ import {
   assertFableBeatsSafeAndFilled,
   FABLE_BEAT_LAYOUTS,
   CHAT_CONTENT_BOX,
+  CHAT_FILL_CONTRACT,
+  worstInteriorGapPx,
+  assertChatBeatInteriorFill,
 } from "../../video/fableLayout";
 
 describe("#824 fableLayout — the SHIPPED layout has NO caption/media overlap (the PASS end)", () => {
@@ -157,6 +160,30 @@ describe("#824 video-fill-safe — the gate CATCHES edge-crop + sparse beats (th
   it("assertFableBeatsSafeAndFilled surfaces the offending beat label for a regressed layout", () => {
     const regressed = [{ beat: 2, kind: "chat", content: { left: 100, top: 120, right: CAP_W - 100, bottom: 600 }, fill: true }];
     expect(() => assertFableBeatsSafeAndFilled(regressed)).toThrow(/beat 2 \(chat\)/);
+  });
+});
+
+describe("#824 chat-beat INTERIOR fill — catches the empty-middle the container box is blind to", () => {
+  it("the shipped distributed contract PASSES (no large interior dead band)", () => {
+    expect(() => assertChatBeatInteriorFill()).not.toThrow();
+    expect(() => assertChatBeatInteriorFill(CHAT_FILL_CONTRACT)).not.toThrow();
+    // worst interior gap must stay under the 20%-of-frame dead-band limit (384px @1920).
+    expect(worstInteriorGapPx(CHAT_FILL_CONTRACT)).toBeLessThan(0.2 * 1920);
+  });
+
+  it("the OLD top-anchored layout FAILS (4 short rows flush to the top → one huge trailing band)", () => {
+    const topAnchored = { ...CHAT_FILL_CONTRACT, rowHeightsPx: [80, 150, 60, 70], justify: "start" as const };
+    expect(worstInteriorGapPx(topAnchored)).toBeGreaterThan(0.2 * 1920);
+    expect(() => assertChatBeatInteriorFill(topAnchored)).toThrow(/interior dead band/i);
+  });
+
+  it("too-few short rows even when distributed FAIL (gaps still exceed the limit)", () => {
+    const sparse = { ...CHAT_FILL_CONTRACT, rowHeightsPx: [80, 120], justify: "between" as const };
+    expect(() => assertChatBeatInteriorFill(sparse)).toThrow(/sparse/i);
+  });
+
+  it("the chat beat is wired into the whole-video invariant (default PASS includes the interior check)", () => {
+    expect(() => assertFableBeatsSafeAndFilled()).not.toThrow();
   });
 });
 

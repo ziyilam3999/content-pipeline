@@ -282,21 +282,31 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;background:#1c1917;overflow:hidden;
 #hdr .mark{width:48px;height:48px;border-radius:13px;background:#d97757}
 #hdr .name{color:#e7e2db;font:700 46px/1 inherit}
 #hdr .sub{color:#8a817a;font:500 31px/1 inherit;margin-left:auto}
-/* the message scroll area — messages stack from the top with a real chat rhythm. */
-#chat{flex:1;display:flex;flex-direction:column;gap:46px;padding-top:46px;overflow:hidden}
-.greet{align-self:flex-start;max-width:86%;color:#9c938b;font:500 42px/1.4 inherit;display:flex;align-items:center;gap:18px}
+/* The conversation FILLS the panel: it space-distributes its rows (greet near the header, the
+   deliverables block near the composer) so the frame reads as a busy working session — never a few
+   short messages floating on a dead middle band (#824 "too much empty space"). The row count + min
+   heights here mirror video/fableLayout.ts CHAT_FILL_CONTRACT, which the gate uses to reject a sparse
+   layout (worst inter-row gap must stay under the dead-band limit). */
+#chat{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:40px 0 6px;overflow:hidden}
+.greet{align-self:flex-start;max-width:86%;color:#9c938b;font:500 46px/1.4 inherit;display:flex;align-items:center;gap:18px;min-height:86px}
 .greet .d{width:16px;height:16px;border-radius:50%;background:#7c7068}
-.you{align-self:flex-end;max-width:92%;background:#d97757;color:#fff;border-radius:42px 42px 12px 42px;
-  padding:48px 54px;font:600 58px/1.34 inherit;box-shadow:0 24px 64px rgba(217,119,87,.34)}
-#caret{display:inline-block;width:6px;height:60px;background:#fff;vertical-align:-10px;margin-left:4px;animation:b 1s steps(1) infinite}
+.you{align-self:flex-end;max-width:90%;background:#d97757;color:#fff;border-radius:42px 42px 12px 42px;
+  padding:54px 60px;font:600 62px/1.36 inherit;box-shadow:0 24px 64px rgba(217,119,87,.34);min-height:210px;
+  display:flex;align-items:center}
+#caret{display:inline-block;width:6px;height:64px;background:#fff;vertical-align:-12px;margin-left:4px;animation:b 1s steps(1) infinite}
 @keyframes b{50%{opacity:0}}
-.agent{align-self:flex-start;max-width:92%;color:#cbc3ba;font:600 48px/1.4 inherit;display:flex;align-items:center;gap:18px;opacity:0;transition:opacity .5s}
+.agent{align-self:flex-start;max-width:92%;color:#cbc3ba;font:600 50px/1.4 inherit;display:flex;align-items:center;gap:18px;min-height:84px;opacity:0;transition:opacity .5s}
 .agent .d{width:18px;height:18px;border-radius:50%;background:#7c7068;animation:p 1.2s ease-in-out infinite}
 @keyframes p{0%,100%{opacity:.3}50%{opacity:1}}
-/* honest deliverables row — exactly what was requested (copy/card/video), surfaced as the agent picks it up. */
-#chips{display:flex;gap:26px;opacity:0;transition:opacity .5s}
-#chips .chip{background:rgba(217,119,87,.15);color:#eab69f;border:2px solid rgba(217,119,87,.42);
-  border-radius:20px;font:600 40px/1 inherit;padding:26px 40px;letter-spacing:.2px}
+/* honest deliverables — exactly what was requested (copy/card/video), produced by the agent. A
+   substantial vertical checklist that carries real content through the LOWER panel (was the dead band). */
+#deliv{align-self:stretch;display:flex;flex-direction:column;gap:30px;opacity:0;transition:opacity .6s}
+#deliv .row{display:flex;align-items:center;gap:28px;background:rgba(217,119,87,.12);
+  border:2px solid rgba(217,119,87,.34);border-radius:28px;padding:38px 46px}
+#deliv .tick{width:56px;height:56px;border-radius:50%;background:#5eead4;color:#0b1020;
+  font:800 34px/1 inherit;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+#deliv .lbl{color:#eab69f;font:600 46px/1 inherit}
+#deliv .sub{color:#8a817a;font:500 32px/1 inherit;margin-left:auto}
 /* the composer bar pinned at the panel BOTTOM — the natural full-app anchor (was a floating pill). */
 #composer{margin-top:30px;display:flex;align-items:center;gap:20px;background:rgba(12,10,9,.55);
   border:2px solid rgba(94,234,212,.30);border-radius:30px;padding:30px 38px}
@@ -310,14 +320,18 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;background:#1c1917;overflow:hidden;
     <div class="greet"><span class="d"></span>What should I build?</div>
     <div class="you" id="bubble"><span id="txt"></span><span id="caret"></span></div>
     <div class="agent" id="agent"><span class="d"></span>On it — driving content-pipeline…</div>
-    <div id="chips"><span class="chip">copy</span><span class="chip">card</span><span class="chip">video</span></div>
+    <div id="deliv">
+      <div class="row"><span class="tick">✓</span><span class="lbl">copy</span><span class="sub">factual, on-brand</span></div>
+      <div class="row"><span class="tick">✓</span><span class="lbl">card</span><span class="sub">result image</span></div>
+      <div class="row"><span class="tick">✓</span><span class="lbl">video</span><span class="sub">narrated demo</span></div>
+    </div>
   </div>
   <div id="composer"><span class="txt">${label}</span><span class="send">↑</span></div>
 </div>
 <script>
 window.__chatType=(c)=>{document.getElementById('txt').textContent+=String(c);};
 window.__chatSend=()=>{const cr=document.getElementById('caret');if(cr)cr.style.display='none';
-  document.getElementById('agent').style.opacity='1';document.getElementById('chips').style.opacity='1';};
+  document.getElementById('agent').style.opacity='1';document.getElementById('deliv').style.opacity='1';};
 </script></body></html>`;
 }
 
