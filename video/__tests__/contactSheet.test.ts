@@ -2,14 +2,32 @@
  * #867 Leg 1 — contact-sheet generator: sha keying, manifest shape, hash-bound output dir, and the
  * fail-LOUD behaviour when ffmpeg fails / is absent (never a silent skip).
  *
- * Uses a STUB ffmpeg (a tiny shell script that writes a non-empty PNG to the last arg) so the
- * generator's orchestration is unit-tested without a real render. The REAL system-ffmpeg `tile`
- * extraction is proven separately, prove-primary, in `smoke/eyeball-gate.ts`.
+ * Uses an in-process FAKE ffmpeg: we spy on `child_process.spawnSync` (the single call production
+ * makes) and emulate ffmpeg from the args — the success fake writes a non-empty PNG to the last arg
+ * (the output path), the fail fake returns a non-zero status, and a missing binary returns an ENOENT
+ * error. This is CROSS-PLATFORM by construction (no shell script / no executable bit / no `.cmd`
+ * shim): production runs ffmpeg via a NO-SHELL `spawnSync`, and on Windows (Node >=20, post
+ * CVE-2024-27980) such a spawn can ONLY launch a real `.exe` — a `.sh` errors UNKNOWN and a
+ * `.cmd`/`.bat` errors EINVAL — so a real-subprocess stub is not portable. The generator's
+ * orchestration (hashing, hash-keyed dir, per-beat frame loop, tiling, manifest + sidecar, and the
+ * fail-LOUD error paths) is exercised exactly as before. The REAL system-ffmpeg `tile`/extract path
+ * is proven separately, prove-primary, in `smoke/eyeball-gate.ts`.
  */
 
+import * as childProcess from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+
+// Replace child_process.spawnSync with a fresh jest.fn so we can serve an in-process fake ffmpeg.
+// (jest.spyOn can't be used here: Node's child_process.spawnSync is a NON-CONFIGURABLE property, so
+// spyOn's defineProperty throws "Cannot redefine property". A module-factory mock sidesteps that —
+// the returned object literal's spawnSync is a plain, writable jest.fn. All OTHER child_process
+// exports are passed through via requireActual, so resolveSystemFfmpeg's real `sh` probe still works.)
+jest.mock("child_process", () => {
+  const actual = jest.requireActual<typeof import("child_process")>("child_process");
+  return { ...actual, spawnSync: jest.fn() };
+});
 
 import {
   generateContactSheet,
@@ -24,23 +42,67 @@ import {
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-/** Write a stub ffmpeg that writes PNG bytes to whatever its LAST arg is (the output path). */
+/** Marker the FAIL fake-ffmpeg file carries so the spawnSync spy returns a non-zero exit for it. */
+const STUB_FAIL_MARKER = "STUB_FFMPEG_FAIL";
+
+/**
+ * Write a SUCCESS fake-ffmpeg marker file and return its path. The file is NEVER executed as a
+ * subprocess — the spawnSync spy (installed below) interprets it in-process and, for the success
+ * marker, writes a non-empty PNG to spawnSync's last arg (the output path). A plain marker file is
+ * cross-platform (no shebang / no chmod / no `.cmd` — none of which a no-shell spawnSync can run on
+ * Windows).
+ */
 function writeStubFfmpeg(dir: string): string {
-  const bin = path.join(dir, "stub-ffmpeg.sh");
-  fs.writeFileSync(
-    bin,
-    [
-      "#!/bin/sh",
-      "# stub ffmpeg: last arg is the output path; write a non-empty PNG there.",
-      'out=""',
-      'for a in "$@"; do out="$a"; done',
-      'printf "\\211PNG\\r\\n\\032\\n stub" > "$out"',
-      "exit 0",
-    ].join("\n") + "\n",
-  );
-  fs.chmodSync(bin, 0o755);
+  const bin = path.join(dir, "stub-ffmpeg");
+  fs.writeFileSync(bin, "STUB_FFMPEG_OK\n");
   return bin;
 }
+
+/**
+ * The in-process fake ffmpeg the spawnSync spy runs. `bin` is the ffmpegBin path production was
+ * pointed at; `args` are the exact ffmpeg args (last element is always the output path). Behaviour
+ * keys off the marker file at `bin` so it mirrors a real binary's spawnSync result shape:
+ *   - bin file ABSENT   → return an ENOENT error object (the "ffmpeg binary absent" case → production
+ *     throws "failed to run system ffmpeg").
+ *   - file marked FAIL  → return a non-zero status, write nothing (the "exits non-zero" case →
+ *     production throws "system ffmpeg exited").
+ *   - otherwise success → write a non-empty PNG to the LAST arg (the output path), status 0.
+ */
+function fakeFfmpeg(bin: string, args: string[]): any {
+  if (!fs.existsSync(bin)) {
+    const error: any = new Error(`spawnSync ${bin} ENOENT`);
+    error.code = "ENOENT";
+    error.errno = -2;
+    error.syscall = `spawnSync ${bin}`;
+    error.path = bin;
+    return { pid: 0, output: [null, "", ""], stdout: "", stderr: "", status: null, signal: null, error };
+  }
+  if (fs.readFileSync(bin, "utf8").includes(STUB_FAIL_MARKER)) {
+    const stderr = "fake ffmpeg: forced non-zero exit (wrote no PNG)";
+    return { pid: 1, output: [null, "", stderr], stdout: "", stderr, status: 1, signal: null, error: undefined };
+  }
+  const outPath = args[args.length - 1];
+  fs.writeFileSync(outPath, Buffer.concat([PNG_MAGIC, Buffer.from(" fake")]));
+  return { pid: 1, output: [null, "", ""], stdout: "", stderr: "", status: 0, signal: null, error: undefined };
+}
+
+/**
+ * Wire the mocked spawnSync for every test in this file. ffmpeg invocations are served by the
+ * in-process fake; the `sh -c "command -v ffmpeg"` PATH probe used by resolveSystemFfmpeg() is
+ * delegated to the REAL spawnSync so the host-consistency test (resolveSystemFfmpeg ⇔
+ * hasSystemFfmpeg) stays honest.
+ */
+const realSpawnSync = jest.requireActual<typeof import("child_process")>("child_process").spawnSync;
+beforeEach(() => {
+  (childProcess.spawnSync as jest.Mock).mockImplementation((cmd: any, args?: any, options?: any) =>
+    cmd === "sh"
+      ? (realSpawnSync as any)(cmd, args, options)
+      : fakeFfmpeg(String(cmd), Array.isArray(args) ? args.map(String) : []),
+  );
+});
+afterEach(() => {
+  (childProcess.spawnSync as jest.Mock).mockReset();
+});
 
 const BEATS: ContactSheetBeat[] = [
   { label: "hook", fromSec: 0, durationSec: 10 },
@@ -149,11 +211,11 @@ describe("#867 contactSheet fail-LOUD (no silent skip)", () => {
   });
 
   test("ffmpeg exits non-zero → THROWS (no/empty PNG is a hard error)", () => {
-    // A real executable that exits 1 and writes nothing → runSystemFfmpeg throws on the non-zero status
-    // (distinct from the ENOENT case above). We can't rely on /bin/false existing on every host.
-    const failBin = path.join(root, "fail.sh");
-    fs.writeFileSync(failBin, "#!/bin/sh\nexit 1\n");
-    fs.chmodSync(failBin, 0o755);
+    // The fake ffmpeg returns a non-zero status and writes nothing → runSystemFfmpeg throws on the
+    // non-zero status (distinct from the ENOENT case above). The FAIL marker file is what the
+    // spawnSync spy keys off; this is cross-platform (no /bin/false, no executable bit).
+    const failBin = path.join(root, "fail-ffmpeg");
+    fs.writeFileSync(failBin, `${STUB_FAIL_MARKER}\n`);
     expect(() =>
       generateContactSheet(videoPath, BEATS, { reviewRoot: path.join(root, "review"), ffmpegBin: failBin }),
     ).toThrow(/system ffmpeg exited/);
