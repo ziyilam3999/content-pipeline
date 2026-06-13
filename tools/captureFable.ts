@@ -7,14 +7,16 @@
  * Two Playwright-recorded surfaces (context `recordVideo`, the stable public API — finalized on
  * `context.close()`), both captured natively at 1080×1920 (9:16) so NO ffmpeg crop is needed:
  *   • TERMINAL page  — a clean modern xterm-style page wired to the REAL streaming stdout of an
- *     actually-executing content-pipeline run (beats 1, 2, 5, 6). Beat 2 LIVE-runs the free producers
- *     (`smoke:image` → a real card PNG; `smoke:demo` → a real animated MP4) — the captured pixels are
- *     the genuine streaming logs, scrubbed of any `/Users/<name>` / `/var/folders` leak.
+ *     actually-executing content-pipeline run (terminal beats 1, 2, 5 — a BRIEF glimpse, ~28% of the
+ *     cut; the hero beats 3/4 dominate). Beat 2 LIVE-runs the free producers (`smoke:image` → a real
+ *     9:16 card PNG; `smoke:demo` → a real animated MP4) — the captured pixels are the genuine
+ *     streaming logs, scrubbed of any `/Users/<name>` / `/var/folders` leak AND curated to a
+ *     public-safe line set (no internal task refs / dev-process language).
  *   • ARTIFACT-VIEWER page — shows the REAL produced card PNG full-frame (beat 3, Ken-Burns settle)
  *     and PLAYS the REAL produced MP4 full-frame (beat 4). Headless Chromium plays the H.264 directly.
  *
  * Output (out/ is gitignored — never committed):
- *   • out/capture/beat-01..06.mp4   — the 6 real beat clips (1080×1920)
+ *   • out/capture/beat-01..05.mp4   — the 5 real beat clips (1080×1920)
  *   • out/capture/manifest.json     — per beat: clip + probe; beats 3/4 record the ABSOLUTE source +
  *                                     sha256 of the real card / real MP4 (LEG 3's provenance gate).
  *   • out/review/fable/fable-rough-silent-9x16.mp4 — a rough SILENT concat for the orchestrator EYEBALL.
@@ -59,15 +61,18 @@ export interface FableBeat {
   clipSec: number;
 }
 
+// LEG 1.5 re-balance (orchestrator eyeball): the TERMINAL is a brief GLIMPSE (~28% of runtime), the two
+// HERO beats (real card + real video) DOMINATE (~72%). Beats are trimmed to their TAIL clipSec, so a
+// long-running producer (beat 2) shows only its final settle — a flash of real output, then we cut to the
+// heroes. The old `ls -gh` bundle beat is dropped (text-heavy + an owner-leak vector we no longer need).
 export const FABLE_BEATS: ReadonlyArray<FableBeat> = [
-  { n: 1, kind: "terminal", stepLabel: "content-pipeline", commands: ["ls", "cat package.json | head -5"], clipSec: 6 },
+  { n: 1, kind: "terminal", stepLabel: "content-pipeline", commands: ["ls"], clipSec: 2 },
   // Beat 2 LIVE-runs the FREE producers — real streaming render logs, produces the real hero card + MP4.
-  { n: 2, kind: "terminal", stepLabel: "one command — it runs for real", commands: ["npm run smoke:image", "npm run smoke:demo"], clipSec: 10 },
-  { n: 3, kind: "viewer-card", stepLabel: "the real card it just made", commands: [], clipSec: 6 },
-  { n: 4, kind: "viewer-video", stepLabel: "the real video it just made", commands: [], clipSec: 8 },
-  // Beat 5 lists the bundle with `ls -gh` (BSD -g SUPPRESSES the owner column — no OS-username leak).
-  { n: 5, kind: "terminal", stepLabel: "one out/ bundle", commands: ["ls -gh out/review/lfah/demo/*.mp4", "ls -gh out/image/*.png"], clipSec: 5 },
-  { n: 6, kind: "terminal", stepLabel: "content-pipeline · open + MIT", commands: ['echo "content-pipeline — open-source, MIT — link below"'], clipSec: 4 },
+  // smoke:image renders the 9:16 cut so the captured hero card fills the phone frame (no 1:1 island).
+  { n: 2, kind: "terminal", stepLabel: "one command — it runs for real", commands: ["IMAGE_SMOKE_ASPECT=9:16 npm run smoke:image", "npm run smoke:demo"], clipSec: 4 },
+  { n: 3, kind: "viewer-card", stepLabel: "the real card it just made", commands: [], clipSec: 8 },
+  { n: 4, kind: "viewer-video", stepLabel: "the real video it just made", commands: [], clipSec: 14 },
+  { n: 5, kind: "terminal", stepLabel: "content-pipeline · open + MIT", commands: ['echo "content-pipeline — open-source, MIT — link below"'], clipSec: 3 },
 ];
 
 // ── Owner/username-leak detector (the OS login name must never reach a public capture frame) ──────
@@ -133,6 +138,32 @@ export function scrubStreamChunk(s: string): string {
   return out;
 }
 
+// ── Public-safe stdout curation (DEFECT 2 — no internal dev-process text on a PUBLIC video) ────────
+// The streamed stdout of the real producers carries dev-process lines that must NEVER reach a public
+// post: internal task refs (#748 / #744), "Phase D", "tell me what to change", "watch it", "smoke"
+// banners. We line-filter the captured output to a public-safe set: any line matching this denylist is
+// dropped, the clean command-result lines stream through. Mirrored in the captureFable jest gate.
+const PUBLIC_UNSAFE_LINE: ReadonlyArray<RegExp> = [
+  /#\d/, // internal task references (#748, #744, …)
+  /\bphase\b/i, // dev-process phase language ("Phase D / #744")
+  /tell me/i, // "tell me what to change"
+  /watch it/i, // "Watch it and …"
+  /\bsmoke\b/i, // smoke-test banners / SMOKE PASS / SMOKE-PATH
+];
+
+/** True if a single output LINE is safe to show on a public capture frame. */
+export function publicSafeLine(line: string): boolean {
+  return !PUBLIC_UNSAFE_LINE.some((re) => re.test(line));
+}
+
+/** Drop every dev-process line from a (newline-terminated) chunk, preserving the safe lines + breaks. */
+export function filterPublicLines(text: string): string {
+  return text
+    .split("\n")
+    .filter((l) => publicSafeLine(l))
+    .join("\n");
+}
+
 // ── Page HTML (clean modern terminal + artifact viewer) — pure, no /Users leak ────────────────────
 
 /** A clean modern terminal page (system-mono, calm dark slate, teal prompt, blinking cursor). */
@@ -163,14 +194,18 @@ window.__termWrite=(t)=>{const o=document.getElementById('out');o.appendChild(do
 </script></body></html>`;
 }
 
-/** Full-frame card viewer — fills 9:16 with a calm backdrop, the real card centred + a slow Ken-Burns settle. */
+/**
+ * Full-bleed card viewer — the real 9:16 card FILLS the frame edge-to-edge via object-fit:cover
+ * (matching the beat-4 video hero), so there is NO floating 1:1 island / empty dark band (#765,
+ * feedback_design_each_aspect_to_fill_its_frame). A slow Ken-Burns push keeps the frame covered.
+ */
 export function buildViewerCardHtml(cardDataUri: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;background:radial-gradient(circle at 50% 38%,#16213f 0%,#0b1020 70%)}
-#stage{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
-img{width:84%;border-radius:28px;box-shadow:0 40px 120px rgba(0,0,0,.6);animation:kb 7s ease-out forwards}
-@keyframes kb{from{transform:scale(1.0) translateY(18px)}to{transform:scale(1.08) translateY(-6px)}}
+html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;background:#0b1020}
+#stage{width:100%;height:100%;overflow:hidden}
+img{width:100%;height:100%;object-fit:cover;display:block;animation:kb 9s ease-out forwards}
+@keyframes kb{from{transform:scale(1.0)}to{transform:scale(1.06)}}
 </style></head><body><div id="stage"><img src="${cardDataUri}"></div></body></html>`;
 }
 
@@ -270,13 +305,26 @@ async function recordTerminalBeat(beat: FableBeat, recDir: string, chromium: any
     }
     await page.evaluate(() => (globalThis as any).window.__termWrite("\n"));
 
-    // run the REAL command via the shell, stream scrubbed output live
+    // run the REAL command via the shell, stream scrubbed + public-curated output live.
+    // Buffer to NEWLINE boundaries so the public-safe line filter (DEFECT 2) only ever judges whole
+    // lines (a dev-process line split across two chunks must not leak its first half).
     const child = spawn("/bin/sh", ["-c", cmd], { cwd: REPO_ROOT_REAL });
-    const feed = (buf: Buffer) =>
-      page.evaluate((s: string) => (globalThis as any).window.__termWrite(s), scrubStreamChunk(buf.toString())).catch(() => {});
+    let lineBuf = "";
+    const write = (s: string) => {
+      if (s) page.evaluate((t: string) => (globalThis as any).window.__termWrite(t), s).catch(() => {});
+    };
+    const feed = (buf: Buffer) => {
+      lineBuf += scrubStreamChunk(buf.toString());
+      const nl = lineBuf.lastIndexOf("\n");
+      if (nl < 0) return; // hold a partial line until its newline arrives
+      const complete = lineBuf.slice(0, nl + 1);
+      lineBuf = lineBuf.slice(nl + 1);
+      write(filterPublicLines(complete));
+    };
     child.stdout.on("data", feed);
     child.stderr.on("data", feed);
     const code: number = await new Promise((res) => child.on("close", (c) => res(c ?? 0)));
+    if (lineBuf) write(filterPublicLines(lineBuf + "\n")); // flush the trailing partial line
     if (code !== 0 && beat.n === 2) {
       throw new Error(`captureFable: beat 2 producer "${cmd}" exited ${code} — the real artefacts were not produced.`);
     }
@@ -378,7 +426,7 @@ async function runCapture(): Promise<void> {
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const port = (server.address() as any).port;
 
-  const CARD_PATH = path.join(REPO_ROOT_REAL, "out", "image", "card-1x1.png");
+  const CARD_PATH = path.join(REPO_ROOT_REAL, "out", "image", "card-9x16.png");
   const VIDEO_PATH = path.join(REPO_ROOT_REAL, "out", "review", "lfah", "demo", "demo-9x16.mp4");
 
   const beats: BeatRecord[] = [];
@@ -390,7 +438,7 @@ async function runCapture(): Promise<void> {
     if (beat.kind === "terminal") {
       webm = await recordTerminalBeat(beat, recRoot, chromium);
     } else if (beat.kind === "viewer-card") {
-      if (!fs.existsSync(CARD_PATH)) throw new Error(`captureFable: beat 3 hero card missing at ${relOf(path.dirname(CARD_PATH))}/card-1x1.png — beat 2 must run first.`);
+      if (!fs.existsSync(CARD_PATH)) throw new Error(`captureFable: beat 3 hero card missing at ${relOf(path.dirname(CARD_PATH))}/card-9x16.png — beat 2 must run first.`);
       webm = await recordViewerCardBeat(beat, CARD_PATH, recRoot, chromium);
     } else {
       if (!fs.existsSync(VIDEO_PATH)) throw new Error("captureFable: beat 4 hero MP4 missing — beat 2 (smoke:demo) must run first.");
@@ -433,7 +481,7 @@ async function runCapture(): Promise<void> {
   for (const b of beats) assertBrandClean(b.stepLabel);
 
   fs.rmSync(recRoot, { recursive: true, force: true });
-  console.log(`\nFABLE-CAPTURE: 6 beats captured. manifest=${relOf(manifestPath)} roughConcat=${relOf(concatOut)}`);
+  console.log(`\nFABLE-CAPTURE: ${beats.length} beats captured. manifest=${relOf(manifestPath)} roughConcat=${relOf(concatOut)}`);
 }
 
 // ── Entrypoint ───────────────────────────────────────────────────────────────────────────────────

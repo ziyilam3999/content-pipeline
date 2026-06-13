@@ -13,6 +13,8 @@ import {
   assertFableBeatsClean,
   ownerLeak,
   scrubStreamChunk,
+  publicSafeLine,
+  filterPublicLines,
   buildTerminalHtml,
   buildViewerCardHtml,
   buildViewerVideoHtml,
@@ -22,12 +24,20 @@ import {
 
 const clone = (): FableBeat[] => FABLE_BEATS.map((b) => ({ ...b, commands: [...b.commands] }));
 
-describe("#824 Fable — the 6-beat storyboard", () => {
-  it("has exactly 6 beats, numbered 1..6, with the two HERO viewer beats at 3 (card) and 4 (video)", () => {
-    expect(FABLE_BEATS).toHaveLength(6);
-    expect(FABLE_BEATS.map((b) => b.n)).toEqual([1, 2, 3, 4, 5, 6]);
+describe("#824 Fable — the storyboard (LEG 1.5 hero-dominant re-balance)", () => {
+  it("has 5 beats, numbered 1..5, with the two HERO viewer beats at 3 (card) and 4 (video)", () => {
+    expect(FABLE_BEATS).toHaveLength(5);
+    expect(FABLE_BEATS.map((b) => b.n)).toEqual([1, 2, 3, 4, 5]);
     expect(FABLE_BEATS[2].kind).toBe("viewer-card");
     expect(FABLE_BEATS[3].kind).toBe("viewer-video");
+  });
+
+  it("the HERO beats DOMINATE — terminal time is a minority (≲30% of the cut), heroes the bulk (DEFECT 1)", () => {
+    const total = FABLE_BEATS.reduce((s, b) => s + b.clipSec, 0);
+    const terminal = FABLE_BEATS.filter((b) => b.kind === "terminal").reduce((s, b) => s + b.clipSec, 0);
+    const heroes = FABLE_BEATS.filter((b) => b.kind !== "terminal").reduce((s, b) => s + b.clipSec, 0);
+    expect(terminal / total).toBeLessThanOrEqual(0.3);
+    expect(heroes).toBeGreaterThan(terminal);
   });
 
   it("the shipped beats pass the paid-free + brand-clean + owner-clean pre-flight", () => {
@@ -102,6 +112,39 @@ describe("#824 Fable — scrubStreamChunk keeps captured stdout username-clean (
   it("collapses the repo-root absolute prefix to a repo-relative path", () => {
     const scrubbed = scrubStreamChunk(`${process.cwd()}/out/review/fable/x.mp4`);
     expect(scrubbed.startsWith("./out/") || scrubbed.startsWith("out/")).toBe(true);
+  });
+});
+
+describe("#824 Fable — public-safe stdout curation scrubs dev-process text (DEFECT 2)", () => {
+  it("DROPS the exact internal lines the producers emit (task refs / Phase / tell me / watch / smoke)", () => {
+    for (const leak of [
+      "=== #748 demo-video smoke — honest 4-way lfah product demo (60s, silent/free) ===",
+      "Watch it and tell me what to change — Phase D / #744 will add the real voiceover.",
+      "SMOKE PASS: animated demo MP4 rendered.",
+      "SMOKE-PATH: renderer=playwright-chromium file=./out/image/card-9x16.png",
+    ]) {
+      expect(publicSafeLine(leak)).toBe(false);
+    }
+  });
+
+  it("KEEPS clean command-result lines a public viewer may see", () => {
+    for (const ok of [
+      "→ rendering the result card to a real PNG via headless Chromium…",
+      '  valid PNG, 1080x1920, 452.7 KB',
+      'DEMO-PATH: file="./out/review/lfah/demo/demo-9x16.mp4" bytes=5586668 dur=60s render=12.3s',
+    ]) {
+      expect(publicSafeLine(ok)).toBe(true);
+    }
+  });
+
+  it("filterPublicLines removes only the unsafe lines from a multi-line chunk", () => {
+    const chunk = "→ rendering the result card…\n=== #748 demo smoke ===\nDEMO-PATH: file=\"./out/x.mp4\"\nWatch it and tell me what to change\n";
+    const out = filterPublicLines(chunk);
+    expect(out).not.toMatch(/#\d/);
+    expect(out).not.toMatch(/tell me/i);
+    expect(out).not.toMatch(/\bsmoke\b/i);
+    expect(out).toContain("rendering the result card");
+    expect(out).toContain("DEMO-PATH");
   });
 });
 
