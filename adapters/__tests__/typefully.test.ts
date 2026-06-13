@@ -76,6 +76,57 @@ describe("TypefullyClient — auth", () => {
   });
 });
 
+describe("TypefullyClient — getDraft / deleteDraft reuse the Bearer auth (no raw-fetch / X-API-KEY footgun)", () => {
+  // Root cause this guards (#872): a one-off draft retire was hand-rolled as a raw fetch with a GUESSED
+  // `X-API-KEY` header → 401. The fix is to go THROUGH the client so the correct `Authorization: Bearer`
+  // (the auth SSOT) is reused. These tests prove BOTH ends: the client's calls carry Bearer, and NEVER
+  // the wrong `X-API-KEY` scheme.
+  it("getDraft GETs the draft URL with the Bearer header (never X-API-KEY)", async () => {
+    process.env.TF_TEST_KEY = KEY;
+    const calls: Call[] = [];
+    const fetchImpl: FetchLike = (async (url: string, init: RequestInit) => {
+      calls.push({ url, method: init.method, headers: headersToObject(init.headers), body: init.body });
+      return jsonResponse({ id: "9490878", status: "draft" });
+    }) as unknown as FetchLike;
+
+    const client = new TypefullyClient({ fetchImpl, keySource: { envVar: "TF_TEST_KEY" } });
+    const draft = await client.getDraft(312308, "9490878");
+
+    expect(draft).toMatchObject({ id: "9490878", status: "draft" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe(`${TYPEFULLY_API_BASE}/social-sets/312308/drafts/9490878`);
+    expect(calls[0].method).toBe("GET");
+    expect(calls[0].headers.Authorization).toBe(`Bearer ${KEY}`);
+    expect(calls[0].headers["X-API-KEY"]).toBeUndefined(); // the wrong scheme that caused the 401
+  });
+
+  it("deleteDraft DELETEs the draft URL with the Bearer header (never X-API-KEY)", async () => {
+    process.env.TF_TEST_KEY = KEY;
+    const calls: Call[] = [];
+    const fetchImpl: FetchLike = (async (url: string, init: RequestInit) => {
+      calls.push({ url, method: init.method, headers: headersToObject(init.headers), body: init.body });
+      return jsonResponse({}, true, 204);
+    }) as unknown as FetchLike;
+
+    const client = new TypefullyClient({ fetchImpl, keySource: { envVar: "TF_TEST_KEY" } });
+    await client.deleteDraft(312308, "9490878");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe(`${TYPEFULLY_API_BASE}/social-sets/312308/drafts/9490878`);
+    expect(calls[0].method).toBe("DELETE");
+    expect(calls[0].headers.Authorization).toBe(`Bearer ${KEY}`);
+    expect(calls[0].headers["X-API-KEY"]).toBeUndefined();
+  });
+
+  it("deleteDraft surfaces a non-ok response as a thrown error (caller must confirm it's a draft first)", async () => {
+    process.env.TF_TEST_KEY = KEY;
+    const fetchImpl: FetchLike = (async () =>
+      jsonResponse({ detail: "not found" }, false, 404)) as unknown as FetchLike;
+    const client = new TypefullyClient({ fetchImpl, keySource: { envVar: "TF_TEST_KEY" } });
+    await expect(client.deleteDraft(312308, "missing")).rejects.toThrow(/deleteDraft/);
+  });
+});
+
 describe("TypefullyClient — uploadMedia 3-step presigned flow", () => {
   it("POST init → PUT raw bytes (no auth header) → poll until ready, returns media_id", async () => {
     process.env.TF_TEST_KEY = KEY;

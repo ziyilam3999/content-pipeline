@@ -270,6 +270,31 @@ export class TypefullyClient {
     return (await res.json()) as CreateDraftResponse;
   }
 
+  /**
+   * GET /v2/social-sets/{id}/drafts/{draftId} — read a draft back (read-only, free). Returns the raw
+   * draft JSON (callers read `.status` etc.). Goes THROUGH the client so the correct auth header
+   * (`Authorization: Bearer`) is reused — never hand-roll a raw fetch with a guessed header (a raw
+   * `X-API-KEY` guess returns 401; the auth scheme lives ONLY in `authHeaders()`).
+   */
+  async getDraft(socialSetId: string | number, draftId: string | number): Promise<Record<string, unknown>> {
+    const url = `${TYPEFULLY_API_BASE}/social-sets/${socialSetId}/drafts/${draftId}`;
+    const res = await this.timedFetch(url, { method: "GET", headers: this.authHeaders() }, "getDraft");
+    await this.ensureOk(res, "getDraft", url);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /**
+   * DELETE /v2/social-sets/{id}/drafts/{draftId} — delete a draft (e.g. retire a stale draft after a
+   * corrected one is created). Reuses `authHeaders()` (Bearer) so callers never re-specify auth. The
+   * caller is responsible for confirming the draft is still an unpublished DRAFT (read it back via
+   * `getDraft` and check `status === "draft"`) BEFORE calling this — this method only issues the DELETE.
+   */
+  async deleteDraft(socialSetId: string | number, draftId: string | number): Promise<void> {
+    const url = `${TYPEFULLY_API_BASE}/social-sets/${socialSetId}/drafts/${draftId}`;
+    const res = await this.timedFetch(url, { method: "DELETE", headers: this.authHeaders() }, "deleteDraft");
+    await this.ensureOk(res, "deleteDraft", url);
+  }
+
   private sleep(ms: number): Promise<void> {
     return new Promise((r) => setTimeout(r, ms));
   }
