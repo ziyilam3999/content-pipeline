@@ -1,3 +1,9 @@
+## [0.23.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.22.2...v0.23.0) (2026-06-14)
+
+### Features
+
+* **#870:** bake the demonstration-category video recipe into a mechanically-enforced contract — new `video/demoCategoryRecipe.ts` (`DemoVideoSpec` + `assertDemoCategoryRecipe` composing recipe rules R1–R11) + a both-ends jest suite + `fableSpec` (the shipped #824 data as the proven regression instance), wired into the `captureFable`/`voiceFable` pre-flights so any future demo-category spec that violates the recipe (generative-video spine, no hook, terminal >30%, placeholder provenance/URL, dev-token/brand/owner leak, sparse/island layout) HARD-FAILS before capture/render/paid/publish. Lifts the storyboard SSOT into `video/fableStoryboard.ts` to resolve the import cycle cleanly ([#110](https://github.com/ziyilam3999/content-pipeline/pull/110))
+
 ## [0.22.2](https://github.com/ziyilam3999/content-pipeline/compare/v0.22.1...v0.22.2) (2026-06-13)
 
 ### Bug Fixes
