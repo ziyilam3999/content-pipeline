@@ -1,3 +1,9 @@
+## [0.22.2](https://github.com/ziyilam3999/content-pipeline/compare/v0.22.1...v0.22.2) (2026-06-13)
+
+### Bug Fixes
+
+* **#872:** add `getDraft`/`deleteDraft` to `TypefullyClient`, reusing the Bearer auth SSOT (`authHeaders()`) so a draft read-back / stale-draft retire goes through the typed client instead of a hand-rolled raw fetch with a guessed `X-API-KEY` header (which 401s); both-ends tests assert the calls carry `Authorization: Bearer` and never `X-API-KEY` ([#108](https://github.com/ziyilam3999/content-pipeline/pull/108))
+
 ## [0.22.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.22.0...v0.22.1) (2026-06-13)
 
 ### Bug Fixes
