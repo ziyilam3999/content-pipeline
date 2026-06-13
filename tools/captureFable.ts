@@ -50,7 +50,13 @@ import { spawnSync } from "child_process";
 import { assertCaptureCommandsFree, assertCaptureBrandClean } from "./captureDemo";
 import { assertBrandClean } from "../inputs/frames";
 import { resolveVendoredFfmpeg, probeRender, parseVideoDimensions } from "../video/renderProbe";
-import { outputDeviceSpineRect, assertNoCaptionMediaOverlap } from "../video/fableLayout";
+import {
+  outputDeviceSpineRect,
+  assertNoCaptionMediaOverlap,
+  assertFableBeatsSafeAndFilled,
+  CHAT_CONTENT_BOX,
+  LOWER_THIRD_BOTTOM_PX,
+} from "../video/fableLayout";
 
 // ── Capture geometry (native 9:16 — fill the frame, no letterbox) ──────────────────────────────────
 export const CAP_W = 1080;
@@ -209,7 +215,9 @@ function lowerThird(label: string, dark: boolean): string {
   const bg = dark ? "rgba(94,234,212,.12)" : "rgba(20,16,12,.9)";
   const fg = dark ? "#5eead4" : "#f7f1e6";
   const bd = dark ? "rgba(94,234,212,.35)" : "rgba(20,16,12,.0)";
-  return `<div style="position:absolute;left:50%;bottom:72px;transform:translateX(-50%);
+  // #824 video-fill-safe: raised from 72px → LOWER_THIRD_BOTTOM_PX so the pill's bottom edge clears the
+  // four-side title-safe band (72px = 3.75% sat below the ~5% safe margin and could crop full-screen).
+  return `<div style="position:absolute;left:50%;bottom:${LOWER_THIRD_BOTTOM_PX}px;transform:translateX(-50%);
     background:${bg};color:${fg};border:2px solid ${bd};border-radius:999px;
     font:600 30px/1.2 ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif;
     padding:20px 38px;white-space:nowrap;letter-spacing:.2px;backdrop-filter:blur(6px)">${label}</div>`;
@@ -249,35 +257,67 @@ window.__termWrite=(t)=>{const o=document.getElementById('out');o.appendChild(do
  * from BOTH the dark-navy tool AND the light output. The genuine request is TYPED in via `window.__chatType`,
  * finalized with `window.__chatSend` (which surfaces the agent picking the work up — honest: the agent's
  * ACTUAL work is the real terminal capture in beat 3).
+ *
+ * #824 video-fill-safe (operator feedback): the prior layout was TOP-ANCHORED — header + one bubble up
+ * top, the label pinned to the bottom, a big EMPTY MIDDLE → sparse on full screen. Redesigned to FILL:
+ * an absolutely-positioned #content box at the SHARED `CHAT_CONTENT_BOX` spine coords (the SSOT the
+ * `assertFableBeatsSafeAndFilled` gate validates) holds a flex column that DISTRIBUTES a richer
+ * exchange (agent prompt → the genuine typed request → agent picks it up) across the full safe area,
+ * with LARGER bubbles and the label as the bottom row of the column. No empty middle; 4-side title-safe.
  */
 export function buildChatHtml(label = "you → Claude Code · plain English"): string {
+  const c = CHAT_CONTENT_BOX;
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:${CAP_W}px;height:${CAP_H}px;background:#1c1917;overflow:hidden;position:relative;
   font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif}
-#hdr{display:flex;align-items:center;gap:18px;padding:90px 96px 0}
-#hdr .mark{width:34px;height:34px;border-radius:9px;background:#d97757}
-#hdr .name{color:#e7e2db;font:700 34px/1 inherit}
-#hdr .sub{color:#8a817a;font:500 26px/1 inherit;margin-left:auto}
-#chat{padding:80px 96px;display:flex;flex-direction:column;gap:40px}
-.you{align-self:flex-end;max-width:78%;background:#d97757;color:#fff;border-radius:34px 34px 8px 34px;
-  padding:34px 40px;font:500 40px/1.4 inherit;box-shadow:0 18px 50px rgba(217,119,87,.28)}
-#caret{display:inline-block;width:5px;height:42px;background:#fff;vertical-align:-7px;margin-left:3px;animation:b 1s steps(1) infinite}
+/* #content fills the 4-side title-safe band (CHAT_CONTENT_BOX SSOT) and space-distributes the exchange. */
+/* #content is the full-screen Claude Code chat APP PANEL — its surface FILLS the 4-side safe area
+   (CHAT_CONTENT_BOX SSOT), so the frame reads as a full app, never sparse messages on a void. */
+#content{position:absolute;left:${c.left}px;top:${c.top}px;width:${c.right - c.left}px;height:${c.bottom - c.top}px;
+  display:flex;flex-direction:column;padding:52px 56px;border-radius:52px;
+  background:linear-gradient(180deg,#231c18 0%,#1a1512 100%);border:2px solid rgba(231,226,219,.09);
+  box-shadow:0 40px 120px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.04)}
+#hdr{display:flex;align-items:center;gap:22px;padding-bottom:30px;border-bottom:2px solid rgba(231,226,219,.10)}
+#hdr .mark{width:48px;height:48px;border-radius:13px;background:#d97757}
+#hdr .name{color:#e7e2db;font:700 46px/1 inherit}
+#hdr .sub{color:#8a817a;font:500 31px/1 inherit;margin-left:auto}
+/* the message scroll area — messages stack from the top with a real chat rhythm. */
+#chat{flex:1;display:flex;flex-direction:column;gap:46px;padding-top:46px;overflow:hidden}
+.greet{align-self:flex-start;max-width:86%;color:#9c938b;font:500 42px/1.4 inherit;display:flex;align-items:center;gap:18px}
+.greet .d{width:16px;height:16px;border-radius:50%;background:#7c7068}
+.you{align-self:flex-end;max-width:92%;background:#d97757;color:#fff;border-radius:42px 42px 12px 42px;
+  padding:48px 54px;font:600 58px/1.34 inherit;box-shadow:0 24px 64px rgba(217,119,87,.34)}
+#caret{display:inline-block;width:6px;height:60px;background:#fff;vertical-align:-10px;margin-left:4px;animation:b 1s steps(1) infinite}
 @keyframes b{50%{opacity:0}}
-.agent{align-self:flex-start;max-width:78%;color:#b9b1a8;font:500 34px/1.4 inherit;display:flex;align-items:center;gap:16px;opacity:0;transition:opacity .5s}
-.agent .d{width:14px;height:14px;border-radius:50%;background:#7c7068;animation:p 1.2s ease-in-out infinite}
+.agent{align-self:flex-start;max-width:92%;color:#cbc3ba;font:600 48px/1.4 inherit;display:flex;align-items:center;gap:18px;opacity:0;transition:opacity .5s}
+.agent .d{width:18px;height:18px;border-radius:50%;background:#7c7068;animation:p 1.2s ease-in-out infinite}
 @keyframes p{0%,100%{opacity:.3}50%{opacity:1}}
+/* honest deliverables row — exactly what was requested (copy/card/video), surfaced as the agent picks it up. */
+#chips{display:flex;gap:26px;opacity:0;transition:opacity .5s}
+#chips .chip{background:rgba(217,119,87,.15);color:#eab69f;border:2px solid rgba(217,119,87,.42);
+  border-radius:20px;font:600 40px/1 inherit;padding:26px 40px;letter-spacing:.2px}
+/* the composer bar pinned at the panel BOTTOM — the natural full-app anchor (was a floating pill). */
+#composer{margin-top:30px;display:flex;align-items:center;gap:20px;background:rgba(12,10,9,.55);
+  border:2px solid rgba(94,234,212,.30);border-radius:30px;padding:30px 38px}
+#composer .txt{color:#5eead4;font:600 34px/1.2 inherit;letter-spacing:.2px}
+#composer .send{margin-left:auto;width:56px;height:56px;border-radius:50%;background:#5eead4;
+  display:flex;align-items:center;justify-content:center;color:#0b1020;font:800 32px/1 inherit}
 </style></head><body>
-<div id="hdr"><span class="mark"></span><span class="name">Claude Code</span><span class="sub">plain English</span></div>
-<div id="chat">
-  <div class="you" id="bubble"><span id="txt"></span><span id="caret"></span></div>
-  <div class="agent" id="agent"><span class="d"></span>On it — driving content-pipeline…</div>
+<div id="content">
+  <div id="hdr"><span class="mark"></span><span class="name">Claude Code</span><span class="sub">plain English</span></div>
+  <div id="chat">
+    <div class="greet"><span class="d"></span>What should I build?</div>
+    <div class="you" id="bubble"><span id="txt"></span><span id="caret"></span></div>
+    <div class="agent" id="agent"><span class="d"></span>On it — driving content-pipeline…</div>
+    <div id="chips"><span class="chip">copy</span><span class="chip">card</span><span class="chip">video</span></div>
+  </div>
+  <div id="composer"><span class="txt">${label}</span><span class="send">↑</span></div>
 </div>
-${lowerThird(label, true)}
 <script>
 window.__chatType=(c)=>{document.getElementById('txt').textContent+=String(c);};
 window.__chatSend=()=>{const cr=document.getElementById('caret');if(cr)cr.style.display='none';
-  document.getElementById('agent').style.opacity='1';};
+  document.getElementById('agent').style.opacity='1';document.getElementById('chips').style.opacity='1';};
 </script></body></html>`;
 }
 
@@ -581,6 +621,7 @@ function concatBeats(beatMp4s: string[], outMp4: string): void {
 async function runCapture(): Promise<void> {
   assertFableBeatsClean(FABLE_BEATS); // hard pre-flight (paid / brand / owner)
   assertNoCaptionMediaOverlap(); // #824 — embedded output media must clear the LEG-2 caption band
+  assertFableBeatsSafeAndFilled(); // #824 video-fill-safe — every beat 4-side title-safe + fill beats FILL
 
   const { chromium } = await import("playwright");
   const captureDir = path.join(REPO_ROOT_REAL, "out", "capture");
@@ -682,6 +723,7 @@ async function main(): Promise<void> {
   const dryRun = process.argv.includes("--dry-run");
   assertFableBeatsClean(FABLE_BEATS);
   assertNoCaptionMediaOverlap(); // #824 — cross-layer caption/media overlap gate (runs in --dry-run too)
+  assertFableBeatsSafeAndFilled(); // #824 video-fill-safe — 4-side title-safe + fill (runs in --dry-run too)
   if (dryRun) {
     const total = FABLE_BEATS.reduce((s, b) => s + b.clipSec, 0);
     console.log(`FABLE-CAPTURE: --dry-run (gates passed: paid-free + brand-clean + owner-clean). 8 beats, ~${total}s:`);

@@ -41,7 +41,7 @@ import {
 import { narrationSceneEndTimes } from "../video/demoTimeline";
 import { buildDemoCaptionCues } from "../video/demoCaptions";
 import { assertAudioMatchesSync, audioDurationSec } from "../video/audioDuration";
-import { FABLE_ASPECTS, CAP_BAND_H, assertNoCaptionMediaOverlap } from "../video/fableLayout";
+import { FABLE_ASPECTS, CAP_BAND_H, assertNoCaptionMediaOverlap, assertFableBeatsSafeAndFilled } from "../video/fableLayout";
 import {
   type VoiceCaller,
   type VoiceClip,
@@ -278,6 +278,8 @@ async function main(): Promise<void> {
   // #824 — CROSS-LAYER gate: the embedded output-beat media (sized in LEG-1 captureFable) must NOT
   // intersect this caption band (sized here) on ANY aspect. Fail BEFORE spending the render.
   assertNoCaptionMediaOverlap(FABLE_ASPECTS);
+  // #824 video-fill-safe: every beat is 4-side title-safe + the full-bleed beats FILL. Fail BEFORE render.
+  assertFableBeatsSafeAndFilled();
   const rendered: { aspect: string; file: string; width: number; height: number; durationSec: number; hasAudio: boolean; bytes: number }[] = [];
   for (const a of FABLE_ASPECTS) {
     // Inputs: 0 = spine, 1..N = caption PNGs, N+1 = audio.
