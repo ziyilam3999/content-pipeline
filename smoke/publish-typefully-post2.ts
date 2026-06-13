@@ -76,6 +76,7 @@ import {
 import { POST_ASSETS } from "../publish/publishAssets";
 import { ARCHIVE_POSTS, buildArchiveRecord, safeArchivePostAll } from "../publish/postArchive";
 import { CONFIG } from "../config";
+import { requireEyeballAck } from "../video/eyeballAck";
 
 // ── Sources ────────────────────────────────────────────────────────────
 
@@ -397,6 +398,10 @@ async function main() {
   }
 
   // LIVE — ORCHESTRATOR ONLY, after explicit operator authorization. Real upload + draft create.
+  // ── #867 EYEBALL GATE — BEFORE any live publish. The hero VIDEO's EXACT bytes must carry an
+  // eyeball-ack (a human LOOKED at the pixels). Fail-closed: no ack / stale ack → THROW before any
+  // network call. Only the LIVE path is gated; the free dry-run needs no ack.
+  requireEyeballAck(DEMO_HERO, { label: "lfah-post2 hero video (pre-publish)" });
   console.log("\n→ LIVE mode: verifying auth, uploading media, creating the draft…");
   const client = new TypefullyClient();
   await client.verifyAuth();

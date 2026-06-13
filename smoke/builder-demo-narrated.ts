@@ -28,6 +28,7 @@ import { buildBuilderTimeline } from "../video/builderDemoTimeline";
 import { BUILDER_NARRATION, builderNarrationScript } from "../video/builderDemoNarration";
 import { buildDemoCaptionCues, assertVoicedDemoHasCaptions } from "../video/demoCaptions";
 import { probeRender, assertVideoFrameCount } from "../video/renderProbe";
+import { requireEyeballAck } from "../video/eyeballAck";
 import {
   type VoiceCaller,
   type VoiceClip,
@@ -36,6 +37,10 @@ import {
 import { builderSpec } from "../inputs/builderSpec";
 
 const PAID = process.env.BUILDER_DEMO_PAID === "1";
+// #867 — the SILENT builder cut the operator eyeballs BEFORE the paid voiceover synth. Produced FREE
+// by `npm run smoke:builder-demo-narrated` (mock path → out/review/lfah/demo-builder/builder-demo-9x16.mp4).
+// The paid branch is BLOCKED until `npm run eyeball:ack -- <this file>` records a look at its EXACT bytes.
+const SILENT_CUT = path.join(process.cwd(), "out", "review", "lfah", "demo-builder", "builder-demo-9x16.mp4");
 const EPS = 1e-2; // 10ms tolerance on scene boundaries
 const TARGET_DUR = 90; // realistic ~90s builder narration
 
@@ -68,6 +73,13 @@ async function main() {
     `\n=== #799 builder-demo SCENE-SYNC smoke — ${BUILDER_NARRATION.length} segments, ` +
       `${script.length} chars, ${PAID ? "PAID (real synth)" : "FREE (mock alignment, NO paid call)"} ===\n`,
   );
+
+  // ── #867 EYEBALL GATE — BEFORE the paid ElevenLabs synth. On the PAID path the operator must have
+  // LOOKED at the rendered silent cut and recorded an eyeball-ack for its EXACT bytes; otherwise refuse
+  // the spend. Fail-closed: no ack / stale ack → THROW before any network call. FREE/mock path never gated.
+  if (PAID) {
+    requireEyeballAck(SILENT_CUT, { label: "builder demo silent cut (pre-paid-VO)" });
+  }
 
   // ── synth: PAID only when explicitly gated; otherwise an INJECTED mock ──────
   const audioFile = "builder-narration.mp3";

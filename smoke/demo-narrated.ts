@@ -29,6 +29,7 @@ import { buildDemoTimeline, narrationSceneEndTimes, clampDemoDurationSec } from 
 import { DEMO_NARRATION, narrationScript } from "../video/demoNarration";
 import { buildDemoCaptionCues, assertVoicedDemoHasCaptions } from "../video/demoCaptions";
 import { probeRender, assertVideoFrameCount } from "../video/renderProbe";
+import { requireEyeballAck } from "../video/eyeballAck";
 import {
   type VoiceCaller,
   type VoiceClip,
@@ -37,6 +38,10 @@ import {
 import { lfahSpec } from "./lfahSpec";
 
 const PAID = process.env.DEMO_NARRATED_PAID === "1";
+// #867 — the SILENT cut the operator eyeballs BEFORE the paid voiceover synth. Produced FREE by
+// `npm run smoke:demo` (out/review/lfah/demo/demo-9x16.mp4). The paid branch below is BLOCKED until
+// `npm run eyeball:ack -- <this file>` records a look at its EXACT bytes (a re-render forces a re-look).
+const SILENT_CUT = path.join(process.cwd(), "out", "review", "lfah", "demo", "demo-9x16.mp4");
 const EPS = 1e-2; // 10ms tolerance on scene boundaries
 const TARGET_DUR = 65; // realistic ~65s narration
 
@@ -79,6 +84,14 @@ async function main() {
     `\n=== #763 demo-narrated SCENE-SYNC smoke — ${DEMO_NARRATION.length} segments, ` +
       `${script.length} chars, ${PAID ? "PAID (real synth)" : "FREE (mock alignment, NO paid call)"} ===\n`,
   );
+
+  // ── #867 EYEBALL GATE — BEFORE the paid ElevenLabs synth. On the PAID path the operator must have
+  // LOOKED at the rendered pixels (the silent cut) and recorded an eyeball-ack for its EXACT bytes;
+  // otherwise we refuse to spend on the voiceover. Fail-closed: no ack / stale ack (after a re-render)
+  // → THROW before any network call. The FREE/mock path is never gated (it makes no paid call).
+  if (PAID) {
+    requireEyeballAck(SILENT_CUT, { label: "demo silent cut (pre-paid-VO)" });
+  }
 
   // ── synth: PAID only when explicitly gated; otherwise an INJECTED mock ──────
   const audioFile = "demo-narration.wav";

@@ -66,6 +66,7 @@ import {
   type PublishAsset,
 } from "../publish/publishProvenance";
 import { POST_ASSETS } from "../publish/publishAssets";
+import { requireEyeballAck } from "../video/eyeballAck";
 import { ARCHIVE_POSTS, buildArchiveRecord, safeArchivePostAll } from "../publish/postArchive";
 import { CONFIG } from "../config";
 
@@ -377,6 +378,12 @@ async function main() {
   }
 
   // LIVE — parent session only. Real upload + draft create.
+  // ── #867 EYEBALL GATE — BEFORE any live publish. The hero VIDEO's EXACT bytes must carry an
+  // eyeball-ack (a human LOOKED at the rendered pixels). Fail-closed: no ack / stale ack (after a
+  // re-render) → THROW before any network call. This complements the #810 provenance gate (which
+  // proves the bytes == the APPROVED render); the eyeball-ack proves a human actually LOOKED. Only the
+  // LIVE path is gated — the free dry-run asserts assembly fidelity without needing an ack.
+  requireEyeballAck(DEMO_HERO, { label: "lfah-post1 hero video (pre-publish)" });
   console.log("\n→ LIVE mode: verifying auth, uploading media, creating the draft…");
   const client = new TypefullyClient();
   await client.verifyAuth();
