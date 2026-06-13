@@ -12,7 +12,10 @@
 import {
   FABLE_ASPECTS,
   CAP_BAND_H,
+  CAP_W,
+  CAP_H,
   OUTPUT_DEVICE,
+  FILL_SAFE_MARGIN,
   type FableAspect,
   type Rect,
   rectsIntersect,
@@ -21,6 +24,17 @@ import {
   captionBandRectInAspect,
   captionMediaOverlaps,
   assertNoCaptionMediaOverlap,
+  safeAreaBox,
+  assert4SideSafeArea,
+  assertBeatFill,
+  assertFableBeatsSafeAndFilled,
+  FABLE_BEAT_LAYOUTS,
+  CHAT_CONTENT_BOX,
+  CHAT_FILL_CONTRACT,
+  worstInteriorGapPx,
+  assertChatBeatInteriorFill,
+  assertChatContentClearsCaptionBand,
+  heroCaptionBandTopSpinePx,
 } from "../../video/fableLayout";
 
 describe("#824 fableLayout — the SHIPPED layout has NO caption/media overlap (the PASS end)", () => {
@@ -78,6 +92,117 @@ describe("#824 fableLayout — the gate CATCHES an overlapping media bbox (the F
   it("the assertion error names the offending aspect(s) so a future regression is debuggable", () => {
     const bad: FableAspect = { key: "1:1-bad", width: 1080, height: 1080, cropY: 420, captionY: 300, crop: "" };
     expect(() => assertNoCaptionMediaOverlap([bad])).toThrow(/1:1-bad/);
+  });
+});
+
+describe("#824 video-fill-safe — FOUR-side title-safe + FILL (the PASS end)", () => {
+  it("every SHIPPED beat layout passes the 4-side-safe + fill gate", () => {
+    expect(() => assertFableBeatsSafeAndFilled()).not.toThrow();
+    expect(() => assertFableBeatsSafeAndFilled(FABLE_BEAT_LAYOUTS)).not.toThrow();
+  });
+
+  it("the chat beat is a FILL beat and its content box fills the frame, 4-side-safe (no empty middle)", () => {
+    const chat = FABLE_BEAT_LAYOUTS.find((l) => l.kind === "chat")!;
+    expect(chat.fill).toBe(true);
+    expect(chat.content).toEqual(CHAT_CONTENT_BOX);
+    // 4-side safe: every edge inside the safe band.
+    const safe = safeAreaBox();
+    expect(chat.content.left).toBeGreaterThanOrEqual(safe.left - 0.5);
+    expect(chat.content.top).toBeGreaterThanOrEqual(safe.top - 0.5);
+    expect(chat.content.right).toBeLessThanOrEqual(safe.right + 0.5);
+    expect(chat.content.bottom).toBeLessThanOrEqual(safe.bottom + 0.5);
+    // genuinely fills: height span ≥ 80% of the frame (the prior top-anchored layout failed this).
+    const heightSpan = (chat.content.bottom - chat.content.top) / CAP_H;
+    expect(heightSpan).toBeGreaterThan(0.8);
+    expect(() => assertBeatFill({ content: chat.content, label: "chat" })).not.toThrow();
+  });
+
+  it("a perfectly-filled, 4-side-safe beat PASSES both assertions", () => {
+    const filled: Rect = { left: CAP_W * 0.08, top: CAP_H * 0.08, right: CAP_W * 0.92, bottom: CAP_H * 0.92 };
+    expect(() => assert4SideSafeArea({ content: filled, label: "filled" })).not.toThrow();
+    expect(() => assertBeatFill({ content: filled, label: "filled" })).not.toThrow();
+  });
+
+  it("safeAreaBox insets by FILL_SAFE_MARGIN on all four sides", () => {
+    const s = safeAreaBox();
+    expect(s.left).toBeCloseTo(CAP_W * FILL_SAFE_MARGIN, 4);
+    expect(s.top).toBeCloseTo(CAP_H * FILL_SAFE_MARGIN, 4);
+    expect(s.right).toBeCloseTo(CAP_W * (1 - FILL_SAFE_MARGIN), 4);
+    expect(s.bottom).toBeCloseTo(CAP_H * (1 - FILL_SAFE_MARGIN), 4);
+  });
+});
+
+describe("#824 video-fill-safe — the gate CATCHES edge-crop + sparse beats (the FAIL end)", () => {
+  it("content touching the TOP edge FAILS 4-side-safe (top/bottom now checked, not just left/right)", () => {
+    const touchTop: Rect = { left: 100, top: 10, right: CAP_W - 100, bottom: CAP_H - 200 };
+    expect(() => assert4SideSafeArea({ content: touchTop, label: "touch-top" })).toThrow(/four-side title-safe/i);
+  });
+
+  it("content touching the BOTTOM edge FAILS 4-side-safe", () => {
+    const touchBottom: Rect = { left: 100, top: 200, right: CAP_W - 100, bottom: CAP_H - 10 };
+    expect(() => assert4SideSafeArea({ content: touchBottom, label: "touch-bottom" })).toThrow(/bottom/i);
+  });
+
+  it("content touching the LEFT/RIGHT edge FAILS (parity with the prior horizontal-only check)", () => {
+    const touchLeft: Rect = { left: 10, top: 200, right: CAP_W - 100, bottom: CAP_H - 200 };
+    expect(() => assert4SideSafeArea({ content: touchLeft, label: "touch-left" })).toThrow(/left/i);
+  });
+
+  it("a TOP-ANCHORED sparse beat (the operator's bug) FAILS fill — large empty BOTTOM band", () => {
+    // content only in the top third → big dead band below, exactly the chat-beat regression.
+    const topAnchored: Rect = { left: 100, top: 120, right: CAP_W - 100, bottom: 640 };
+    expect(() => assertBeatFill({ content: topAnchored, label: "sparse-top-anchored" })).toThrow(/fill/i);
+  });
+
+  it("a small centered island FAILS fill on AREA (covers too little of the frame)", () => {
+    const island: Rect = { left: CAP_W * 0.3, top: CAP_H * 0.35, right: CAP_W * 0.7, bottom: CAP_H * 0.65 };
+    expect(() => assertBeatFill({ content: island, label: "island" })).toThrow(/fill/i);
+  });
+
+  it("assertFableBeatsSafeAndFilled surfaces the offending beat label for a regressed layout", () => {
+    const regressed = [{ beat: 2, kind: "chat", content: { left: 100, top: 120, right: CAP_W - 100, bottom: 600 }, fill: true }];
+    expect(() => assertFableBeatsSafeAndFilled(regressed)).toThrow(/beat 2 \(chat\)/);
+  });
+});
+
+describe("#824 chat-beat INTERIOR fill — catches the empty-middle the container box is blind to", () => {
+  it("the shipped distributed contract PASSES (no large interior dead band)", () => {
+    expect(() => assertChatBeatInteriorFill()).not.toThrow();
+    expect(() => assertChatBeatInteriorFill(CHAT_FILL_CONTRACT)).not.toThrow();
+    // worst interior gap must stay under the 20%-of-frame dead-band limit (384px @1920).
+    expect(worstInteriorGapPx(CHAT_FILL_CONTRACT)).toBeLessThan(0.2 * 1920);
+  });
+
+  it("the OLD top-anchored layout FAILS (4 short rows flush to the top → one huge trailing band)", () => {
+    const topAnchored = { ...CHAT_FILL_CONTRACT, rowHeightsPx: [80, 150, 60, 70], justify: "start" as const };
+    expect(worstInteriorGapPx(topAnchored)).toBeGreaterThan(0.2 * 1920);
+    expect(() => assertChatBeatInteriorFill(topAnchored)).toThrow(/interior dead band/i);
+  });
+
+  it("too-few short rows even when distributed FAIL (gaps still exceed the limit)", () => {
+    const sparse = { ...CHAT_FILL_CONTRACT, rowHeightsPx: [80, 120], justify: "between" as const };
+    expect(() => assertChatBeatInteriorFill(sparse)).toThrow(/sparse/i);
+  });
+
+  it("the chat beat is wired into the whole-video invariant (default PASS includes the interior check)", () => {
+    expect(() => assertFableBeatsSafeAndFilled()).not.toThrow();
+  });
+});
+
+describe("#824 chat-beat caption clearance — bottom rows must clear the lower-third caption band", () => {
+  it("the shipped contract clears the 9:16 caption band (the PASS end)", () => {
+    expect(() => assertChatContentClearsCaptionBand()).not.toThrow();
+    expect(CHAT_FILL_CONTRACT.innerBottomPx).toBeLessThanOrEqual(heroCaptionBandTopSpinePx() - 24);
+  });
+
+  it("a contract whose content extends INTO the caption band FAILS (the FAIL end — the original overlap)", () => {
+    // 1592 was the pre-fix chat-content bottom (no caption reserve) → lands under the 1430 band top.
+    const overlapping = { ...CHAT_FILL_CONTRACT, innerBottomPx: 1592 };
+    expect(() => assertChatContentClearsCaptionBand(overlapping)).toThrow(/caption (overlap|band)/i);
+  });
+
+  it("assertFableBeatsSafeAndFilled enforces caption clearance on the chat beat by default", () => {
+    expect(() => assertFableBeatsSafeAndFilled()).not.toThrow();
   });
 });
 

@@ -10,5 +10,5 @@
   "publishManifestRef": "content-pipeline/publish/manifests/content-pipeline-demo-post4.publish-manifest.json",
   "copyArchiveBasename": "post4-content-pipeline-demo-copy.json",
   "numbers": "no UI / agent-operated; 1 plain-English ask → copy + card + captioned video in 3 shapes; MIT, public.",
-  "note": "LIVE Typefully DRAFT created 2026-06-13 (#824) — draft_id=9490878, social_set=312308, video-hook + card-body (X 4-tweet thread: hero video + cards A/B/C; Threads: hero video + card A). NOT yet published — DRAFT ONLY; operator does the final manual Publish. publishedDate/liveUrls fill on a post-publish read-back."
+  "note": "LIVE Typefully DRAFT created 2026-06-13 (#824) — draft_id=9494173, social_set=312308, video-hook + card-body (X 4-tweet thread: hero video + cards A/B/C; Threads: hero video + card A). NOT yet published — DRAFT ONLY; operator does the final manual Publish. publishedDate/liveUrls fill on a post-publish read-back."
 }
