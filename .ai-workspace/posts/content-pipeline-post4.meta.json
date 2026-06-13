@@ -1,0 +1,12 @@
+{
+  "slug": "content-pipeline-post4",
+  "postNumber": 4,
+  "title": "content-pipeline (a tool with no buttons — you just ask, the agent builds)",
+  "subject": "An agent-operated content tool with no human UI: ask Claude Code in plain English and the AI agent drives it to produce copy + an image card + a captioned video in 3 shapes; built-in checker flags claims that don't match your facts.",
+  "category": "demonstration",
+  "producedDate": "2026-06-13",
+  "publishManifestRef": "content-pipeline/publish/manifests/content-pipeline-post4.publish-manifest.json",
+  "copyArchiveBasename": "post4-content-pipeline-demo-copy.json",
+  "numbers": "no metrics claimed (qualitative demo post); 1 plain-English ask → copy + image card + captioned video in 3 shapes; open-source, MIT licensed, free to use (LICENSE added #824), public on GitHub.",
+  "note": "DEMONSTRATION post (video-led; 85s voiced Fable demo is the hero). 'open-source / MIT / free to use' framing REINSTATED + now coherent with the video CTA beat: content-pipeline IS MIT-licensed (#824 — LICENSE file added, package.json license='MIT', README 'MIT licensed — open-source and free to use'), repo public on GitHub (gh visibility=PUBLIC). Video needs NO re-render — its MIT claim is now honest. Not yet published. PostSlug/POST_ASSETS publish-SSOT entry deferred to the publish leg (copy leg writes the archive artifacts only)."
+}

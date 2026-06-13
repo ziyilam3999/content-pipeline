@@ -15,7 +15,7 @@ import { type ContentSpec } from "../inputs/contentspec";
 import { type CopyResult } from "../pipeline/run";
 
 const spec: ContentSpec = {
-  product: { name: "lfah", summary: "a test-driven app builder", repoUrl: "https://github.com/example/lfah" },
+  product: { name: "lfah", summary: "a test-driven app builder", repoUrl: "https://github.com/ziyilam3999/local-first-agent-harness" },
   facts: [
     { label: "bugs evaluated", value: "74", source: "PHASE-B-VERDICT" },
     { label: "resolved rate", value: "83.8%", source: "PHASE-B-VERDICT" },
@@ -40,7 +40,9 @@ function pngDims(buf: Buffer): { width: number; height: number } {
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 async function main() {
-  const aspect = "1:1" as const;
+  // Aspect is env-selectable so the #824 Fable capture can render a full-bleed 9:16 hero card
+  // (design-each-aspect-to-fill-its-frame) while every other caller keeps the default 1:1 card.
+  const aspect = (process.env.IMAGE_SMOKE_ASPECT ?? "1:1") as keyof typeof CONFIG.aspects;
   const expect = CONFIG.aspects[aspect];
 
   console.log("→ rendering the result card to a real PNG via headless Chromium…");

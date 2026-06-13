@@ -181,4 +181,4 @@ which the shipped frame-ingest path then turns into the video.
 
 ## License
 
-Private / unlicensed. Not for public distribution.
+MIT licensed — open-source and free to use. See [`LICENSE`](./LICENSE).

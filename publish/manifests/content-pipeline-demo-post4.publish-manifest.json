@@ -1,0 +1,27 @@
+{
+  "postSlug": "content-pipeline-demo-post4",
+  "frozenAt": "2026-06-13T07:18:21.212Z",
+  "sourceDir": "out/review/fable",
+  "assets": {
+    "fable-voiced-9x16.mp4": {
+      "role": "hero-video",
+      "sha256": "03fc957d739fe8c0c6460265e0350781bf1526408cb9b6dc863731f13b7d0eb1",
+      "bytes": 5948538
+    },
+    "card-post4-A.png": {
+      "role": "card",
+      "sha256": "3eafec4432e0aa5db095af84782a262899be72eb2f3e2ed1b14be017954930d8",
+      "bytes": 811108
+    },
+    "card-post4-B.png": {
+      "role": "card",
+      "sha256": "aab7b2d95336ab317eabc1126d948247361702aeb2f4bdca0cd7247681d998a3",
+      "bytes": 799946
+    },
+    "card-post4-C.png": {
+      "role": "card",
+      "sha256": "fb8880bd916c8311d5242c1cc0b2e4468e98da7eceb65a552f03d9b07cc256a1",
+      "bytes": 805839
+    }
+  }
+}

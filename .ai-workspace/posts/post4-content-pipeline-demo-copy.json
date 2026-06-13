@@ -1,0 +1,37 @@
+{
+  "_what": "Post #4 copy — 'content-pipeline: a content tool with no buttons — you just ask, the AI agent builds'. DEMONSTRATION post (video-led, the 85s voiced Fable-style demo is the hero). Authored for #824. Every X tweet + the Threads post PROVEN within the #809/#827 per-platform length validator (publish/copyLimits.ts) — see _platform_lengths. Brand-clean (no employer brand). NOW COHERENT WITH THE VIDEO: content-pipeline is MIT-licensed (LICENSE added #824), so the copy reinstates the 'open-source / MIT / free to use' framing the video's CTA beat + VO already state. DRAFT for operator review before any live Typefully draft.",
+  "_honesty_guards": [
+    "MIT / 'open-source' claim is now TRUE and reinstated. content-pipeline IS MIT-licensed: a standard MIT LICENSE file was added at the repo root (#824), package.json license = 'MIT' (was 'UNLICENSED'), and the README §License now says 'MIT licensed — open-source and free to use'. The repo is public on GitHub (gh repo view → visibility=PUBLIC). So the copy + the video CTA beat ('open-source, MIT, free to use') agree — no claim is overstated.",
+    "NO metrics/numbers are claimed for content-pipeline itself (no cost, speed, or benchmark figures). The post is qualitative on purpose — the brief warned against asserting metrics that aren't real for the tool.",
+    "'no UI / no buttons / built to be run by an AI agent' is honest: content-pipeline is a code pipeline designed agent-first (README stages; pipeline/run.ts runPipeline conductor) with no graphical UI. The 'plain English' interface IS Claude Code (the agent that drives it), not a chat UI inside the tool — the copy frames it that way.",
+    "'a captioned video in 3 shapes' matches the README video stage ('render specs for three shapes — square, vertical, portrait — with a safe-band') and CONFIG.defaultAspects ([1:1, 9:16, 4:5]); the demo machinery (renderDemoVideo / smoke:demo) renders real captioned MP4s in those 3 aspects.",
+    "Brand-clean: no employer brand (shopee | sea limited | garena) anywhere in copy. Repo URL github.com/ziyilam3999/content-pipeline verified against `git remote -v`."
+  ],
+  "x_thread": [
+    "Most software has buttons. This one has none.\n\nYou don't learn content-pipeline — you just ask Claude Code, in plain English: \"build me a launch post.\" The AI agent drives the tool and hands back the finished assets.\n\nWatch 👇",
+    "One plain-English ask becomes the whole post: the written copy, an image card, and a captioned video in 3 shapes — square, vertical, and portrait.\n\nEverything is built from the same facts you gave it, so the pieces never contradict each other.",
+    "The part I like: a built-in checker reads every number and claim in the copy and flags anything that doesn't match the facts you provided.\n\nSo the agent moves fast, but it can't quietly make things up.",
+    "It's a content tool built to be run by an AI agent, not a person — so there's no UI to learn. You just describe what you want and the agent builds it.\n\nIt's open-source, MIT licensed, and free to use 👇\ngithub.com/ziyilam3999/content-pipeline"
+  ],
+  "threads_post": "Most software has buttons. content-pipeline has none.\n\nYou don't learn it — you ask Claude Code in plain English: \"build me a launch post.\" The AI agent drives it and hands back the pieces: copy, an image card, and a captioned video in 3 shapes.\n\nA built-in checker flags any number or claim that doesn't match your facts — fast, but it can't quietly make things up.\n\nOpen-source, MIT, free to use. No UI to learn — just describe what you want 👇\ngithub.com/ziyilam3999/content-pipeline",
+  "_platform_lengths": {
+    "validator": "publish/copyLimits.ts (#809/#827); X limit 280 effective 275 (URL=23, each \\n=+1); Threads limit 500 effective 495 (codepoints + \\n)",
+    "x_tweet_1_weighted": 229,
+    "x_tweet_2_weighted": 245,
+    "x_tweet_3_weighted": 203,
+    "x_tweet_4_weighted": 244,
+    "threads_post_chars": 492,
+    "result": "ALL PASS"
+  },
+  "number_verification": {
+    "no human UI / no buttons / agent-operated": "content-pipeline is a TypeScript pipeline (pipeline/run.ts `runPipeline`: spec→copy→image→voice→video→publish) run via npm smokes — no GUI exists; designed agent-first (README) ✓",
+    "you ask Claude Code in plain English and the AI agent drives it": "operator-approved angle; README 'You give it the facts... It produces the pieces'; the tool is driven by Claude Code in this dogfood setup ✓",
+    "produces the written copy": "README stages table: Copy stage `copy/` 'Writes the social post text' ✓",
+    "an image card": "README stages table: Image stage `image/` 'Lays out a shareable result-card' ✓",
+    "a captioned video in 3 shapes (square/vertical/portrait)": "README Video stage 'render specs for three shapes (square, vertical, portrait) with a safe-band'; CONFIG.defaultAspects [1:1,9:16,4:5]; renderDemoVideo renders real captioned MP4s ✓",
+    "built from the same facts → pieces stay consistent": "README 'Every piece is generated from the same set of facts, so they stay consistent' ✓",
+    "built-in checker flags numbers/claims that don't match": "README 'a built-in checker flags numbers or claims that don't match what you gave it'; copy/ verifier ✓",
+    "open-source, MIT licensed, and free to use": "MIT LICENSE file added at repo root (#824); package.json license='MIT'; README §License 'MIT licensed — open-source and free to use'; gh repo view ziyilam3999/content-pipeline → visibility=PUBLIC ✓ — matches the video CTA beat + VO",
+    "repo url github.com/ziyilam3999/content-pipeline": "git remote -v → origin https://github.com/ziyilam3999/content-pipeline.git ✓"
+  }
+}
