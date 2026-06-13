@@ -354,7 +354,8 @@ async function main(): Promise<void> {
   if (durationSec < 75 || durationSec > 100) {
     console.warn(`  WARNING: VO duration ${durationSec.toFixed(2)}s is outside the ~75–100s expected window — eyeball length.`);
   }
-  console.log(`\n#824 Fable VOICED: DONE — 3 aspects + mobile proxy + sync bundle under out/review/fable/.${PAID ? "" : " (mock; re-run with FABLE_VOICE_PAID=1 for the real Adam synth)"}\n`);
+  const voSource = PAID ? "real Adam synth (PAID)" : canReuse ? "reused real Adam VO (FREE — no paid call)" : "mock (re-run with FABLE_VOICE_PAID=1 for the real Adam synth)";
+  console.log(`\n#824 Fable VOICED: DONE — 3 aspects + mobile proxy + sync bundle under out/review/fable/. VO source: ${voSource}.\n`);
 }
 
 main().catch((err) => {
