@@ -15,7 +15,7 @@ so any post can later be re-purposed for another platform (e.g. LinkedIn) withou
 > This file is GENERATED from the `*.meta.json` records in this directory — do not hand-edit; edits are
 > overwritten on the next archive. Change the source in `publish/postArchive.ts` (ARCHIVE_POSTS) instead.
 
-Last updated: 2026-06-11
+Last updated: 2026-06-13
 
 ---
 
@@ -50,6 +50,16 @@ Last updated: 2026-06-11
 - **Publish manifest:** `content-pipeline/publish/manifests/forge-harness-post3.publish-manifest.json`
 - **Numbers:** 8 primitives / 1 LLM tool; 16 calls / 2 paid; $0.80 plan / ~$0.20 story; MIT, public.
 - **Note:** X thread is LIVE (operator published 2026-06-11) but its exact status URL was not captured (the Typefully draft was deleted post-publish); Threads read-back verified.
+
+## Post #4 — content-pipeline (a tool with no buttons — you just ask, the agent builds)  (DEMONSTRATION)
+- **Subject:** An agent-operated content tool with no human UI: ask Claude Code in plain English and the AI agent drives it to produce copy + an image card + a captioned video in 3 shapes; built-in checker flags claims that don't match your facts.
+- **Produced:** 2026-06-13
+- **Published:** _(pending publish)_
+- **Live URLs:** _(pending publish)_
+- **Copy:** `post4-content-pipeline-demo-copy.json` (this dir)
+- **Publish manifest:** `content-pipeline/publish/manifests/content-pipeline-post4.publish-manifest.json`
+- **Numbers:** no metrics claimed (qualitative demo post); 1 plain-English ask → copy + image card + captioned video in 3 shapes; code public on GitHub (NOT MIT — package.json UNLICENSED, README 'private/unlicensed').
+- **Note:** DEMONSTRATION post (video-led; 85s voiced Fable demo is the hero). 'MIT/open-source' claim DROPPED for honesty — content-pipeline is UNLICENSED (package.json) + README 'Not for public distribution'; copy says only 'code is public on GitHub' (gh visibility=PUBLIC). Not yet published. PostSlug/POST_ASSETS publish-SSOT entry deferred to the publish leg (copy leg writes the archive artifacts only).
 
 ---
 
