@@ -12,7 +12,7 @@ import { chromium } from "playwright";
 
 import { type ContentSpec } from "../inputs/contentspec";
 import { type CopyResult } from "../pipeline/run";
-import { buildCardHtml } from "../image/card";
+import { buildCardHtml, type ArtMaskOverlay } from "../image/card";
 import { CONFIG, type AspectRatio } from "../config";
 import { generateArt, type GenArtDeps, type GenArtOpts } from "./genart";
 
@@ -37,6 +37,12 @@ export interface RenderImageOpts {
    * scale=…" without changing the string return type used by the orchestrator slot.
    */
   onFit?: (scale: number) => void;
+  /**
+   * Art-text MASK overlays (#824 mask-art-text) — opaque chips painted over garbled baked-in art text,
+   * each optionally carrying a clean rendered label. Card-space px. Used by the post-4 cards to cover
+   * the misspelled labels nano-banana baked into the art ("imae card" → clean "image card", etc).
+   */
+  overlays?: ArtMaskOverlay[];
 }
 
 /** Decode a `data:<mime>;base64,<bytes>` URI to a Buffer. */
@@ -81,6 +87,7 @@ export async function renderImage(
   const html = buildCardHtml(args.spec, dims, {
     maxFacts: opts?.maxFacts ?? 4,
     backgroundDataUri,
+    overlays: opts?.overlays,
   });
 
   const browser = await chromium.launch();

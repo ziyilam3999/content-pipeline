@@ -1,5 +1,66 @@
 import { ContentSpec, Fact } from "../inputs/contentspec";
 
+/**
+ * An art-text MASK overlay (#824 mask-art-text). A nano-banana art base can bake GARBLED / MISSPELLED
+ * micro-text into the image (e.g. the post-4 art baked "ASK", "copy", "imae card", "captioned video"
+ * into the lower-right). Garbled text can never ship on a public post, so the card renderer paints an
+ * OPAQUE chip — positioned in CARD-SPACE px — fully over each garbled spot, optionally carrying a CLEAN
+ * rendered label. The chips sit ABOVE the art background but BELOW the translucent content tiles
+ * (z-index:-1), so even where a tile overlaps a masked spot the garble cannot bleed through the tile.
+ */
+export interface ArtMaskOverlay {
+  /** Chip left edge, px from the card's top-left corner (card-space). */
+  left: number;
+  /** Chip top edge, px from the card's top-left corner (card-space). */
+  top: number;
+  /** Chip width in px — make it comfortably WIDER than the garble it covers. */
+  width: number;
+  /** Chip height in px — make it comfortably TALLER than the garble it covers. */
+  height: number;
+  /** A clean label rendered centered in the chip (the CORRECT word for that art panel). */
+  label?: string;
+  /** Font size px (default 26). */
+  fontSize?: number;
+  /** "chip" = opaque label tile (default); "scrim" = opaque darkening cover only, no text. */
+  variant?: "chip" | "scrim";
+}
+
+/**
+ * Render the art-text mask layer (#824). Empty/absent → "" (byte-identical to the pre-mask card, so
+ * every existing card render and snapshot is unchanged). Each overlay is an absolutely-positioned chip
+ * in card-space px; the container is z-index:-1 (above art, below translucent content tiles).
+ */
+function buildOverlaysHtml(overlays?: ArtMaskOverlay[]): { css: string; html: string } {
+  if (!overlays || overlays.length === 0) return { css: "", html: "" };
+  const items = overlays
+    .map((o) => {
+      const variant = o.variant ?? "chip";
+      const fs = o.fontSize ?? 26;
+      const text = variant === "chip" && o.label ? esc(o.label) : "";
+      return (
+        `<div class="art-overlay ${variant}" style="left:${o.left}px;top:${o.top}px;` +
+        `width:${o.width}px;height:${o.height}px;font-size:${fs}px;">${text}</div>`
+      );
+    })
+    .join("\n");
+  const css = `
+/* Art-text MASK layer (#824 mask-art-text). Opaque chips that cover garbled baked-in art text with
+   clean rendered labels. z-index:-1 → above the art background but BELOW the translucent content tiles,
+   so the garble can't bleed through a tile either. pointer-events:none keeps it inert. */
+.art-overlays { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.art-overlay { position: absolute; display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; font-weight: 600; letter-spacing: 0.3px; text-align: center; line-height: 1.05; }
+.art-overlay.chip {
+  background: linear-gradient(180deg, #0e1a33 0%, #0a1322 100%);
+  color: #d6f3e7; border: 1px solid rgba(56,211,159,0.45);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.65), 0 4px 16px rgba(0,0,0,0.5);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+}
+.art-overlay.scrim { background: #0a1322; box-shadow: 0 0 14px 8px #0a1322; }`;
+  const html = `<div class="art-overlays">\n${items}\n</div>`;
+  return { css, html };
+}
+
 export function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -37,7 +98,7 @@ export function selectFacts(spec: ContentSpec, maxFacts: number): Fact[] {
 export function buildCardHtml(
   spec: ContentSpec,
   dims: { width: number; height: number },
-  opts?: { maxFacts?: number; backgroundDataUri?: string }
+  opts?: { maxFacts?: number; backgroundDataUri?: string; overlays?: ArtMaskOverlay[] }
 ): string {
   const maxFacts = opts?.maxFacts ?? 4;
   const facts = selectFacts(spec, maxFacts);
@@ -53,8 +114,10 @@ export function buildCardHtml(
   // wide tiles. Gated strictly on the portrait ratio so 1:1 (1.0) and 4:5 (1.25) keep the
   // exact byte-identical layout they shipped with (no regression to the publish path).
   if (height / width >= 1.5) {
-    return buildTallCardHtml(spec, facts, { width, height }, repoHost, bgStyle);
+    return buildTallCardHtml(spec, facts, { width, height }, repoHost, bgStyle, opts?.overlays);
   }
+
+  const overlays = buildOverlaysHtml(opts?.overlays);
 
   const factsHtml = facts
     .map(
@@ -92,6 +155,7 @@ body {
   display: flex;
   flex-direction: column;
   padding: 60px;
+  position: relative;
 }
 .name { font-size: 48px; font-weight: 700; }
 .summary { font-size: 28px; margin-top: 16px; opacity: 0.85; }
@@ -102,9 +166,11 @@ body {
 .scope { display: block; font-size: calc(16px * var(--fit)); opacity: 0.6; }
 .cta { margin-top: auto; font-size: 28px; font-weight: 600; }
 .repo { font-size: 20px; opacity: 0.7; margin-top: 8px; }
+${overlays.css}
 </style>
 </head>
 <body>
+${overlays.html}
 <div class="name">${esc(spec.product.name)}</div>
 <div class="summary">${esc(spec.product.summary)}</div>
 <div class="facts">
@@ -142,9 +208,11 @@ function buildTallCardHtml(
   facts: Fact[],
   dims: { width: number; height: number },
   repoHost: string,
-  bgStyle: string
+  bgStyle: string,
+  overlaysIn?: ArtMaskOverlay[]
 ): string {
   const { width, height } = dims;
+  const overlays = buildOverlaysHtml(overlaysIn);
   // Pick the headline stat: prefer a clean percentage (reads punchiest + can draw a bar), else
   // the first selected fact. The rest render as wide tiles below — every fact stays on the card.
   const heroIdx = (() => {
@@ -192,6 +260,7 @@ body {
   display: flex;
   flex-direction: column;
   padding: 80px 72px;
+  position: relative;
 }
 .name { font-size: 80px; font-weight: 800; letter-spacing: -1px; }
 .summary { font-size: 38px; margin-top: 18px; opacity: 0.85; line-height: 1.3; }
@@ -211,9 +280,11 @@ body {
 .scope { display: block; font-size: calc(22px * var(--fit)); opacity: 0.6; margin-top: 6px; }
 .cta { margin-top: 44px; font-size: 44px; font-weight: 700; }
 .repo { font-size: 30px; opacity: 0.75; margin-top: 12px; }
+${overlays.css}
 </style>
 </head>
 <body>
+${overlays.html}
 <div class="name">${esc(spec.product.name)}</div>
 <div class="summary">${esc(spec.product.summary)}</div>
 ${heroHtml}

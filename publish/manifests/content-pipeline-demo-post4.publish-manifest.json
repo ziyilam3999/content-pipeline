@@ -1,6 +1,6 @@
 {
   "postSlug": "content-pipeline-demo-post4",
-  "frozenAt": "2026-06-13T06:48:21.321Z",
+  "frozenAt": "2026-06-13T07:02:49.484Z",
   "sourceDir": "out/review/fable",
   "assets": {
     "fable-voiced-9x16.mp4": {
@@ -10,18 +10,18 @@
     },
     "card-post4-A.png": {
       "role": "card",
-      "sha256": "be07acac0724887cb06e8b48b3b1fc8a1fdd4aa0a6d28b78e0ce3a6dc2e0fec0",
-      "bytes": 751559
+      "sha256": "c06bbbf60245cda231168fd6817b79fc651118ee94ff1be9f5a2317ff448343e",
+      "bytes": 740828
     },
     "card-post4-B.png": {
       "role": "card",
-      "sha256": "8cdc6381ce7a3258ab76f7215099291a320cbfbc58f6f4885b9f780cc879f957",
-      "bytes": 741787
+      "sha256": "42dfc75390dc87840629864490412fb780318204cdb36c51ed52da7942b6c9c0",
+      "bytes": 731392
     },
     "card-post4-C.png": {
       "role": "card",
-      "sha256": "9383dace882219c9091a60855e387d0b3fb1a4fc7d8649b0dff761c47d1e4f55",
-      "bytes": 734482
+      "sha256": "c7dcea7d3b513352d009f9f88b853b8f03b81e6bb42e161c3dd57de1d611adad",
+      "bytes": 724362
     }
   }
 }
