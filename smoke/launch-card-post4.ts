@@ -44,7 +44,7 @@ import * as path from "path";
 
 import { renderImage } from "../adapters/image";
 import { CONFIG, type AspectRatio } from "../config";
-import { buildCardHtml, type ArtMaskOverlay } from "../image/card";
+import { buildCardHtml } from "../image/card";
 import { type ContentSpec, type Fact } from "../inputs/contentspec";
 import { type CopyResult } from "../pipeline/run";
 import {
@@ -71,18 +71,26 @@ const POST4_SLUG = "content-pipeline-post4";
 /**
  * Post #4's OWN art-theme prompt (#802). Appended to the brand-safe base prompt so the gen is DISTINCT
  * from Post #1 (data/benchmark chart), Post #2 (red→green build loop) and Post #3 (forge embers / molten
- * blocks). content-pipeline vibe — an AI agent driving a content tool: one plain-English ask flowing
- * through an automation pipeline that fans OUT into three shaped output frames. Abstract/tech, on-brand
- * with the demo's navy "tool world" + teal accent, brand-clean, NO employer brand, NO text/logos.
+ * blocks).
+ *
+ * PURELY ABSTRACT, NO-TEXT (#824 abstract-art). ROOT CAUSE of the prior garbled-text art: the old
+ * prompt NAMED discrete labelable elements ("FANNING OUT into three softly glowing rectangular output
+ * panels … a square, a tall vertical, a portrait", and the master summary literally listed
+ * "copy, an image card, and a captioned video"). nano-banana renders such named referents as
+ * (garbled) text labels in the image ("copy" / "imae card" / "captioned video" / an "ASK" cursor), and
+ * the soft "no text" negative didn't stop it. The card's RENDERED layer carries ALL words; the art is
+ * only an atmospheric backdrop (like the abstract bases used for posts #1-#3). So this prompt names NO
+ * nameable discrete elements — only light, particles, and gradient on the navy "tool world" palette.
  */
 const POST4_PROMPT_EXTRA =
-  "Evoke an AI AGENT driving a CONTENT PIPELINE: a single luminous stream of light (one plain-English " +
-  "ask) flowing left-to-right through an elegant automation conduit and FANNING OUT into three softly " +
-  "glowing rectangular output panels of different proportions (a square, a tall vertical, a portrait) — " +
-  "media pieces gliding along a ribbon of light like a conveyor. Cool TEAL-GREEN and indigo accents " +
-  "threading through deep NAVY-to-black (the demo's navy 'tool world'), clean cinematic depth-of-field, " +
-  "subtle circuitry and particle-flow — distinct in motif from a data chart, a red-to-green test bar, or " +
-  "molten forge embers. Keep the center and upper-left calm/uncluttered for text overlaid later.";
+  "Pure abstract atmosphere only: soft luminous light beams and flowing streams of fine particles " +
+  "drifting left-to-right through deep open space, a gentle radial gradient glow, faint bokeh " +
+  "depth-of-field, and the barest hint of fine circuitry texture dissolving into darkness. Cool " +
+  "TEAL-GREEN and indigo light threading through deep NAVY-to-black (the demo's navy 'tool world'). " +
+  "Absolutely NO discrete objects — no panels, no cards, no screens, no rectangles, no frames, no " +
+  "icons, no cursors, no buttons, no labels, no diagram — ONLY atmospheric light, particles, and " +
+  "gradient on a dark field. Keep the center and upper-left calm and uncluttered for text overlaid " +
+  "later. Distinct in motif from a data chart, a red-to-green test bar, or molten forge embers.";
 
 const POST4_ART_OPTS: GenerateArtOnceOpts = {
   postSlug: POST4_SLUG,
@@ -90,39 +98,20 @@ const POST4_ART_OPTS: GenerateArtOnceOpts = {
 };
 
 /**
- * ART-TEXT MASK (#824 mask-art-text). The nano-banana art base is good (a teal "ask" beam fanning into
- * three glowing output panels) but it baked GARBLED / MISSPELLED micro-text into the lower-right: an
- * "ASK" cursor label and three panel labels "copy" / "imae card" [misspelled] / "captioned video".
- * Garbled text can NEVER ship on a public post, so every post-4 card paints an OPAQUE chip fully over
- * each garbled spot, carrying the CORRECT clean word. Coords are CARD-SPACE px in the 1:1 (1080×1080)
- * frame — the art (1024×1024) is `background-size: cover`-scaled onto the square card, so a fixed
- * card-space chip lands on the same art spot for ALL three cards (A/B/C). The chips sit at z-index:-1
- * (above art, below the translucent content tiles) so the garble can't bleed through a tile either.
- * Eyeball-tuned at full res to FULLY cover each garbled label (the load-bearing check, #824).
- */
-const POST4_ART_MASKS: ArtMaskOverlay[] = [
-  // "ASK" cursor label on the input beam → clean "ask" pill (on-message: the cursor IS the ask).
-  { left: 296, top: 520, width: 96, height: 44, label: "ask", fontSize: 22 },
-  // Panel 1 baked "copy" → clean "copy".
-  { left: 532, top: 588, width: 136, height: 50, label: "copy", fontSize: 26 },
-  // Panel 2 baked "imae card" (MISSPELLED) → clean "image card".
-  { left: 700, top: 588, width: 184, height: 50, label: "image card", fontSize: 26 },
-  // Panel 3 baked "captioned video" → clean "captioned video" (kept off the right card edge).
-  { left: 858, top: 600, width: 204, height: 50, label: "captioned video", fontSize: 22 },
-];
-
-/**
  * A minimal MASTER ContentSpec whose `product.summary` becomes the nano-banana art theme line
- * (`buildArtPrompt` reads `spec.product.summary`). Only the art generator consumes this — the cards
- * carry their own per-card specs (post4CardSpec). Brand-clean: no employer brand, qualitative.
+ * (`buildArtPrompt` reads `spec.product.summary` as the "Theme to evoke"). Only the art generator
+ * consumes this — the cards carry their own per-card specs (post4CardSpec). Brand-clean: no employer
+ * brand, qualitative. #824 abstract-art: the summary is PURELY ATMOSPHERIC and names NO labelable
+ * output elements (the old "one plain-English ask becomes copy, an image card, and a captioned video"
+ * summary is what made nano-banana bake those exact words into the art).
  */
 function post4ArtMasterSpec(): ContentSpec {
   return {
     product: {
       name: "content-pipeline",
       summary:
-        "an AI agent driving a content pipeline — one plain-English ask becomes copy, an image card, " +
-        "and a captioned video in three shapes",
+        "an abstract dark navy tech atmosphere of flowing light beams, drifting particles, and soft " +
+        "gradient glow",
       repoUrl: REPO_URL,
     },
     facts: [],
@@ -241,6 +230,8 @@ async function renderPost4Card(
   let fitScale = 1;
   // generative:true ⇒ compose the card over the ONE shared nano-banana art (fanned out via the
   // injected caller — no further generation). The card's translucent tiles keep the text legible.
+  // #824 abstract-art: the art base is now PURELY ABSTRACT (no garbled labels), so NO art-text mask
+  // overlays are applied here — the cards render their content tiles straight over the clean art.
   const outPath = await renderImage(
     { spec, copy: copyFor(spec) },
     {
@@ -250,7 +241,6 @@ async function renderPost4Card(
       fileName,
       maxFacts: card.lines.length,
       genartDeps: { caller: async () => artDataUri }, // fan the single shared art out
-      overlays: POST4_ART_MASKS, // #824 mask-art-text — cover garbled baked-in art labels
       onFit: (s) => {
         fitScale = s;
       },

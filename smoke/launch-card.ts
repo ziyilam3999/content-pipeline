@@ -66,6 +66,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 import { generateArt, type ArtCaller } from "../adapters/genart";
+import { assertNoArtText } from "../image/art-text-gate";
 import { renderImage } from "../adapters/image";
 import { CONFIG, type AspectRatio } from "../config";
 import { selectFacts } from "../image/card";
@@ -284,6 +285,16 @@ export async function generateArtOnce(
   console.log(
     `  art: ${(artBytes / 1024).toFixed(1)} KB (reused for all cards — single paid call); ` +
       `art-cache: WROTE ${cachePng} + ${cacheUri}`,
+  );
+
+  // ART-TEXT GATE (#824 ocr-gate) — fail-CLOSED. The art base MUST be purely abstract; OCR it and
+  // THROW if any legible word was baked in (the old post-4 base baked "copy"/"imae card"/"captioned
+  // video"). This runs on EVERY freshly-generated art base so a texty gen can never ship silently.
+  console.log("  art-text gate: running OCR on the fresh art base…");
+  const ocr = await assertNoArtText(cachePng, { label: path.basename(cachePng) });
+  console.log(
+    `  art-text gate: PASS — no legible words (${ocr.allWords.length} raw tokens, none cleared the ` +
+      `word threshold).`,
   );
   return art.dataUri;
 }

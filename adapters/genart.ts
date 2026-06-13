@@ -74,8 +74,8 @@ export function buildArtPrompt(spec: ContentSpec, extra?: string): string {
     "Mood: confident, technical, premium. Deep navy-to-black gradient with glowing teal and indigo",
     "accents, geometric light trails, subtle particle and circuitry motifs, soft cinematic depth-of-field.",
     "Leave the upper-left and center relatively calm/uncluttered for text overlaid later.",
-    "ABSOLUTELY NO text, NO words, NO letters, NO numbers, NO logos, NO brand names, NO UI screenshots —",
-    "pure abstract art only. High resolution, cinematic lighting.",
+    "ABSOLUTELY NO text, NO letters, NO words, NO numbers, NO typography, NO labels, NO logos, NO brand",
+    "names, NO UI, NO UI screenshots, NO diagrams — pure abstract art only. High resolution, cinematic lighting.",
     extra ?? "",
   ]
     .join(" ")
