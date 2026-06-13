@@ -1,31 +1,42 @@
 /**
- * #824 Fable LEG 1 — the CAPTURE harness.
+ * #824 Fable — the CAPTURE harness (REVISED ~90s, 8-beat storyboard).
  *
  * Records REAL footage of content-pipeline running, as the SPINE that LEG 2 edits. NOT the rejected
  * stylized VHS look, NOT a baked transcript, NOT a placeholder.
  *
- * Two Playwright-recorded surfaces (context `recordVideo`, the stable public API — finalized on
- * `context.close()`), both captured natively at 1080×1920 (9:16) so NO ffmpeg crop is needed:
- *   • TERMINAL page  — a clean modern xterm-style page wired to the REAL streaming stdout of an
- *     actually-executing content-pipeline run (terminal beats 1, 2, 5 — a BRIEF glimpse, ~28% of the
- *     cut; the hero beats 3/4 dominate). Beat 2 LIVE-runs the free producers (`smoke:image` → a real
- *     9:16 card PNG; `smoke:demo` → a real animated MP4) — the captured pixels are the genuine
- *     streaming logs, scrubbed of any `/Users/<name>` / `/var/folders` leak AND curated to a
- *     public-safe line set (no internal task refs / dev-process language).
- *   • ARTIFACT-VIEWER page — shows the REAL produced card PNG full-frame (beat 3, Ken-Burns settle)
- *     and PLAYS the REAL produced MP4 full-frame (beat 4). Headless Chromium plays the H.264 directly.
+ * THE REFRAME (operator-approved 2026-06-13): content-pipeline is NOT a human UI — it is the interface
+ * an AI AGENT uses. The human just talks to Claude Code in plain English ("build me a launch post about
+ * lfah"); the agent then drives content-pipeline. The demo must MAKE THIS CLEAR and clearly distinguish
+ * THE TOOL (the agent's interface, dark navy) from THE OUTPUT (what it produced, a DISTINCT light bg).
+ *
+ * The ~90s, 8-beat cut (each captured natively at 1080×1920 / 9:16 — fill the frame, no letterbox):
+ *   1. HOOK (~6s, title)        — "This tool has no buttons." / "Because you're not the one using it."
+ *   2. CHAT (~12s, chat)        — a clean Claude Code chat surface; the human TYPES the genuine natural-
+ *                                 language request. Label "you → Claude Code · plain English". This is the
+ *                                 HUMAN's interface. Honest reconstruction of the chat surface (a styled
+ *                                 chat UI showing the real request) — the agent's actual work is the REAL
+ *                                 terminal capture in beat 3, not faked here.
+ *   3. TOOL (~15s, terminal)    — the content-pipeline terminal LIVE-runs the FREE producers (real
+ *                                 streaming logs → a real 9:16 card PNG + a real animated MP4), on the
+ *                                 TOOL background, labeled "content-pipeline — the agent's interface, not
+ *                                 yours". Scrubbed of any /Users path + curated to a public-safe line set.
+ *   4. TRANSITION (~3s)         — an explicit animated handoff: the real output emerges from the tool and
+ *                                 the background wipes dark(tool) → light(output). NOT a hard cut.
+ *   5. OUTPUT — card (~12s)     — the REAL produced card, FRAMED on the DISTINCT light output bg, "the output".
+ *   6. OUTPUT — video (~15s)    — the REAL produced MP4 playing, FRAMED on the DISTINCT light output bg.
+ *   7. PAYOFF (~12s, title)     — "You spoke. The agent built." / "No UI to learn."
+ *   8. CTA (~10s, title)        — content-pipeline · open-source · MIT · github.com/ziyilam3999/content-pipeline.
  *
  * Output (out/ is gitignored — never committed):
- *   • out/capture/beat-01..05.mp4   — the 5 real beat clips (1080×1920)
- *   • out/capture/manifest.json     — per beat: clip + probe; beats 3/4 record the ABSOLUTE source +
+ *   • out/capture/beat-01..08.mp4   — the 8 real beat clips (1080×1920)
+ *   • out/capture/manifest.json     — per beat: clip + probe; beats 5/6 record the ABSOLUTE source +
  *                                     sha256 of the real card / real MP4 (LEG 3's provenance gate).
  *   • out/review/fable/fable-rough-silent-9x16.mp4 — a rough SILENT concat for the orchestrator EYEBALL.
  *
  * GATES (mechanical, reused): every typed command runs through `assertCaptureCommandsFree` (paid
  * denylist) + `assertCaptureBrandClean` (employer-token denylist) + `ownerLeak` (OS-username denylist);
- * all on-screen stdout is path-scrubbed. `--dry-run` runs the gates + prints the beat plan, no capture.
- *
- * The 3 mandatory gating-test results are in the plan's "LEG 1 — 3 mandatory gating-test results".
+ * every on-screen TEXT field (labels, headlines, chat request) runs through `assertBrandClean`; all
+ * on-screen stdout is path-scrubbed + public-line-curated. `--dry-run` runs the gates + prints the plan.
  */
 
 import * as fs from "fs";
@@ -40,39 +51,63 @@ import { assertCaptureCommandsFree, assertCaptureBrandClean } from "./captureDem
 import { assertBrandClean } from "../inputs/frames";
 import { resolveVendoredFfmpeg, probeRender, parseVideoDimensions } from "../video/renderProbe";
 
-// ── Capture geometry (native 9:16 — fill the frame, no letterbox; ~80% h-safe band in the HTML) ──
+// ── Capture geometry (native 9:16 — fill the frame, no letterbox) ──────────────────────────────────
 export const CAP_W = 1080;
 export const CAP_H = 1920;
 export const CAP_FPS = 30;
 
-// ── The 6-beat storyboard (the approved spine) ───────────────────────────────────────────────────
+// ── The two VISUALLY DISTINCT worlds (the core of the reframe) ─────────────────────────────────────
+// THE TOOL — dark navy, teal accent (the agent's interface: terminal, hook, payoff, cta).
+export const BG_TOOL = "#0b1020";
+// THE OUTPUT — a LIGHT warm cream surface (unmistakably different from the dark tool world). The real
+// card / real video are FRAMED on this so the viewer can never confuse the output with the tool.
+export const BG_OUTPUT_A = "#f7f1e6"; // cream
+export const BG_OUTPUT_B = "#ecdfc8"; // deeper sand (gradient end)
 
-export type BeatKind = "terminal" | "viewer-card" | "viewer-video";
+// ── The 8-beat storyboard (the approved REVISED ~90s spine) ────────────────────────────────────────
+
+export type BeatKind = "title" | "chat" | "terminal" | "transition" | "viewer-card" | "viewer-video";
 
 export interface FableBeat {
   /** 1-based beat number. */
   n: number;
   kind: BeatKind;
-  /** Lower-third label LEG 2 may surface (brand-clean, owner-clean). */
+  /** On-screen lower-third / label (brand-clean, owner-clean). "" for pure title beats. */
   stepLabel: string;
-  /** REAL commands streamed live (terminal beats only); [] for viewer beats. */
+  /** REAL commands streamed live (terminal beats only); [] otherwise. */
   commands: string[];
   /** Target rough-cut clip length (seconds). */
   clipSec: number;
+  /** Title beats — the big headline + optional subtext + optional url (CTA). */
+  headline?: string;
+  sub?: string;
+  url?: string;
+  /** Chat beat — the genuine natural-language request the human types. */
+  chatRequest?: string;
 }
 
-// LEG 1.5 re-balance (orchestrator eyeball): the TERMINAL is a brief GLIMPSE (~28% of runtime), the two
-// HERO beats (real card + real video) DOMINATE (~72%). Beats are trimmed to their TAIL clipSec, so a
-// long-running producer (beat 2) shows only its final settle — a flash of real output, then we cut to the
-// heroes. The old `ls -gh` bundle beat is dropped (text-heavy + an owner-leak vector we no longer need).
 export const FABLE_BEATS: ReadonlyArray<FableBeat> = [
-  { n: 1, kind: "terminal", stepLabel: "content-pipeline", commands: ["ls"], clipSec: 2 },
-  // Beat 2 LIVE-runs the FREE producers — real streaming render logs, produces the real hero card + MP4.
-  // smoke:image renders the 9:16 cut so the captured hero card fills the phone frame (no 1:1 island).
-  { n: 2, kind: "terminal", stepLabel: "one command — it runs for real", commands: ["IMAGE_SMOKE_ASPECT=9:16 npm run smoke:image", "npm run smoke:demo"], clipSec: 4 },
-  { n: 3, kind: "viewer-card", stepLabel: "the real card it just made", commands: [], clipSec: 8 },
-  { n: 4, kind: "viewer-video", stepLabel: "the real video it just made", commands: [], clipSec: 14 },
-  { n: 5, kind: "terminal", stepLabel: "content-pipeline · open + MIT", commands: ['echo "content-pipeline — open-source, MIT — link below"'], clipSec: 3 },
+  // 1 — HOOK. Clean title on the tool/neutral world.
+  { n: 1, kind: "title", stepLabel: "", commands: [], clipSec: 6,
+    headline: "This tool has no buttons.", sub: "Because you're not the one using it." },
+  // 2 — CHAT. The HUMAN's interface: plain English to Claude Code. Honest chat-surface reconstruction.
+  { n: 2, kind: "chat", stepLabel: "you → Claude Code · plain English", commands: [], clipSec: 12,
+    chatRequest: "Build me a launch post about lfah — copy, a card, and a video." },
+  // 3 — TOOL. The agent's interface runs for real (FREE producers → the real hero card + MP4).
+  { n: 3, kind: "terminal", stepLabel: "content-pipeline — the agent's interface, not yours", clipSec: 15,
+    commands: ["IMAGE_SMOKE_ASPECT=9:16 npm run smoke:image", "npm run smoke:demo"] },
+  // 4 — TRANSITION. Explicit animated handoff: the output emerges from the tool, bg wipes tool → output.
+  { n: 4, kind: "transition", stepLabel: "", commands: [], clipSec: 3 },
+  // 5 — OUTPUT (card). Real produced card, FRAMED on the DISTINCT light output bg.
+  { n: 5, kind: "viewer-card", stepLabel: "the output", commands: [], clipSec: 12 },
+  // 6 — OUTPUT (video). Real produced MP4 playing, FRAMED on the DISTINCT light output bg.
+  { n: 6, kind: "viewer-video", stepLabel: "the output", commands: [], clipSec: 15 },
+  // 7 — PAYOFF. Recap the reframe.
+  { n: 7, kind: "title", stepLabel: "", commands: [], clipSec: 12,
+    headline: "You spoke. The agent built.", sub: "No UI to learn." },
+  // 8 — CTA.
+  { n: 8, kind: "title", stepLabel: "", commands: [], clipSec: 10,
+    headline: "content-pipeline", sub: "open-source · MIT", url: "github.com/ziyilam3999/content-pipeline" },
 ];
 
 // ── Owner/username-leak detector (the OS login name must never reach a public capture frame) ──────
@@ -101,17 +136,22 @@ export function ownerLeak(cmd: string): string | null {
   return null;
 }
 
+/** Every brand-checkable on-screen text field a beat carries (labels + title text + chat request). */
+function beatTextFields(b: FableBeat): string[] {
+  return [b.stepLabel, b.headline ?? "", b.sub ?? "", b.url ?? "", b.chatRequest ?? ""].filter((s) => s.length > 0);
+}
+
 /**
  * The mechanical pre-flight: every terminal command in `beats` must be FREE (paid denylist),
- * BRAND-CLEAN (employer-token denylist), and OWNER-CLEAN (no OS-username leak). Throws on any
- * violation. Reuses the shipped captureDemo gates by shaping each beat as a {commands, stepLabel}.
+ * BRAND-CLEAN (employer-token denylist), and OWNER-CLEAN (no OS-username leak); every on-screen text
+ * field must be BRAND-CLEAN. Throws on any violation.
  */
 export function assertFableBeatsClean(beats: ReadonlyArray<FableBeat>): void {
   const shaped = beats.map((b) => ({ commands: b.commands, stepLabel: b.stepLabel }));
   assertCaptureCommandsFree(shaped); // paid-script denylist (smoke:copy/genart/voice + :paid/:live)
   assertCaptureBrandClean(shaped); // employer-token denylist over labels + commands
   for (const b of beats) {
-    assertBrandClean(b.stepLabel);
+    for (const t of beatTextFields(b)) assertBrandClean(t); // every on-screen text field
     for (const c of b.commands) {
       const leak = ownerLeak(c);
       if (leak) {
@@ -139,10 +179,6 @@ export function scrubStreamChunk(s: string): string {
 }
 
 // ── Public-safe stdout curation (DEFECT 2 — no internal dev-process text on a PUBLIC video) ────────
-// The streamed stdout of the real producers carries dev-process lines that must NEVER reach a public
-// post: internal task refs (#748 / #744), "Phase D", "tell me what to change", "watch it", "smoke"
-// banners. We line-filter the captured output to a public-safe set: any line matching this denylist is
-// dropped, the clean command-result lines stream through. Mirrored in the captureFable jest gate.
 const PUBLIC_UNSAFE_LINE: ReadonlyArray<RegExp> = [
   /#\d/, // internal task references (#748, #744, …)
   /\bphase\b/i, // dev-process phase language ("Phase D / #744")
@@ -164,14 +200,26 @@ export function filterPublicLines(text: string): string {
     .join("\n");
 }
 
-// ── Page HTML (clean modern terminal + artifact viewer) — pure, no /Users leak ────────────────────
+// ── Page HTML (each beat renders its OWN world + label — pure, no /Users leak) ─────────────────────
 
-/** A clean modern terminal page (system-mono, calm dark slate, teal prompt, blinking cursor). */
-export function buildTerminalHtml(): string {
+/** A shared lower-third label pill (brand-clean text comes from the beat). */
+function lowerThird(label: string, dark: boolean): string {
+  if (!label) return "";
+  const bg = dark ? "rgba(94,234,212,.12)" : "rgba(20,16,12,.9)";
+  const fg = dark ? "#5eead4" : "#f7f1e6";
+  const bd = dark ? "rgba(94,234,212,.35)" : "rgba(20,16,12,.0)";
+  return `<div style="position:absolute;left:50%;bottom:72px;transform:translateX(-50%);
+    background:${bg};color:${fg};border:2px solid ${bd};border-radius:999px;
+    font:600 30px/1.2 ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif;
+    padding:20px 38px;white-space:nowrap;letter-spacing:.2px;backdrop-filter:blur(6px)">${label}</div>`;
+}
+
+/** A clean modern terminal page (system-mono, tool-world navy, teal prompt) + the agent-interface label. */
+export function buildTerminalHtml(label = "content-pipeline — the agent's interface, not yours"): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:${CAP_W}px;height:${CAP_H}px;background:#0b1020;overflow:hidden}
-#frame{height:100%;padding:96px 108px}
+html,body{width:${CAP_W}px;height:${CAP_H}px;background:${BG_TOOL};overflow:hidden;position:relative}
+#frame{height:100%;padding:96px 108px 200px}
 #bar{display:flex;align-items:center;gap:14px;margin-bottom:36px}
 #bar .dot{width:20px;height:20px;border-radius:50%}
 .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
@@ -185,45 +233,149 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;background:#0b1020;overflow:hidden}
   <div id="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">content-pipeline</span></div>
   <div id="out"></div><span id="cur"></span>
 </div>
+${lowerThird(label, true)}
 <script>
 window.__termPrompt=()=>{const o=document.getElementById('out');const s=document.createElement('span');s.className='prompt';s.textContent='\\n$ ';o.appendChild(s);};
 window.__termCmd=(c)=>{const o=document.getElementById('out');const s=document.createElement('span');s.className='cmd';s.textContent=c+'\\n';o.appendChild(s);};
 window.__termWrite=(t)=>{const o=document.getElementById('out');o.appendChild(document.createTextNode(String(t)));
-  while(o.textContent.length>2600&&o.firstChild)o.removeChild(o.firstChild);
+  while(o.textContent.length>2200&&o.firstChild)o.removeChild(o.firstChild);
   document.getElementById('frame').scrollTop=1e9;};
 </script></body></html>`;
 }
 
 /**
- * Full-bleed card viewer — the real 9:16 card FILLS the frame edge-to-edge via object-fit:cover
- * (matching the beat-4 video hero), so there is NO floating 1:1 island / empty dark band (#765,
- * feedback_design_each_aspect_to_fill_its_frame). A slow Ken-Burns push keeps the frame covered.
+ * A clean Claude Code CHAT surface (the HUMAN's interface). Warm "Claude" world (clay accent), distinct
+ * from BOTH the dark-navy tool AND the light output. The genuine request is TYPED in via `window.__chatType`,
+ * finalized with `window.__chatSend` (which surfaces the agent picking the work up — honest: the agent's
+ * ACTUAL work is the real terminal capture in beat 3).
  */
-export function buildViewerCardHtml(cardDataUri: string): string {
+export function buildChatHtml(label = "you → Claude Code · plain English"): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;background:#0b1020}
-#stage{width:100%;height:100%;overflow:hidden}
-img{width:100%;height:100%;object-fit:cover;display:block;animation:kb 9s ease-out forwards}
-@keyframes kb{from{transform:scale(1.0)}to{transform:scale(1.06)}}
-</style></head><body><div id="stage"><img src="${cardDataUri}"></div></body></html>`;
+html,body{width:${CAP_W}px;height:${CAP_H}px;background:#1c1917;overflow:hidden;position:relative;
+  font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif}
+#hdr{display:flex;align-items:center;gap:18px;padding:90px 96px 0}
+#hdr .mark{width:34px;height:34px;border-radius:9px;background:#d97757}
+#hdr .name{color:#e7e2db;font:700 34px/1 inherit}
+#hdr .sub{color:#8a817a;font:500 26px/1 inherit;margin-left:auto}
+#chat{padding:80px 96px;display:flex;flex-direction:column;gap:40px}
+.you{align-self:flex-end;max-width:78%;background:#d97757;color:#fff;border-radius:34px 34px 8px 34px;
+  padding:34px 40px;font:500 40px/1.4 inherit;box-shadow:0 18px 50px rgba(217,119,87,.28)}
+#caret{display:inline-block;width:5px;height:42px;background:#fff;vertical-align:-7px;margin-left:3px;animation:b 1s steps(1) infinite}
+@keyframes b{50%{opacity:0}}
+.agent{align-self:flex-start;max-width:78%;color:#b9b1a8;font:500 34px/1.4 inherit;display:flex;align-items:center;gap:16px;opacity:0;transition:opacity .5s}
+.agent .d{width:14px;height:14px;border-radius:50%;background:#7c7068;animation:p 1.2s ease-in-out infinite}
+@keyframes p{0%,100%{opacity:.3}50%{opacity:1}}
+</style></head><body>
+<div id="hdr"><span class="mark"></span><span class="name">Claude Code</span><span class="sub">plain English</span></div>
+<div id="chat">
+  <div class="you" id="bubble"><span id="txt"></span><span id="caret"></span></div>
+  <div class="agent" id="agent"><span class="d"></span>On it — driving content-pipeline…</div>
+</div>
+${lowerThird(label, true)}
+<script>
+window.__chatType=(c)=>{document.getElementById('txt').textContent+=String(c);};
+window.__chatSend=()=>{const cr=document.getElementById('caret');if(cr)cr.style.display='none';
+  document.getElementById('agent').style.opacity='1';};
+</script></body></html>`;
 }
 
-/** Full-frame video viewer — plays the REAL produced MP4 (served over loopback) filling the 9:16 frame. */
-export function buildViewerVideoHtml(videoUrl: string): string {
+/** A clean title card on the TOOL/neutral world (hook, payoff, cta). */
+export function buildTitleHtml(opts: { headline: string; sub?: string; url?: string }): string {
+  const { headline, sub, url } = opts;
+  const subHtml = sub ? `<div class="sub">${sub}</div>` : "";
+  const urlHtml = url ? `<div class="url">${url}</div>` : "";
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;background:#000}
-video{width:100%;height:100%;object-fit:cover;display:block}
-</style></head><body><video id="v" src="${videoUrl}" autoplay muted playsinline></video></body></html>`;
+html,body{width:${CAP_W}px;height:${CAP_H}px;background:
+  radial-gradient(1200px 1200px at 50% 30%, #131a31 0%, ${BG_TOOL} 60%);overflow:hidden}
+#wrap{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:0 120px;font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif}
+.h{color:#eef2fb;font:800 78px/1.12 inherit;letter-spacing:-1px;animation:rise .8s ease-out both}
+.sub{color:#9fb0d8;font:500 44px/1.3 inherit;margin-top:36px;animation:rise .8s .15s ease-out both}
+.url{color:#5eead4;font:600 38px/1.2 ui-monospace,Menlo,monospace;margin-top:64px;
+  border:2px solid rgba(94,234,212,.4);border-radius:999px;padding:22px 44px;animation:rise .8s .3s ease-out both}
+@keyframes rise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+</style></head><body><div id="wrap">
+  <div class="h">${headline}</div>${subHtml}${urlHtml}
+</div></body></html>`;
+}
+
+/**
+ * The TRANSITION (~3s): the real output literally EMERGES from the tool. The dark navy (tool) is wiped
+ * upward by a light cream sheet (output), while the real produced card scales from a small tool-corner
+ * thumbnail to a centered framed object and the label crossfades "the agent's interface" → "the output".
+ */
+export function buildTransitionHtml(cardDataUri: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;background:${BG_TOOL};
+  font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif}
+#sheet{position:absolute;inset:0;background:linear-gradient(160deg,${BG_OUTPUT_A},${BG_OUTPUT_B});
+  transform:translateY(100%);animation:wipe 1.5s .5s cubic-bezier(.7,0,.2,1) forwards}
+@keyframes wipe{to{transform:translateY(0)}}
+#card{position:absolute;left:50%;top:62%;width:30%;aspect-ratio:9/16;border-radius:20px;overflow:hidden;
+  transform:translate(-50%,-50%) rotate(-4deg);box-shadow:0 30px 80px rgba(0,0,0,.5);
+  border:6px solid #0e1424;animation:emerge 2s .4s cubic-bezier(.6,0,.2,1) forwards}
+#card img{width:100%;height:100%;object-fit:cover;display:block}
+@keyframes emerge{to{top:46%;width:62%;transform:translate(-50%,-50%) rotate(0)}}
+#lbl{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);white-space:nowrap;
+  font:700 34px/1 inherit;color:#5eead4;animation:swap 3s linear forwards}
+@keyframes swap{0%,38%{opacity:1}48%,56%{opacity:0}66%,100%{opacity:1;color:#14100c}}
+#lbl::after{content:"the agent's interface";animation:txt 3s step-end forwards}
+@keyframes txt{0%{content:"the agent's interface"}60%,100%{content:"the output"}}
+</style></head><body>
+<div id="sheet"></div>
+<div id="card"><img src="${cardDataUri}"></div>
+<div id="lbl"></div>
+</body></html>`;
+}
+
+/**
+ * OUTPUT — card viewer. The real 9:16 card FRAMED (dark device bezel) on the DISTINCT light output world,
+ * labeled "the output". The cream surface FILLS the 9:16 frame (a designed matte, NOT an empty letterbox
+ * island) and the framed card dominates (~86% width). A slow Ken-Burns keeps the framed card alive.
+ */
+export function buildViewerCardHtml(cardDataUri: string, label = "the output"): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;
+  background:linear-gradient(160deg,${BG_OUTPUT_A},${BG_OUTPUT_B});
+  font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif}
+#pill{position:absolute;left:50%;top:64px;transform:translateX(-50%);background:#14100c;color:#f7f1e6;
+  border-radius:999px;font:700 30px/1.2 inherit;padding:18px 40px;letter-spacing:.3px;z-index:2}
+#device{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);width:86%;aspect-ratio:9/16;
+  border-radius:34px;overflow:hidden;border:10px solid #0e1424;box-shadow:0 40px 110px rgba(60,40,10,.32)}
+#device img{width:100%;height:100%;object-fit:cover;display:block;animation:kb 13s ease-out forwards}
+@keyframes kb{from{transform:scale(1.0)}to{transform:scale(1.07)}}
+</style></head><body>
+<div id="pill">${label}</div>
+<div id="device"><img src="${cardDataUri}"></div>
+</body></html>`;
+}
+
+/** OUTPUT — video viewer. Plays the REAL produced MP4, FRAMED on the DISTINCT light output world. */
+export function buildViewerVideoHtml(videoUrl: string, label = "the output"): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;
+  background:linear-gradient(160deg,${BG_OUTPUT_A},${BG_OUTPUT_B});
+  font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif}
+#pill{position:absolute;left:50%;top:64px;transform:translateX(-50%);background:#14100c;color:#f7f1e6;
+  border-radius:999px;font:700 30px/1.2 inherit;padding:18px 40px;letter-spacing:.3px;z-index:2}
+#device{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);width:86%;aspect-ratio:9/16;
+  border-radius:34px;overflow:hidden;border:10px solid #0e1424;box-shadow:0 40px 110px rgba(60,40,10,.32);background:#000}
+#device video{width:100%;height:100%;object-fit:cover;display:block}
+</style></head><body>
+<div id="pill">${label}</div>
+<div id="device"><video id="v" src="${videoUrl}" autoplay muted playsinline></video></div>
+</body></html>`;
 }
 
 // ── Manifest types ───────────────────────────────────────────────────────────────────────────────
 
 export interface HeroSource {
-  /** Absolute path of the real produced artefact the beat displays (manifest lives in gitignored out/). */
   path: string;
-  /** Repo-relative path (the clean form LEG 3's gate resolves against the repo root). */
   relPath: string;
   sha256: string;
   bytes: number;
@@ -233,19 +385,19 @@ export interface BeatRecord {
   n: number;
   kind: BeatKind;
   stepLabel: string;
-  /** Repo-relative path of the rendered beat clip. */
   clip: string;
   bytes: number;
   videoFrames: number;
   width: number;
   height: number;
-  /** Present ONLY for the two HERO beats (3 = card, 4 = video). */
+  /** Present ONLY for the two HERO output beats (5 = card, 6 = video). */
   heroSource?: HeroSource;
 }
 
 export interface FableManifest {
   task: number;
   leg: number;
+  storyboard: string;
   createdAt: string;
   dims: { width: number; height: number };
   beats: BeatRecord[];
@@ -279,7 +431,27 @@ function relOf(p: string): string {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-/** Record one TERMINAL beat: live-run each command, stream scrubbed stdout into the page, return the webm path. */
+type PageSetup = (page: any) => Promise<void>;
+
+/** Record an arbitrary static/animated page for `recordSec`, running an optional setup (e.g. typing). */
+async function recordPageBeat(html: string, recordSec: number, recDir: string, chromium: any, setup?: PageSetup, waitUntil: "domcontentloaded" | "networkidle" = "domcontentloaded"): Promise<string> {
+  const browser = await chromium.launch();
+  const context = await browser.newContext({
+    viewport: { width: CAP_W, height: CAP_H },
+    recordVideo: { dir: recDir, size: { width: CAP_W, height: CAP_H } },
+  });
+  const page = await context.newPage();
+  await page.setContent(html, { waitUntil });
+  await page.waitForTimeout(500);
+  if (setup) await setup(page);
+  await page.waitForTimeout(recordSec * 1000);
+  const video = page.video();
+  await context.close();
+  await browser.close();
+  return await video!.path();
+}
+
+/** Record one TERMINAL beat: live-run each command, stream scrubbed+curated stdout into the page. */
 async function recordTerminalBeat(beat: FableBeat, recDir: string, chromium: any): Promise<string> {
   const browser = await chromium.launch();
   const context = await browser.newContext({
@@ -287,12 +459,11 @@ async function recordTerminalBeat(beat: FableBeat, recDir: string, chromium: any
     recordVideo: { dir: recDir, size: { width: CAP_W, height: CAP_H } },
   });
   const page = await context.newPage();
-  await page.setContent(buildTerminalHtml(), { waitUntil: "domcontentloaded" });
+  await page.setContent(buildTerminalHtml(beat.stepLabel), { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(700);
 
   for (const cmd of beat.commands) {
     await page.evaluate(() => (globalThis as any).window.__termPrompt());
-    // type the command out, char-batched, for a live "typed" feel
     for (let i = 0; i < cmd.length; i += 3) {
       await page.evaluate((c: string) => {
         const doc = (globalThis as any).document;
@@ -305,9 +476,6 @@ async function recordTerminalBeat(beat: FableBeat, recDir: string, chromium: any
     }
     await page.evaluate(() => (globalThis as any).window.__termWrite("\n"));
 
-    // run the REAL command via the shell, stream scrubbed + public-curated output live.
-    // Buffer to NEWLINE boundaries so the public-safe line filter (DEFECT 2) only ever judges whole
-    // lines (a dev-process line split across two chunks must not leak its first half).
     const child = spawn("/bin/sh", ["-c", cmd], { cwd: REPO_ROOT_REAL });
     let lineBuf = "";
     const write = (s: string) => {
@@ -316,7 +484,7 @@ async function recordTerminalBeat(beat: FableBeat, recDir: string, chromium: any
     const feed = (buf: Buffer) => {
       lineBuf += scrubStreamChunk(buf.toString());
       const nl = lineBuf.lastIndexOf("\n");
-      if (nl < 0) return; // hold a partial line until its newline arrives
+      if (nl < 0) return;
       const complete = lineBuf.slice(0, nl + 1);
       lineBuf = lineBuf.slice(nl + 1);
       write(filterPublicLines(complete));
@@ -324,11 +492,11 @@ async function recordTerminalBeat(beat: FableBeat, recDir: string, chromium: any
     child.stdout.on("data", feed);
     child.stderr.on("data", feed);
     const code: number = await new Promise((res) => child.on("close", (c) => res(c ?? 0)));
-    if (lineBuf) write(filterPublicLines(lineBuf + "\n")); // flush the trailing partial line
-    if (code !== 0 && beat.n === 2) {
-      throw new Error(`captureFable: beat 2 producer "${cmd}" exited ${code} — the real artefacts were not produced.`);
+    if (lineBuf) write(filterPublicLines(lineBuf + "\n"));
+    if (code !== 0 && beat.n === 3) {
+      throw new Error(`captureFable: beat 3 producer "${cmd}" exited ${code} — the real artefacts were not produced.`);
     }
-    await page.waitForTimeout(900); // let the final output settle into a frame
+    await page.waitForTimeout(900);
   }
   await page.waitForTimeout(800);
 
@@ -338,7 +506,7 @@ async function recordTerminalBeat(beat: FableBeat, recDir: string, chromium: any
   return await video!.path();
 }
 
-/** Record the BEAT-3 card viewer (real card as a data URI, Ken-Burns settle). */
+/** Record the OUTPUT-card viewer (real card as a data URI, Ken-Burns settle on the light output world). */
 async function recordViewerCardBeat(beat: FableBeat, cardPath: string, recDir: string, chromium: any): Promise<string> {
   const browser = await chromium.launch();
   const context = await browser.newContext({
@@ -346,7 +514,7 @@ async function recordViewerCardBeat(beat: FableBeat, cardPath: string, recDir: s
     recordVideo: { dir: recDir, size: { width: CAP_W, height: CAP_H } },
   });
   const page = await context.newPage();
-  await page.setContent(buildViewerCardHtml(fileToDataUri(cardPath, "image/png")), { waitUntil: "networkidle" });
+  await page.setContent(buildViewerCardHtml(fileToDataUri(cardPath, "image/png"), beat.stepLabel), { waitUntil: "networkidle" });
   await page.waitForTimeout((beat.clipSec + 2) * 1000);
   const video = page.video();
   await context.close();
@@ -354,7 +522,7 @@ async function recordViewerCardBeat(beat: FableBeat, cardPath: string, recDir: s
   return await video!.path();
 }
 
-/** Record the BEAT-4 video viewer (PLAYS the real produced MP4 over loopback). */
+/** Record the OUTPUT-video viewer (PLAYS the real produced MP4 over loopback, framed on the output world). */
 async function recordViewerVideoBeat(beat: FableBeat, videoUrl: string, recDir: string, chromium: any): Promise<string> {
   const browser = await chromium.launch();
   const context = await browser.newContext({
@@ -362,8 +530,7 @@ async function recordViewerVideoBeat(beat: FableBeat, videoUrl: string, recDir: 
     recordVideo: { dir: recDir, size: { width: CAP_W, height: CAP_H } },
   });
   const page = await context.newPage();
-  await page.setContent(buildViewerVideoHtml(videoUrl), { waitUntil: "domcontentloaded" });
-  // wait for real playback to begin
+  await page.setContent(buildViewerVideoHtml(videoUrl, beat.stepLabel), { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => { const v = (globalThis as any).document.getElementById("v"); return v && v.currentTime > 0.1; }, { timeout: 8000 });
   await page.waitForTimeout((beat.clipSec + 1) * 1000);
   const video = page.video();
@@ -372,10 +539,10 @@ async function recordViewerVideoBeat(beat: FableBeat, videoUrl: string, recDir: 
   return await video!.path();
 }
 
-/** Transcode a recorded webm → a normalized beat MP4 (1080×1920, h264, 30fps, no audio), trimmed to the TAIL clipSec. */
-function transcodeBeatClip(webm: string, outMp4: string, clipSec: number): void {
+/** Transcode a recorded webm → a normalized beat MP4, trimmed to clipSec from the head or tail. */
+function transcodeBeatClip(webm: string, outMp4: string, clipSec: number, trim: "head" | "tail"): void {
   const dur = probeRender(webm).videoDurationSec;
-  const start = Math.max(0, dur - clipSec);
+  const start = trim === "tail" ? Math.max(0, dur - clipSec) : Math.min(0.4, Math.max(0, dur - clipSec));
   const { code } = runFfmpeg([
     "-hide_banner", "-y",
     "-ss", start.toFixed(2), "-i", webm, "-t", clipSec.toFixed(2),
@@ -388,13 +555,12 @@ function transcodeBeatClip(webm: string, outMp4: string, clipSec: number): void 
   }
 }
 
-/** Concat the 6 normalized beat MP4s into the rough SILENT 9:16 cut via the concat demuxer (-c copy; identical params). */
+/** Concat the normalized beat MP4s into the rough SILENT 9:16 cut (concat demuxer; re-encode fallback). */
 function concatBeats(beatMp4s: string[], outMp4: string): void {
   const listPath = path.join(path.dirname(outMp4), "_concat-list.txt");
   fs.writeFileSync(listPath, beatMp4s.map((p) => `file '${p}'`).join("\n"), "utf8");
   let { code } = runFfmpeg(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", "-movflags", "+faststart", outMp4]);
   if (!fs.existsSync(outMp4) || fs.statSync(outMp4).size === 0) {
-    // fall back to a re-encode concat if stream-copy refused
     ({ code } = runFfmpeg(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listPath,
       "-r", String(CAP_FPS), "-vf", `scale=${CAP_W}:${CAP_H}`, "-pix_fmt", "yuv420p", "-c:v", "libx264", "-crf", "20", "-movflags", "+faststart", "-an", outMp4]));
   }
@@ -415,7 +581,7 @@ async function runCapture(): Promise<void> {
   fs.mkdirSync(captureDir, { recursive: true });
   fs.mkdirSync(reviewDir, { recursive: true });
 
-  // loopback static server (serves the real MP4 to the beat-4 viewer — loopback, no external network)
+  // loopback static server (serves the real MP4 to the output-video viewer — loopback, no external net)
   const server = http.createServer((req, res) => {
     const fp = path.join(REPO_ROOT_REAL, decodeURIComponent((req.url || "/").split("?")[0]));
     if (!fp.startsWith(REPO_ROOT_REAL) || !fs.existsSync(fp)) { res.writeHead(404); res.end(); return; }
@@ -433,20 +599,40 @@ async function runCapture(): Promise<void> {
   const beatMp4s: string[] = [];
 
   for (const beat of FABLE_BEATS) {
-    console.log(`[fable] recording beat ${beat.n} (${beat.kind}) — ${beat.stepLabel}`);
+    console.log(`[fable] recording beat ${beat.n} (${beat.kind}) — ${beat.stepLabel || beat.headline || ""}`);
     let webm: string;
-    if (beat.kind === "terminal") {
+    let trim: "head" | "tail" = "head";
+
+    if (beat.kind === "title") {
+      webm = await recordPageBeat(buildTitleHtml({ headline: beat.headline!, sub: beat.sub, url: beat.url }), beat.clipSec + 1.0, recRoot, chromium);
+    } else if (beat.kind === "chat") {
+      webm = await recordPageBeat(buildChatHtml(beat.stepLabel), beat.clipSec + 1.0, recRoot, chromium, async (page) => {
+        const req = beat.chatRequest!;
+        for (let i = 0; i < req.length; i += 2) {
+          await page.evaluate((c: string) => (globalThis as any).window.__chatType(c), req.slice(i, i + 2));
+          await page.waitForTimeout(42);
+        }
+        await page.waitForTimeout(450);
+        await page.evaluate(() => (globalThis as any).window.__chatSend());
+      });
+    } else if (beat.kind === "terminal") {
       webm = await recordTerminalBeat(beat, recRoot, chromium);
+      trim = "tail";
+    } else if (beat.kind === "transition") {
+      if (!fs.existsSync(CARD_PATH)) throw new Error(`captureFable: beat 4 transition needs the real card at out/image/card-9x16.png — beat 3 must run first.`);
+      webm = await recordPageBeat(buildTransitionHtml(fileToDataUri(CARD_PATH, "image/png")), beat.clipSec + 1.0, recRoot, chromium, undefined, "networkidle");
     } else if (beat.kind === "viewer-card") {
-      if (!fs.existsSync(CARD_PATH)) throw new Error(`captureFable: beat 3 hero card missing at ${relOf(path.dirname(CARD_PATH))}/card-9x16.png — beat 2 must run first.`);
+      if (!fs.existsSync(CARD_PATH)) throw new Error(`captureFable: beat 5 hero card missing at out/image/card-9x16.png — beat 3 must run first.`);
       webm = await recordViewerCardBeat(beat, CARD_PATH, recRoot, chromium);
+      trim = "tail";
     } else {
-      if (!fs.existsSync(VIDEO_PATH)) throw new Error("captureFable: beat 4 hero MP4 missing — beat 2 (smoke:demo) must run first.");
+      if (!fs.existsSync(VIDEO_PATH)) throw new Error("captureFable: beat 6 hero MP4 missing — beat 3 (smoke:demo) must run first.");
       webm = await recordViewerVideoBeat(beat, `http://127.0.0.1:${port}/${relOf(VIDEO_PATH)}`, recRoot, chromium);
+      trim = "tail";
     }
 
     const outMp4 = path.join(captureDir, `beat-${String(beat.n).padStart(2, "0")}.mp4`);
-    transcodeBeatClip(webm, outMp4, beat.clipSec);
+    transcodeBeatClip(webm, outMp4, beat.clipSec, trim);
     const probe = probeRender(outMp4);
     const dims = parseVideoDimensions(runFfmpeg(["-hide_banner", "-i", outMp4]).out) ?? { width: 0, height: 0 };
     const rec: BeatRecord = {
@@ -463,21 +649,19 @@ async function runCapture(): Promise<void> {
 
   server.close();
 
-  // rough SILENT concat for the orchestrator EYEBALL
   const concatOut = path.join(reviewDir, "fable-rough-silent-9x16.mp4");
   concatBeats(beatMp4s, concatOut);
   const concatProbe = probeRender(concatOut);
   console.log(`[fable] rough silent concat → ${relOf(concatOut)} (${concatProbe.videoFrames} frames, ${concatProbe.videoDurationSec.toFixed(1)}s, ${(fs.statSync(concatOut).size / 1024).toFixed(0)}KB)`);
 
   const manifest: FableManifest = {
-    task: 824, leg: 1, createdAt: new Date().toISOString(),
+    task: 824, leg: 1, storyboard: "revised-90s-8beat", createdAt: new Date().toISOString(),
     dims: { width: CAP_W, height: CAP_H }, beats, roughConcat: relOf(concatOut),
   };
   const manifestPath = path.join(captureDir, "manifest.json");
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
   console.log(`[fable] manifest → ${relOf(manifestPath)}`);
 
-  // brand-clean backstop over every label + the rough concat is silent (no audio stream)
   for (const b of beats) assertBrandClean(b.stepLabel);
 
   fs.rmSync(recRoot, { recursive: true, force: true });
@@ -490,10 +674,14 @@ async function main(): Promise<void> {
   const dryRun = process.argv.includes("--dry-run");
   assertFableBeatsClean(FABLE_BEATS);
   if (dryRun) {
-    console.log("FABLE-CAPTURE: --dry-run (gates passed: paid-free + brand-clean + owner-clean). 6 beats:");
+    const total = FABLE_BEATS.reduce((s, b) => s + b.clipSec, 0);
+    console.log(`FABLE-CAPTURE: --dry-run (gates passed: paid-free + brand-clean + owner-clean). 8 beats, ~${total}s:`);
     for (const b of FABLE_BEATS) {
-      const what = b.kind === "terminal" ? b.commands.join("  ;  ") : `[${b.kind}]`;
-      console.log(`  beat ${b.n} (${b.kind}, ~${b.clipSec}s) — ${b.stepLabel}  ::  ${what}`);
+      const what = b.kind === "terminal" ? b.commands.join("  ;  ")
+        : b.kind === "chat" ? `chat: "${b.chatRequest}"`
+        : b.kind === "title" ? `title: "${b.headline}"${b.sub ? ` / "${b.sub}"` : ""}`
+        : `[${b.kind}]`;
+      console.log(`  beat ${b.n} (${b.kind}, ~${b.clipSec}s) — ${b.stepLabel || "—"}  ::  ${what}`);
     }
     return;
   }
