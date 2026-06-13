@@ -60,7 +60,7 @@ Last updated: 2026-06-13
 - **Media bundle:** `~/coding_projects/_launch-assets/content-pipeline-demo-post4-20260613/`
 - **Publish manifest:** `content-pipeline/publish/manifests/content-pipeline-demo-post4.publish-manifest.json`
 - **Numbers:** no UI / agent-operated; 1 plain-English ask → copy + card + captioned video in 3 shapes; MIT, public.
-- **Note:** LIVE Typefully DRAFT created 2026-06-13 (#824) — draft_id=9490878, social_set=312308, video-hook + card-body (X 4-tweet thread: hero video + cards A/B/C; Threads: hero video + card A). NOT yet published — DRAFT ONLY; operator does the final manual Publish. publishedDate/liveUrls fill on a post-publish read-back.
+- **Note:** LIVE Typefully DRAFT created 2026-06-13 (#824) — draft_id=9494173, social_set=312308, video-hook + card-body (X 4-tweet thread: hero video + cards A/B/C; Threads: hero video + card A). NOT yet published — DRAFT ONLY; operator does the final manual Publish. publishedDate/liveUrls fill on a post-publish read-back.
 
 ## Post #4 — content-pipeline (a tool with no buttons — you just ask, the agent builds)  (DEMONSTRATION)
 - **Subject:** An agent-operated content tool with no human UI: ask Claude Code in plain English and the AI agent drives it to produce copy + an image card + a captioned video in 3 shapes; built-in checker flags claims that don't match your facts.
