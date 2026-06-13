@@ -33,6 +33,7 @@
     "smoke:publish-typefully-post3:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully-post3.ts",
     "smoke:verify-published": "tsx smoke/verify-published.ts",
     "capture:demo": "tsx tools/captureDemo.ts",
+    "capture:fable": "tsx tools/captureFable.ts",
     "publish:freeze-manifest": "tsx tools/freeze-publish-manifest.ts",
     "archive:backfill": "tsx tools/backfill-posts-archive.ts",
     "e2e:lfah": "tsx smoke/e2e-lfah.ts"
