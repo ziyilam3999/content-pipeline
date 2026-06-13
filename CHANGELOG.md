@@ -1,3 +1,9 @@
+## [0.22.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.21.0...v0.22.0) (2026-06-13)
+
+### Features
+
+* **#867:** eyeball-gate — auto contact-sheet frame extractor (`video/contactSheet.ts`) plus a fail-closed, content-hash eyeball-ack gate so a paid render / publish stays blocked until a human looks at the actual rendered pixels for those exact bytes; includes red-flag asserts and a cross-platform (Windows/Linux/macOS) test of the contact-sheet orchestration ([#103](https://github.com/ziyilam3999/content-pipeline/pull/103))
+
 ## [0.21.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.20.3...v0.21.0) (2026-06-13)
 
 ### Features
