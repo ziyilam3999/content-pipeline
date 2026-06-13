@@ -1,12 +1,12 @@
 {
   "postSlug": "content-pipeline-demo-post4",
-  "frozenAt": "2026-06-13T07:18:21.212Z",
+  "frozenAt": "2026-06-13T14:20:39.578Z",
   "sourceDir": "out/review/fable",
   "assets": {
     "fable-voiced-9x16.mp4": {
       "role": "hero-video",
-      "sha256": "03fc957d739fe8c0c6460265e0350781bf1526408cb9b6dc863731f13b7d0eb1",
-      "bytes": 5948538
+      "sha256": "fce237f96dae3d43f6cdc5f7f1675a6bb5bf0bdca210f594f3125634d631c26e",
+      "bytes": 6133712
     },
     "card-post4-A.png": {
       "role": "card",
