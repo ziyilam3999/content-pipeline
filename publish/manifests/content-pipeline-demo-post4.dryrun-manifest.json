@@ -1,8 +1,8 @@
 {
   "postSlug": "content-pipeline-demo-post4",
   "category": "demonstration",
-  "structure": "video-led+text",
-  "generatedAt": "2026-06-13T06:24:31.438Z",
+  "structure": "video-hook+card-body",
+  "generatedAt": "2026-06-13T06:35:12.429Z",
   "mode": "dry-run",
   "liveDraftCreated": false,
   "socialSetId": "312308",
@@ -11,19 +11,7 @@
   "gates": {
     "provenance810": "PASS",
     "copyLimits809": "PASS",
-    "fidelity797": "BLOCKED-PENDING-DECISION",
-    "fidelity797Requires": {
-      "xThread": [
-        "unit 2 media-less",
-        "unit 3 media-less",
-        "unit 4 media-less",
-        "card-over-art still"
-      ],
-      "threads": [
-        "Threads is worded but carries no card-over-art still"
-      ],
-      "exemption": "none"
-    }
+    "fidelity797": "PASS"
   },
   "platforms": {
     "x": {
@@ -40,17 +28,32 @@
         },
         {
           "unit": 2,
-          "media": [],
+          "media": [
+            {
+              "kind": "card-over-art",
+              "file": "card-post4-A.png"
+            }
+          ],
           "text": "One plain-English ask becomes the whole post: the written copy, an image card, and a captioned video in 3 shapes — square, vertical, and portrait.\n\nEverything is built from the same facts you gave it, so the pieces never contradict each other."
         },
         {
           "unit": 3,
-          "media": [],
+          "media": [
+            {
+              "kind": "card-over-art",
+              "file": "card-post4-B.png"
+            }
+          ],
           "text": "The part I like: a built-in checker reads every number and claim in the copy and flags anything that doesn't match the facts you provided.\n\nSo the agent moves fast, but it can't quietly make things up."
         },
         {
           "unit": 4,
-          "media": [],
+          "media": [
+            {
+              "kind": "card-over-art",
+              "file": "card-post4-C.png"
+            }
+          ],
           "text": "It's a content tool built to be run by an AI agent, not a person — so there's no UI to learn. You just describe what you want and the agent builds it.\n\nIt's open-source, MIT licensed, and free to use 👇\ngithub.com/ziyilam3999/content-pipeline"
         }
       ]
@@ -63,6 +66,10 @@
             {
               "kind": "video",
               "file": "fable-voiced-9x16.mp4"
+            },
+            {
+              "kind": "card-over-art",
+              "file": "card-post4-A.png"
             }
           ],
           "text": "Most software has buttons. content-pipeline has none.\n\nYou don't learn it — you ask Claude Code in plain English: \"build me a launch post.\" The AI agent drives it and hands back the pieces: copy, an image card, and a captioned video in 3 shapes.\n\nA built-in checker flags any number or claim that doesn't match your facts — fast, but it can't quietly make things up.\n\nOpen-source, MIT, free to use. No UI to learn — just describe what you want 👇\ngithub.com/ziyilam3999/content-pipeline"
@@ -83,15 +90,21 @@
           },
           {
             "text": "One plain-English ask becomes the whole post: the written copy, an image card, and a captioned video in 3 shapes — square, vertical, and portrait.\n\nEverything is built from the same facts you gave it, so the pieces never contradict each other.",
-            "media_ids": []
+            "media_ids": [
+              "<upload:card-post4-A.png>"
+            ]
           },
           {
             "text": "The part I like: a built-in checker reads every number and claim in the copy and flags anything that doesn't match the facts you provided.\n\nSo the agent moves fast, but it can't quietly make things up.",
-            "media_ids": []
+            "media_ids": [
+              "<upload:card-post4-B.png>"
+            ]
           },
           {
             "text": "It's a content tool built to be run by an AI agent, not a person — so there's no UI to learn. You just describe what you want and the agent builds it.\n\nIt's open-source, MIT licensed, and free to use 👇\ngithub.com/ziyilam3999/content-pipeline",
-            "media_ids": []
+            "media_ids": [
+              "<upload:card-post4-C.png>"
+            ]
           }
         ]
       },
@@ -101,7 +114,8 @@
           {
             "text": "Most software has buttons. content-pipeline has none.\n\nYou don't learn it — you ask Claude Code in plain English: \"build me a launch post.\" The AI agent drives it and hands back the pieces: copy, an image card, and a captioned video in 3 shapes.\n\nA built-in checker flags any number or claim that doesn't match your facts — fast, but it can't quietly make things up.\n\nOpen-source, MIT, free to use. No UI to learn — just describe what you want 👇\ngithub.com/ziyilam3999/content-pipeline",
             "media_ids": [
-              "<upload:fable-voiced-9x16.mp4>"
+              "<upload:fable-voiced-9x16.mp4>",
+              "<upload:card-post4-A.png>"
             ]
           }
         ]

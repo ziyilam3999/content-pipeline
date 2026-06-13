@@ -76,17 +76,21 @@ export const POST_ASSETS: Record<PostSlug, PostAssetSpec> = {
       { role: "card", basename: "card-post3-C.png" },
     ],
   },
-  // Post #4 — content-pipeline DEMONSTRATION post (#824). This is a VIDEO-LED + TEXT post: the 85s
-  // voiced Fable-style demo IS the hero/demo, and the X body tweets + the Threads post are TEXT (the
-  // video carries the visual). So the ONLY published/uploaded asset is the full-bleed 9:16 hero video
-  // — there are NO cards (a deliberate demo-category structure, distinct from the introduction posts
-  // above which split the lead into a video hook + card body tweets). The canonical voiced render is
-  // `fable-voiced-9x16.mp4` (the #794 hero cut); its mobile proxy / 1x1 / 4x5 siblings are NOT uploaded.
+  // Post #4 — content-pipeline DEMONSTRATION post (#824). The 85s voiced Fable-style demo IS the
+  // hero/demo (tweet 1 + the Threads lead). The operator chose PER-TWEET CARDS for the body (like
+  // posts #1-#3) so the post passes the #797 consolidated fidelity gate: the X body tweets (2-4) each
+  // carry their own card-over-art still, and the Threads post carries a card alongside the hero video.
+  // The hero is the full-bleed 9:16 voiced cut (`fable-voiced-9x16.mp4`, #794); the three body cards
+  // (`card-post4-{A,B,C}.png`, 1:1) render over the demo's deterministic branded navy gradient — FREE,
+  // no generative art (#824 free-first). The hero's mobile proxy / 1x1 / 4x5 siblings are NOT uploaded.
   "content-pipeline-demo-post4": {
     slug: "content-pipeline-demo-post4",
     defaultBundleDir: path.join(LAUNCH_ASSETS_ROOT, "content-pipeline-demo-post4-20260613"),
     assets: [
       { role: "hero-video", basename: "fable-voiced-9x16.mp4" }, // full-bleed 9:16 voiced demo hero
+      { role: "card", basename: "card-post4-A.png" }, // tweet 2 — "One ask → the whole post"
+      { role: "card", basename: "card-post4-B.png" }, // tweet 3 — "A built-in fact-checker"
+      { role: "card", basename: "card-post4-C.png" }, // tweet 4 — "Run by an agent, not a person"
     ],
   },
 };

@@ -1,12 +1,27 @@
 {
   "postSlug": "content-pipeline-demo-post4",
-  "frozenAt": "2026-06-13T06:21:26.545Z",
+  "frozenAt": "2026-06-13T06:33:39.028Z",
   "sourceDir": "/Users/ansonlam/coding_projects/content-pipeline/.claude/worktrees/824-demo-fable/out/review/fable",
   "assets": {
     "fable-voiced-9x16.mp4": {
       "role": "hero-video",
       "sha256": "03fc957d739fe8c0c6460265e0350781bf1526408cb9b6dc863731f13b7d0eb1",
       "bytes": 5948538
+    },
+    "card-post4-A.png": {
+      "role": "card",
+      "sha256": "d811e857f0639a9edb3c5f7418ff470f000bff84237dccfb8d6c740f04334e06",
+      "bytes": 496356
+    },
+    "card-post4-B.png": {
+      "role": "card",
+      "sha256": "26b72576051d04ed49cdf1ece7f0cc4120abdb94aaffb990d3944f195608c4bf",
+      "bytes": 480718
+    },
+    "card-post4-C.png": {
+      "role": "card",
+      "sha256": "b9f086ad0c63c703dc408ab428eb7af50cedf5e1e6f8b1bc9a367b77d553f424",
+      "bytes": 465995
     }
   }
 }
