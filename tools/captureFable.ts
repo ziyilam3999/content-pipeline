@@ -57,91 +57,28 @@ import {
   CHAT_CONTENT_BOX,
   LOWER_THIRD_BOTTOM_PX,
 } from "../video/fableLayout";
+// The storyboard SSOT (beats + world colors + owner-leak) lives in a shared module so the #870 demo-
+// recipe contract can re-express it WITHOUT a circular import (see video/fableStoryboard.ts header).
+// Re-exported below for backward compatibility with existing `../captureFable` importers.
+import {
+  BG_TOOL,
+  BG_OUTPUT_A,
+  BG_OUTPUT_B,
+  type BeatKind,
+  type FableBeat,
+  FABLE_BEATS,
+  ownerLeak,
+} from "../video/fableStoryboard";
+// #870 — the generalized demonstration-category recipe contract + the shipped #824 spec instance.
+import { assertDemoCategoryRecipe, fableSpec } from "../video/demoCategoryRecipe";
+
+export { BG_TOOL, BG_OUTPUT_A, BG_OUTPUT_B, FABLE_BEATS, ownerLeak };
+export type { BeatKind, FableBeat };
 
 // ── Capture geometry (native 9:16 — fill the frame, no letterbox) ──────────────────────────────────
 export const CAP_W = 1080;
 export const CAP_H = 1920;
 export const CAP_FPS = 30;
-
-// ── The two VISUALLY DISTINCT worlds (the core of the reframe) ─────────────────────────────────────
-// THE TOOL — dark navy, teal accent (the agent's interface: terminal, hook, payoff, cta).
-export const BG_TOOL = "#0b1020";
-// THE OUTPUT — a LIGHT warm cream surface (unmistakably different from the dark tool world). The real
-// card / real video are FRAMED on this so the viewer can never confuse the output with the tool.
-export const BG_OUTPUT_A = "#f7f1e6"; // cream
-export const BG_OUTPUT_B = "#ecdfc8"; // deeper sand (gradient end)
-
-// ── The 8-beat storyboard (the approved REVISED ~90s spine) ────────────────────────────────────────
-
-export type BeatKind = "title" | "chat" | "terminal" | "transition" | "viewer-card" | "viewer-video";
-
-export interface FableBeat {
-  /** 1-based beat number. */
-  n: number;
-  kind: BeatKind;
-  /** On-screen lower-third / label (brand-clean, owner-clean). "" for pure title beats. */
-  stepLabel: string;
-  /** REAL commands streamed live (terminal beats only); [] otherwise. */
-  commands: string[];
-  /** Target rough-cut clip length (seconds). */
-  clipSec: number;
-  /** Title beats — the big headline + optional subtext + optional url (CTA). */
-  headline?: string;
-  sub?: string;
-  url?: string;
-  /** Chat beat — the genuine natural-language request the human types. */
-  chatRequest?: string;
-}
-
-export const FABLE_BEATS: ReadonlyArray<FableBeat> = [
-  // 1 — HOOK. Clean title on the tool/neutral world.
-  { n: 1, kind: "title", stepLabel: "", commands: [], clipSec: 6,
-    headline: "This tool has no buttons.", sub: "Because you're not the one using it." },
-  // 2 — CHAT. The HUMAN's interface: plain English to Claude Code. Honest chat-surface reconstruction.
-  { n: 2, kind: "chat", stepLabel: "you → Claude Code · plain English", commands: [], clipSec: 12,
-    chatRequest: "Build me a launch post about lfah — copy, a card, and a video." },
-  // 3 — TOOL. The agent's interface runs for real (FREE producers → the real hero card + MP4).
-  { n: 3, kind: "terminal", stepLabel: "content-pipeline — the agent's interface, not yours", clipSec: 15,
-    commands: ["IMAGE_SMOKE_ASPECT=9:16 npm run smoke:image", "npm run smoke:demo"] },
-  // 4 — TRANSITION. Explicit animated handoff: the output emerges from the tool, bg wipes tool → output.
-  { n: 4, kind: "transition", stepLabel: "", commands: [], clipSec: 3 },
-  // 5 — OUTPUT (card). Real produced card, FRAMED on the DISTINCT light output bg.
-  { n: 5, kind: "viewer-card", stepLabel: "the output", commands: [], clipSec: 12 },
-  // 6 — OUTPUT (video). Real produced MP4 playing, FRAMED on the DISTINCT light output bg.
-  { n: 6, kind: "viewer-video", stepLabel: "the output", commands: [], clipSec: 15 },
-  // 7 — PAYOFF. Recap the reframe.
-  { n: 7, kind: "title", stepLabel: "", commands: [], clipSec: 12,
-    headline: "You spoke. The agent built.", sub: "No UI to learn." },
-  // 8 — CTA.
-  { n: 8, kind: "title", stepLabel: "", commands: [], clipSec: 10,
-    headline: "content-pipeline", sub: "open-source · MIT", url: "github.com/ziyilam3999/content-pipeline" },
-];
-
-// ── Owner/username-leak detector (the OS login name must never reach a public capture frame) ──────
-// Mirrors the shipped #824 detector in tools/__tests__/captureTape.test.ts so beat commands stay clean.
-
-/** True if an `ls` invocation's flags would print the owner column (long-format with no `-g`/`-o`). */
-function lsShowsOwner(cmd: string): boolean {
-  if (!/(^|[\s;&|])ls(\s|$)/.test(cmd)) return false;
-  const clusters = (cmd.match(/(^|\s)-{1,2}[A-Za-z]+/g) ?? []).map((s) => s.trim().replace(/^-+/, ""));
-  const longFormat = clusters.some((c) => c.includes("l"));
-  const ownerSuppressed = clusters.some((c) => c.includes("g") || c.includes("o"));
-  return longFormat && !ownerSuppressed;
-}
-
-const OWNER_LEAK_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
-  { name: "whoami", re: /(^|[\s;&|])whoami(\s|$|[;&|])/i },
-  { name: "id (resolves uid/gid -> username)", re: /(^|[\s;&|])id(\s|$|[;&|])/i },
-  { name: "stat with owner format (%Su/%u/%U)", re: /\bstat\b[^|]*%-?\d*\.?\d*S?[uU]\b/i },
-  { name: "literal /Users/<name> path", re: /\/Users\/[^/\s"']+/i },
-];
-
-/** Returns the matched leak-rule name, or null if the command is owner-clean. */
-export function ownerLeak(cmd: string): string | null {
-  if (lsShowsOwner(cmd)) return "ls long-format (owner column)";
-  for (const p of OWNER_LEAK_PATTERNS) if (p.re.test(cmd)) return p.name;
-  return null;
-}
 
 /** Every brand-checkable on-screen text field a beat carries (labels + title text + chat request). */
 function beatTextFields(b: FableBeat): string[] {
@@ -640,6 +577,7 @@ async function runCapture(): Promise<void> {
   assertFableBeatsClean(FABLE_BEATS); // hard pre-flight (paid / brand / owner)
   assertNoCaptionMediaOverlap(); // #824 — embedded output media must clear the LEG-2 caption band
   assertFableBeatsSafeAndFilled(); // #824 video-fill-safe — every beat 4-side title-safe + fill beats FILL
+  assertDemoCategoryRecipe(fableSpec); // #870 — the whole demonstration-category recipe (R1–R11)
 
   const { chromium } = await import("playwright");
   const captureDir = path.join(REPO_ROOT_REAL, "out", "capture");
@@ -742,8 +680,10 @@ async function main(): Promise<void> {
   assertFableBeatsClean(FABLE_BEATS);
   assertNoCaptionMediaOverlap(); // #824 — cross-layer caption/media overlap gate (runs in --dry-run too)
   assertFableBeatsSafeAndFilled(); // #824 video-fill-safe — 4-side title-safe + fill (runs in --dry-run too)
+  assertDemoCategoryRecipe(fableSpec); // #870 — demonstration-category recipe (R1–R11) gate (dry-run too)
   if (dryRun) {
     const total = FABLE_BEATS.reduce((s, b) => s + b.clipSec, 0);
+    console.log("FABLE-CAPTURE: recipe-passed (#870 demonstration-category recipe R1–R11 enforced).");
     console.log(`FABLE-CAPTURE: --dry-run (gates passed: paid-free + brand-clean + owner-clean). 8 beats, ~${total}s:`);
     for (const b of FABLE_BEATS) {
       const what = b.kind === "terminal" ? b.commands.join("  ;  ")
