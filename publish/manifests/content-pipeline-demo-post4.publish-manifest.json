@@ -1,7 +1,7 @@
 {
   "postSlug": "content-pipeline-demo-post4",
-  "frozenAt": "2026-06-13T06:33:39.028Z",
-  "sourceDir": "/Users/ansonlam/coding_projects/content-pipeline/.claude/worktrees/824-demo-fable/out/review/fable",
+  "frozenAt": "2026-06-13T06:48:21.321Z",
+  "sourceDir": "out/review/fable",
   "assets": {
     "fable-voiced-9x16.mp4": {
       "role": "hero-video",
@@ -10,18 +10,18 @@
     },
     "card-post4-A.png": {
       "role": "card",
-      "sha256": "d811e857f0639a9edb3c5f7418ff470f000bff84237dccfb8d6c740f04334e06",
-      "bytes": 496356
+      "sha256": "be07acac0724887cb06e8b48b3b1fc8a1fdd4aa0a6d28b78e0ce3a6dc2e0fec0",
+      "bytes": 751559
     },
     "card-post4-B.png": {
       "role": "card",
-      "sha256": "26b72576051d04ed49cdf1ece7f0cc4120abdb94aaffb990d3944f195608c4bf",
-      "bytes": 480718
+      "sha256": "8cdc6381ce7a3258ab76f7215099291a320cbfbc58f6f4885b9f780cc879f957",
+      "bytes": 741787
     },
     "card-post4-C.png": {
       "role": "card",
-      "sha256": "b9f086ad0c63c703dc408ab428eb7af50cedf5e1e6f8b1bc9a367b77d553f424",
-      "bytes": 465995
+      "sha256": "9383dace882219c9091a60855e387d0b3fb1a4fc7d8649b0dff761c47d1e4f55",
+      "bytes": 734482
     }
   }
 }

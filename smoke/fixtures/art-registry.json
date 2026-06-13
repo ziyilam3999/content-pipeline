@@ -1,6 +1,7 @@
 {
   "_what": "CROSS-POST art-uniqueness registry (#802). Maps each launch post's slug -> the sha256 of the background ART PNG bytes that post's cards are composed over. The guard (smoke/art-registry.ts assertArtUnique) throws if a post would ship art whose sha256 is already registered to a DIFFERENT post — enforcing the operator rule: EVERY new post gets its OWN distinct artwork; cards within the SAME post may share art, but a new post must not inherit the previous post's art.",
   "_provenance": "post1 = sha256 of out/review/lfah/image/_art-base.png (the original nano-banana art post #1's cards were composed over, #787/#790). post2 = the fresh #803 nano-banana gen (_art-base-post2.png). Hashes are over the raw PNG bytes.",
+  "content-pipeline-post4": "37f51fa3d0d3b684b1499427214927aaafd66412eca82f8bf89e722fdf54ba9e",
   "forge-harness-post3": "709bbde557c8189651d8580125f8edac96d289f912277af3608e65c384825bcb",
   "post1": "d3cd57f36e89f7b332460ebf47be099ab15ce5e124a6cd0d0667ae945fed3ecd",
   "post2": "6c1aa18b9936bebad05d44962c02e2cf2bddd2a1237a7707eaaba669c8f1db2b"

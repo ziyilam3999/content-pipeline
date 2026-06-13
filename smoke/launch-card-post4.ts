@@ -1,5 +1,5 @@
 /**
- * Post #4 "content-pipeline DEMO" per-tweet CARD-OVER-ART generator (#824 per-tweet-cards).
+ * Post #4 "content-pipeline DEMO" per-tweet CARD-OVER-ART generator (#824 cards-generative-art).
  *
  * The operator chose per-tweet cards for the demonstration post (like posts #1-#3) so it passes the
  * #797 consolidated fidelity gate (every worded X tweet carries media + a card-over-art still, and the
@@ -10,14 +10,23 @@
  *   out/review/fable/card-post4-B.png   ("A built-in fact-checker"       — tweet 3)
  *   out/review/fable/card-post4-C.png   ("Run by an agent, not a person" — tweet 4 / CTA)
  *
- * COST DISCIPLINE — FREE, NO PAID GENERATIVE ART (#824 brief, free-first):
- *   These cards render over the DETERMINISTIC BRANDED background `buildCardHtml` falls back to when no
- *   `backgroundDataUri` is supplied — the dark-navy radial gradient (#1a2a4a → #0a0f1e) with the teal
- *   accent (#38d39f). That IS the demo VIDEO's visual language (the navy "tool" world / clean modern
- *   type / teal accent), so the post stays coherent with the hero. `renderImage` is called with
- *   `generative: false` ⇒ NO nano-banana call, NO Gemini key, ZERO paid spend, fully deterministic.
- *   There is intentionally NO `:paid` variant and NO art-registry: these are branded-gradient cards,
- *   not card-over-generated-art, and the #797 gate is satisfied by a clean branded card.
+ * GENERATIVE ART (#824 cards-generative-art — operator GO for ONE paid gen ~8-12¢):
+ *   These cards render OVER a real nano-banana creative background — ONE unique per-post art base
+ *   (`_art-base-content-pipeline-post4.png`), generated ONCE (PAID) and reused (fanned out) behind all
+ *   three cards (within-post sharing is correct & cheap). The art is on-brand for the demo (dark navy
+ *   "tool world" / agent-automation aesthetic / teal accent) but distinct in motif from the lfah/forge
+ *   art. It is brand-clean (no employer brand, no text-in-art). The card text overlays the art with the
+ *   established card translucent-tile contrast — the same legible card-over-art path posts #1-#3 use.
+ *
+ *   PER-POST UNIQUE ART (#802/#803): the art cache key is POST-SCOPED (`content-pipeline-post4`) and the
+ *   committed cross-post art-registry guard (`smoke/art-registry.ts assertArtUnique`) HARD-FAILS if this
+ *   post's art sha256 is already registered to any prior post (post1/post2/forge-harness-post3). One paid
+ *   gen, fanned out, registered unique.
+ *
+ *   SAFE BY DEFAULT: the unpaid path reuses the post-scoped cached art if present (free) else a
+ *   deterministic 1x1 placeholder — ZERO spend, CI-safe. The ONE paid nano-banana gen is gated behind
+ *   LAUNCH_CARD_PAID=1, mirroring the house *_PAID convention. PRIMARY-ONLY: a forced paid run that did
+ *   not produce real art THROWS (no false paid pass).
  *
  * The card WORDS are defined inline here (the canonical card source) and are coherent with — never
  * contradict — the reviewed copy `.ai-workspace/posts/post4-content-pipeline-demo-copy.json`
@@ -25,7 +34,9 @@
  * brand-clean (no employer brand), MIT-honest, and qualitative (no invented metrics — the post claims
  * none). Each card's rendered HTML is asserted to contain its verbatim lines (a render-fidelity guard).
  *
- * Run: `npx tsx smoke/launch-card-post4.ts`   (SAFE — deterministic branded cards, ZERO paid spend)
+ * Run: `npx tsx smoke/launch-card-post4.ts`                  (SAFE — reuses post-4 cached art / placeholder)
+ *      `LAUNCH_CARD_PAID=1 npx tsx smoke/launch-card-post4.ts` (PAID — ONE fresh nano-banana gen)
+ *        Key from $GEMINI_API_KEY or macOS Keychain (service "GEMINI_API_KEY").
  */
 
 import * as fs from "fs";
@@ -36,9 +47,68 @@ import { CONFIG, type AspectRatio } from "../config";
 import { buildCardHtml } from "../image/card";
 import { type ContentSpec, type Fact } from "../inputs/contentspec";
 import { type CopyResult } from "../pipeline/run";
+import {
+  artBasePngPath,
+  generateArtOnce,
+  type GenerateArtOnceOpts,
+} from "./launch-card";
+import {
+  assertArtUnique,
+  loadRegistry,
+  registerArt,
+  saveRegistry,
+  sha256File,
+} from "./art-registry";
+
+const PAID = process.env.LAUNCH_CARD_PAID === "1";
 
 const REPO_URL = "https://github.com/ziyilam3999/content-pipeline";
 const COPY_SRC = ".ai-workspace/posts/post4-content-pipeline-demo-copy.json";
+
+/** Post #4's stable slug — the post-scoped art cache key + cross-post registry key (#802). */
+const POST4_SLUG = "content-pipeline-post4";
+
+/**
+ * Post #4's OWN art-theme prompt (#802). Appended to the brand-safe base prompt so the gen is DISTINCT
+ * from Post #1 (data/benchmark chart), Post #2 (red→green build loop) and Post #3 (forge embers / molten
+ * blocks). content-pipeline vibe — an AI agent driving a content tool: one plain-English ask flowing
+ * through an automation pipeline that fans OUT into three shaped output frames. Abstract/tech, on-brand
+ * with the demo's navy "tool world" + teal accent, brand-clean, NO employer brand, NO text/logos.
+ */
+const POST4_PROMPT_EXTRA =
+  "Evoke an AI AGENT driving a CONTENT PIPELINE: a single luminous stream of light (one plain-English " +
+  "ask) flowing left-to-right through an elegant automation conduit and FANNING OUT into three softly " +
+  "glowing rectangular output panels of different proportions (a square, a tall vertical, a portrait) — " +
+  "media pieces gliding along a ribbon of light like a conveyor. Cool TEAL-GREEN and indigo accents " +
+  "threading through deep NAVY-to-black (the demo's navy 'tool world'), clean cinematic depth-of-field, " +
+  "subtle circuitry and particle-flow — distinct in motif from a data chart, a red-to-green test bar, or " +
+  "molten forge embers. Keep the center and upper-left calm/uncluttered for text overlaid later.";
+
+const POST4_ART_OPTS: GenerateArtOnceOpts = {
+  postSlug: POST4_SLUG,
+  promptExtra: POST4_PROMPT_EXTRA,
+};
+
+/**
+ * A minimal MASTER ContentSpec whose `product.summary` becomes the nano-banana art theme line
+ * (`buildArtPrompt` reads `spec.product.summary`). Only the art generator consumes this — the cards
+ * carry their own per-card specs (post4CardSpec). Brand-clean: no employer brand, qualitative.
+ */
+function post4ArtMasterSpec(): ContentSpec {
+  return {
+    product: {
+      name: "content-pipeline",
+      summary:
+        "an AI agent driving a content pipeline — one plain-English ask becomes copy, an image card, " +
+        "and a captioned video in three shapes",
+      repoUrl: REPO_URL,
+    },
+    facts: [],
+    highlights: [],
+    ctas: [],
+    sourceFiles: [COPY_SRC],
+  };
+}
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 function isPng(buf: Buffer): boolean {
@@ -131,12 +201,12 @@ async function renderPost4Card(
   card: Post4Card,
   aspect: AspectRatio,
   outDir: string,
+  artDataUri: string,
 ): Promise<{ outPath: string; bytes: number; fitScale: number }> {
   const spec = post4CardSpec(card);
   const fileName = `card-post4-${card.id}.png`;
 
-  // Verbatim DOM check: buildCardHtml (with NO backgroundDataUri ⇒ the branded navy gradient) is what
-  // renderImage renders in the generative:false path. Confirm every line's text is present.
+  // Verbatim DOM check: buildCardHtml is what renderImage renders. Confirm every line's text is present.
   const html = buildCardHtml(spec, CONFIG.aspects[aspect], { maxFacts: card.lines.length });
   for (const line of card.lines) {
     if (!html.includes(esc(line.prefix)) || !html.includes(esc(line.value))) {
@@ -147,15 +217,17 @@ async function renderPost4Card(
   }
 
   let fitScale = 1;
-  // generative:false ⇒ deterministic branded navy gradient background, NO paid art call.
+  // generative:true ⇒ compose the card over the ONE shared nano-banana art (fanned out via the
+  // injected caller — no further generation). The card's translucent tiles keep the text legible.
   const outPath = await renderImage(
     { spec, copy: copyFor(spec) },
     {
-      generative: false,
+      generative: true,
       aspect,
       outDir,
       fileName,
       maxFacts: card.lines.length,
+      genartDeps: { caller: async () => artDataUri }, // fan the single shared art out
       onFit: (s) => {
         fitScale = s;
       },
@@ -191,11 +263,47 @@ async function main(): Promise<void> {
   const outDir = path.join(process.cwd(), "out", "review", "fable");
   fs.mkdirSync(outDir, { recursive: true });
 
-  console.log("→ Post #4 'content-pipeline demo' body card SET (FREE — deterministic branded navy gradient, ZERO paid spend)");
+  console.log(
+    `→ Post #4 'content-pipeline demo' body card SET (${
+      PAID
+        ? "PAID — ONE fresh nano-banana gen for post #4"
+        : "SAFE — reuses post-4 cached art / placeholder, ZERO paid spend"
+    })`,
+  );
+
+  // ONE shared background reused behind all three cards of THIS post. POST-SCOPED cache key
+  // (postSlug="content-pipeline-post4") → its OWN `_art-base-content-pipeline-post4.png`.
+  const artDataUri = await generateArtOnce(post4ArtMasterSpec(), PAID, outDir, POST4_ART_OPTS);
+
+  // CROSS-POST UNIQUENESS GUARD (#802/#803). Hash the post-scoped art file and assert it is NOT any
+  // prior post's (post1/post2/forge-harness-post3); then register it.
+  const artPng = artBasePngPath(outDir, POST4_SLUG);
+  let post4Sha: string | undefined;
+  let usedPath: string;
+  if (fs.existsSync(artPng)) {
+    post4Sha = sha256File(artPng);
+    const registry = loadRegistry();
+    assertArtUnique(POST4_SLUG, post4Sha, registry); // throws if post4 would ship another post's art
+    saveRegistry(registerArt(POST4_SLUG, post4Sha, registry));
+    usedPath = "nano-banana";
+    console.log(`  art-file=${artPng}`);
+    console.log(`  art-sha256(content-pipeline-post4)=${post4Sha}`);
+    console.log(`  cross-post uniqueness: PASS — post4 art ≠ any other post's; registered.`);
+  } else {
+    usedPath = "placeholder";
+  }
+
+  // PAID-PATH PROOF (#803, feedback_smoke_prove_primary_not_fallback).
+  if (PAID && usedPath !== "nano-banana") {
+    throw new Error(
+      `SMOKE FAIL: LAUNCH_CARD_PAID=1 but the real nano-banana art was not produced (no ${artPng}). ` +
+        `The paid primary path did not run — refusing to report a false paid pass.`,
+    );
+  }
 
   const written: { name: string; outPath: string; bytes: number }[] = [];
   for (const card of POST4_CARDS) {
-    const { outPath, bytes, fitScale } = await renderPost4Card(card, "1:1", outDir);
+    const { outPath, bytes, fitScale } = await renderPost4Card(card, "1:1", outDir, artDataUri);
     written.push({ name: `card-post4-${card.id}.png`, outPath, bytes });
     console.log(
       `  1:1 card-post4-${card.id}.png ("${card.title}", tweet ${card.tweet}): ${(bytes / 1024).toFixed(1)} KB → ${outPath}`,
@@ -203,11 +311,18 @@ async function main(): Promise<void> {
     console.log(`  card-post4-${card.id} fit: ${card.lines.length}/${card.lines.length} tiles within frame, scale=${fitScale.toFixed(3)}`);
   }
 
-  console.log(`\nSMOKE-PATH: primary="branded-gradient" used="branded-gradient" paid=false clean=true`);
+  console.log(
+    `\nART-PATH: primary="nano-banana" used="${usedPath}" paid=${PAID ? "true" : "false"}` +
+      (post4Sha ? ` sha256="${post4Sha}"` : ""),
+  );
+  console.log(`SMOKE-PATH: primary="nano-banana" used="${usedPath}" clean=true`);
   for (const w of written) console.log(`ARTIFACT: ${w.outPath} (${w.bytes} bytes)`);
   console.log(
-    `\nSMOKE PASS (FREE): ${written.length} Post-#4 demo body cards composed over the deterministic branded ` +
-      `navy gradient (the demo's visual language); no paid call, real repo URL, brand-clean.`,
+    PAID
+      ? `\nSMOKE PASS (PAID): ${written.length} Post-#4 demo body cards composed over ONE fresh nano-banana art ` +
+          `(post-scoped, ≠ post1/post2/post3); registered unique, real repo URL, brand-clean.`
+      : `\nSMOKE PASS (SAFE): ${written.length} Post-#4 demo body cards composed over the post-4 cached art / ` +
+          `placeholder; no paid call, real repo URL, brand-clean.`,
   );
 }
 
