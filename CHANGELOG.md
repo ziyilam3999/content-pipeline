@@ -1,3 +1,9 @@
+## [0.22.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.22.0...v0.22.1) (2026-06-13)
+
+### Bug Fixes
+
+* **#824:** demo video chat beat now fills the frame (distributed rows + an honest copy/card/video deliverables checklist) and reserves the synced-caption band so the bottom rows clear the caption; baked both-ends layout gates (`assertChatBeatInteriorFill`, `assertChatContentClearsCaptionBand`) into `assertFableBeatsSafeAndFilled` ([#105](https://github.com/ziyilam3999/content-pipeline/pull/105))
+
 ## [0.22.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.21.0...v0.22.0) (2026-06-13)
 
 ### Features
