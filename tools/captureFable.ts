@@ -291,10 +291,10 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;background:
   radial-gradient(1200px 1200px at 50% 30%, #131a31 0%, ${BG_TOOL} 60%);overflow:hidden}
 #wrap{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
   text-align:center;padding:0 120px;font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif}
-.h{color:#eef2fb;font:800 96px/1.1 inherit;letter-spacing:-1.5px;animation:rise .8s ease-out both}
-.sub{color:#9fb0d8;font:500 52px/1.3 inherit;margin-top:40px;animation:rise .8s .15s ease-out both}
-.url{color:#5eead4;font:600 40px/1.2 ui-monospace,Menlo,monospace;margin-top:64px;
-  border:2px solid rgba(94,234,212,.4);border-radius:999px;padding:22px 44px;animation:rise .8s .3s ease-out both}
+.h{color:#eef2fb;font-family:inherit;font-weight:800;font-size:104px;line-height:1.08;letter-spacing:-2px;animation:rise .8s ease-out both}
+.sub{color:#9fb0d8;font-family:inherit;font-weight:500;font-size:54px;line-height:1.3;margin-top:44px;animation:rise .8s .15s ease-out both}
+.url{color:#5eead4;font-family:ui-monospace,Menlo,monospace;font-weight:600;font-size:42px;line-height:1.2;margin-top:72px;
+  border:2px solid rgba(94,234,212,.4);border-radius:999px;padding:24px 46px;animation:rise .8s .3s ease-out both}
 @keyframes rise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
 </style></head><body><div id="wrap">
   <div class="h">${headline}</div>${subHtml}${urlHtml}
