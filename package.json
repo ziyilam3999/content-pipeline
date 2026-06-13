@@ -38,7 +38,7 @@
     "archive:backfill": "tsx tools/backfill-posts-archive.ts",
     "e2e:lfah": "tsx smoke/e2e-lfah.ts"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
