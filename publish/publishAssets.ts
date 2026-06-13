@@ -14,7 +14,11 @@
 import * as os from "os";
 import * as path from "path";
 
-export type PostSlug = "lfah-post1" | "lfah-post2" | "forge-harness-post3";
+export type PostSlug =
+  | "lfah-post1"
+  | "lfah-post2"
+  | "forge-harness-post3"
+  | "content-pipeline-demo-post4";
 
 /** The role of a published asset — drives the hero-aspect/fidelity story + clearer error messages. */
 export type AssetRole = "hero-video" | "card";
@@ -72,9 +76,27 @@ export const POST_ASSETS: Record<PostSlug, PostAssetSpec> = {
       { role: "card", basename: "card-post3-C.png" },
     ],
   },
+  // Post #4 — content-pipeline DEMONSTRATION post (#824). This is a VIDEO-LED + TEXT post: the 85s
+  // voiced Fable-style demo IS the hero/demo, and the X body tweets + the Threads post are TEXT (the
+  // video carries the visual). So the ONLY published/uploaded asset is the full-bleed 9:16 hero video
+  // — there are NO cards (a deliberate demo-category structure, distinct from the introduction posts
+  // above which split the lead into a video hook + card body tweets). The canonical voiced render is
+  // `fable-voiced-9x16.mp4` (the #794 hero cut); its mobile proxy / 1x1 / 4x5 siblings are NOT uploaded.
+  "content-pipeline-demo-post4": {
+    slug: "content-pipeline-demo-post4",
+    defaultBundleDir: path.join(LAUNCH_ASSETS_ROOT, "content-pipeline-demo-post4-20260613"),
+    assets: [
+      { role: "hero-video", basename: "fable-voiced-9x16.mp4" }, // full-bleed 9:16 voiced demo hero
+    ],
+  },
 };
 
 /** Type-guard: is `s` a known post slug? */
 export function isPostSlug(s: string): s is PostSlug {
-  return s === "lfah-post1" || s === "lfah-post2" || s === "forge-harness-post3";
+  return (
+    s === "lfah-post1" ||
+    s === "lfah-post2" ||
+    s === "forge-harness-post3" ||
+    s === "content-pipeline-demo-post4"
+  );
 }

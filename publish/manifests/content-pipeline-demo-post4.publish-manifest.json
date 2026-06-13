@@ -1,0 +1,12 @@
+{
+  "postSlug": "content-pipeline-demo-post4",
+  "frozenAt": "2026-06-13T06:21:26.545Z",
+  "sourceDir": "/Users/ansonlam/coding_projects/content-pipeline/.claude/worktrees/824-demo-fable/out/review/fable",
+  "assets": {
+    "fable-voiced-9x16.mp4": {
+      "role": "hero-video",
+      "sha256": "03fc957d739fe8c0c6460265e0350781bf1526408cb9b6dc863731f13b7d0eb1",
+      "bytes": 5948538
+    }
+  }
+}
