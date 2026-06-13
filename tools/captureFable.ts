@@ -50,6 +50,7 @@ import { spawnSync } from "child_process";
 import { assertCaptureCommandsFree, assertCaptureBrandClean } from "./captureDemo";
 import { assertBrandClean } from "../inputs/frames";
 import { resolveVendoredFfmpeg, probeRender, parseVideoDimensions } from "../video/renderProbe";
+import { outputDeviceSpineRect, assertNoCaptionMediaOverlap } from "../video/fableLayout";
 
 // ── Capture geometry (native 9:16 — fill the frame, no letterbox) ──────────────────────────────────
 export const CAP_W = 1080;
@@ -337,6 +338,7 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;b
  * island) and the framed card dominates (~86% width). A slow Ken-Burns keeps the framed card alive.
  */
 export function buildViewerCardHtml(cardDataUri: string, label = "the output"): string {
+  const d = outputDeviceSpineRect();
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;
@@ -344,7 +346,9 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;
   font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif}
 #pill{position:absolute;left:50%;top:64px;transform:translateX(-50%);background:#14100c;color:#f7f1e6;
   border-radius:999px;font:700 30px/1.2 inherit;padding:18px 40px;letter-spacing:.3px;z-index:2}
-#device{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);width:86%;aspect-ratio:9/16;
+/* #824 caption-overlap-fix: device INSET into the upper region (top..bottom from fableLayout.OUTPUT_DEVICE)
+   so the lower-third caption band lands in clear cream BELOW it. Bottom clears every aspect's band. */
+#device{position:absolute;left:50%;top:${d.top}px;transform:translateX(-50%);width:${d.right - d.left}px;height:${d.bottom - d.top}px;
   border-radius:34px;overflow:hidden;border:10px solid #0e1424;box-shadow:0 40px 110px rgba(60,40,10,.32)}
 #device img{width:100%;height:100%;object-fit:cover;display:block;animation:kb 13s ease-out forwards}
 @keyframes kb{from{transform:scale(1.0)}to{transform:scale(1.07)}}
@@ -356,6 +360,7 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;
 
 /** OUTPUT — video viewer. Plays the REAL produced MP4, FRAMED on the DISTINCT light output world. */
 export function buildViewerVideoHtml(videoUrl: string, label = "the output"): string {
+  const d = outputDeviceSpineRect();
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;
@@ -363,7 +368,9 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;
   font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif}
 #pill{position:absolute;left:50%;top:64px;transform:translateX(-50%);background:#14100c;color:#f7f1e6;
   border-radius:999px;font:700 30px/1.2 inherit;padding:18px 40px;letter-spacing:.3px;z-index:2}
-#device{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);width:86%;aspect-ratio:9/16;
+/* #824 caption-overlap-fix: device INSET into the upper region (see fableLayout.OUTPUT_DEVICE) so the
+   lower-third caption band lands in clear cream BELOW it. Bottom clears every aspect's band. */
+#device{position:absolute;left:50%;top:${d.top}px;transform:translateX(-50%);width:${d.right - d.left}px;height:${d.bottom - d.top}px;
   border-radius:34px;overflow:hidden;border:10px solid #0e1424;box-shadow:0 40px 110px rgba(60,40,10,.32);background:#000}
 #device video{width:100%;height:100%;object-fit:cover;display:block}
 </style></head><body>
@@ -573,6 +580,7 @@ function concatBeats(beatMp4s: string[], outMp4: string): void {
 
 async function runCapture(): Promise<void> {
   assertFableBeatsClean(FABLE_BEATS); // hard pre-flight (paid / brand / owner)
+  assertNoCaptionMediaOverlap(); // #824 — embedded output media must clear the LEG-2 caption band
 
   const { chromium } = await import("playwright");
   const captureDir = path.join(REPO_ROOT_REAL, "out", "capture");
@@ -673,6 +681,7 @@ async function runCapture(): Promise<void> {
 async function main(): Promise<void> {
   const dryRun = process.argv.includes("--dry-run");
   assertFableBeatsClean(FABLE_BEATS);
+  assertNoCaptionMediaOverlap(); // #824 — cross-layer caption/media overlap gate (runs in --dry-run too)
   if (dryRun) {
     const total = FABLE_BEATS.reduce((s, b) => s + b.clipSec, 0);
     console.log(`FABLE-CAPTURE: --dry-run (gates passed: paid-free + brand-clean + owner-clean). 8 beats, ~${total}s:`);

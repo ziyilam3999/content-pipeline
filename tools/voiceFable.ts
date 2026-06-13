@@ -41,6 +41,7 @@ import {
 import { narrationSceneEndTimes } from "../video/demoTimeline";
 import { buildDemoCaptionCues } from "../video/demoCaptions";
 import { assertAudioMatchesSync, audioDurationSec } from "../video/audioDuration";
+import { FABLE_ASPECTS, CAP_BAND_H, assertNoCaptionMediaOverlap } from "../video/fableLayout";
 import {
   type VoiceCaller,
   type VoiceClip,
@@ -60,26 +61,16 @@ const FFPROBE = "/opt/homebrew/bin/ffprobe";
 // full-frame Remotion base. The caption band is a fixed 1080-wide strip; only the overlay Y changes
 // per aspect, so ONE set of PNGs serves all three aspects.
 const CAP_BAND_W = 1080;
-const CAP_BAND_H = 240;
+// Caption-band geometry (height) + the per-aspect crop/captionY now live in the SHARED layout SSOT
+// (video/fableLayout.ts) so the cross-layer caption-overlap assertion sees the SAME numbers the render
+// uses. The output file name is the only voiceFable-specific bit, mapped here by aspect key.
+const ASPECT_FILE: Record<string, string> = {
+  "9:16": "fable-voiced-9x16.mp4",
+  "1:1": "fable-voiced-1x1.mp4",
+  "4:5": "fable-voiced-4x5.mp4",
+};
 
 const PAID = process.env.FABLE_VOICE_PAID === "1";
-
-// ── Aspect crop specs (center-crop the 9:16 spine to FILL each frame — no letterbox) ──────────
-interface Aspect {
-  key: string;
-  fileName: string;
-  width: number;
-  height: number;
-  /** Center-crop expression from the 1080×1920 spine ("" = no crop, native 9:16). */
-  crop: string;
-  /** Caption-band top Y in THIS aspect's frame (lower third, clear of the bottom edge). */
-  captionY: number;
-}
-const ASPECTS: Aspect[] = [
-  { key: "9:16", fileName: "fable-voiced-9x16.mp4", width: 1080, height: 1920, crop: "", captionY: 1430 },
-  { key: "1:1", fileName: "fable-voiced-1x1.mp4", width: 1080, height: 1080, crop: `crop=1080:1080:0:${(1920 - 1080) / 2}`, captionY: 820 },
-  { key: "4:5", fileName: "fable-voiced-4x5.mp4", width: 1080, height: 1350, crop: `crop=1080:1350:0:${(1920 - 1350) / 2}`, captionY: 1090 },
-];
 
 // ── ffmpeg/ffprobe helpers (system binaries) ────────────────────────────────
 function ff(args: string[], label: string): void {
@@ -194,24 +185,57 @@ async function main(): Promise<void> {
   const script = fableNarrationScript();
   console.log(`\n=== #824 Fable VOICED — ${FABLE_NARRATION.length} beats, ${script.length} script chars, ${PAID ? "PAID (real Adam synth)" : "FREE (mock alignment, NO paid call)"} ===\n`);
 
-  // 1 — synth the Adam VO (paid only behind the gate; mock otherwise).
-  const fileName = PAID ? "fable-vo.mp3" : "fable-vo.wav";
-  const voice = await synthesizeVoiceToFile(
-    { script },
-    PAID ? undefined : { primary: mockVoiceCaller(85) },
-    { outDir: audioDir, fileName },
-  );
-  console.log(`  ${voice.pathLine}`);
-  const charEndTimesSec = voice.charEndTimesSec;
+  // 1 — obtain the Adam VO. Three sources, in priority order:
+  //   PAID    (FABLE_VOICE_PAID=1)                 → real ElevenLabs synth (operator-only, costs $).
+  //   REUSE   (prior real mp3 + sync bundle exist) → FREE: re-use the existing Adam VO + alignment, NO
+  //            paid call (#824 caption-overlap re-render reuses the same VO — no ElevenLabs re-hit).
+  //   MOCK    (fresh, no prior synth)              → FREE silent mock for dev/CI.
+  const existingMp3 = path.join(audioDir, "fable-vo.mp3");
+  const existingBundle = path.join(reviewDir, "fable-vo-sync.json");
+  const canReuse = !PAID && fs.existsSync(existingMp3) && fs.existsSync(existingBundle);
+
+  let audioPath: string;
+  let charEndTimesSec: number[] | undefined;
+  let durationSec: number;
+  let voiceProvider: string; // canonical provider for the bundle (no "(reused)" nesting)
+  let providerLabel: string; // human label for the console log
+
+  if (canReuse) {
+    const prior = JSON.parse(fs.readFileSync(existingBundle, "utf8"));
+    if (prior.script !== script) {
+      throw new Error(
+        "voiceFable: out/review/fable/fable-vo-sync.json was synthesized from a DIFFERENT script — its alignment " +
+          "cannot be reused. Re-synthesize the VO with FABLE_VOICE_PAID=1 (paid) or delete the stale bundle.",
+      );
+    }
+    audioPath = existingMp3;
+    charEndTimesSec = prior.charEndTimesSec as number[];
+    durationSec = prior.durationSec as number;
+    voiceProvider = prior.voiceProvider as string;
+    providerLabel = `${voiceProvider} (reused — FREE, no paid call)`;
+    console.log(`  REUSE: existing Adam VO ${path.relative(repoRoot, existingMp3)} (${durationSec.toFixed(2)}s, ${charEndTimesSec.length} char-timestamps)`);
+  } else {
+    const fileName = PAID ? "fable-vo.mp3" : "fable-vo.wav";
+    const voice = await synthesizeVoiceToFile(
+      { script },
+      PAID ? undefined : { primary: mockVoiceCaller(85) },
+      { outDir: audioDir, fileName },
+    );
+    console.log(`  ${voice.pathLine}`);
+    audioPath = voice.audioPath;
+    charEndTimesSec = voice.charEndTimesSec;
+    durationSec = voice.durationSec;
+    voiceProvider = voice.usedProvider;
+    providerLabel = voice.usedProvider;
+  }
   if (!charEndTimesSec || charEndTimesSec.length === 0) throw new Error("voiceFable: no per-character alignment returned — cannot sync.");
-  const durationSec = voice.durationSec;
-  console.log(`  VO duration = ${durationSec.toFixed(2)}s (Adam, ${voice.usedProvider})`);
+  console.log(`  VO duration = ${durationSec.toFixed(2)}s (Adam, ${providerLabel})`);
 
   // 2 — per-beat end-times from the alignment + provenance bind.
   const sceneEndTimesSec = narrationSceneEndTimes(FABLE_NARRATION, charEndTimesSec, durationSec);
   if (!sceneEndTimesSec) throw new Error("voiceFable: narrationSceneEndTimes returned null — the alignment did not line up with the script.");
-  assertAudioMatchesSync(voice.audioPath, sceneEndTimesSec);
-  const audioDur = audioDurationSec(voice.audioPath);
+  assertAudioMatchesSync(audioPath, sceneEndTimesSec);
+  const audioDur = audioDurationSec(audioPath);
   console.log(`  per-beat end-times (s): ${sceneEndTimesSec.map((s) => s.toFixed(2)).join(", ")}`);
   console.log(`  assertAudioMatchesSync: PASS (audio=${audioDur?.toFixed(2) ?? "?"}s ≈ alignment end=${sceneEndTimesSec[sceneEndTimesSec.length - 1].toFixed(2)}s)`);
 
@@ -251,12 +275,15 @@ async function main(): Promise<void> {
   const capPngs = await renderCaptionPngs(cues, pngDir, chromium);
 
   // 5 — render each aspect (crop → overlay the timed caption PNGs → mux Adam VO).
+  // #824 — CROSS-LAYER gate: the embedded output-beat media (sized in LEG-1 captureFable) must NOT
+  // intersect this caption band (sized here) on ANY aspect. Fail BEFORE spending the render.
+  assertNoCaptionMediaOverlap(FABLE_ASPECTS);
   const rendered: { aspect: string; file: string; width: number; height: number; durationSec: number; hasAudio: boolean; bytes: number }[] = [];
-  for (const a of ASPECTS) {
+  for (const a of FABLE_ASPECTS) {
     // Inputs: 0 = spine, 1..N = caption PNGs, N+1 = audio.
     const inputs: string[] = ["-i", spine];
     for (const p of capPngs) inputs.push("-i", p);
-    inputs.push("-i", voice.audioPath);
+    inputs.push("-i", audioPath);
     const audioIdx = capPngs.length + 1;
 
     // Filter: crop the spine to the aspect, then chain one timed overlay per caption.
@@ -270,7 +297,7 @@ async function main(): Promise<void> {
       );
       prev = next;
     }
-    const out = path.join(reviewDir, a.fileName);
+    const out = path.join(reviewDir, ASPECT_FILE[a.key]);
     ff([
       "-y", ...inputs,
       "-filter_complex", parts.join(";"),
@@ -304,7 +331,7 @@ async function main(): Promise<void> {
     task: 824,
     leg: 2,
     paidCall: PAID,
-    voiceProvider: voice.usedProvider,
+    voiceProvider,
     voiceName: "Adam",
     voiceGender: "male",
     script,
@@ -314,7 +341,7 @@ async function main(): Promise<void> {
     charEndTimesSec: charEndTimesSec.map((s) => Number(s.toFixed(4))),
     captionCount: cues.length,
     captions: cues.map((c) => ({ text: fableCaptionDisplayText(c.text), startSec: Number(c.startSec.toFixed(3)), endSec: Number(c.endSec.toFixed(3)) })),
-    audioPath: voice.audioPath,
+    audioPath,
     renders: rendered.map((r) => ({ aspect: r.aspect, file: path.relative(repoRoot, r.file), width: r.width, height: r.height, durationSec: Number(r.durationSec.toFixed(3)), bytes: r.bytes })),
     mobileProxy: { file: path.relative(repoRoot, proxy), bytes: proxyBytes },
     createdAt: new Date().toISOString(),
