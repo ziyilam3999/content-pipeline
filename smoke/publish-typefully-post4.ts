@@ -29,15 +29,25 @@
  *   npx tsx smoke/launch-card-post4.ts                 (render the 3 branded body cards — FREE)
  *   npm run publish:freeze-manifest -- content-pipeline-demo-post4 --from <out/review/fable dir>
  *   npm run smoke:publish-typefully-post4              (dry-run, zero network)
+ *   npm run smoke:publish-typefully-post4:live         (LIVE DRAFT — orchestrator only, after operator YES)
  *
- * There is intentionally NO `:live` variant in this smoke — going live is the orchestrator's gated
- * outward step (explicit operator YES), not something this dry-run assembler performs.
+ * LIVE (TYPEFULLY_LIVE=1): runs the SAME provenance/length/fidelity gates, then verifies auth, uploads
+ * the hero video + the 3 body cards via the presigned flow, and creates a Typefully DRAFT (publish_at
+ * is NEVER sent ⇒ the content stays a DRAFT; the operator does the final Publish manually). After
+ * creating it reads the draft back (#793) to confirm both platforms, the per-unit media, and the X
+ * order, then auto-archives the draft id (#822). It NEVER schedules, sets publish_at, or auto-publishes.
  */
 
 import * as fs from "fs";
 import * as path from "path";
 
-import { type CreateDraftBody, type DraftPost } from "../adapters/typefully";
+import {
+  TypefullyClient,
+  readTypefullyKey,
+  TYPEFULLY_API_BASE,
+  type CreateDraftBody,
+  type DraftPost,
+} from "../adapters/typefully";
 import {
   assertPostAssemblyFidelity,
   checkVideoFirst,
@@ -58,6 +68,8 @@ import {
   type PublishAsset,
 } from "../publish/publishProvenance";
 import { POST_ASSETS } from "../publish/publishAssets";
+import { buildArchiveRecord, safeArchivePostAll } from "../publish/postArchive";
+import { type FetchedDraft } from "../publish/publishVerify";
 import { CONFIG } from "../config";
 
 // ── Sources ────────────────────────────────────────────────────────────
@@ -86,6 +98,10 @@ const CARD_POST4 = (letter: "A" | "B" | "C") => path.join(FABLE_DIR, `card-post4
 const SOCIAL_SET_ID = process.env.TYPEFULLY_SOCIAL_SET_ID ?? "312308";
 const DRAFT_TITLE = "content-pipeline demo — Post 4";
 const POST_SLUG = "content-pipeline-demo-post4" as const;
+
+// The durable archive copy source (out/copy/…) lives in the PRIMARY checkout, not this worktree.
+const PRIMARY_ROOT =
+  process.env.CONTENT_PIPELINE_PRIMARY ?? "/Users/ansonlam/coding_projects/content-pipeline";
 
 // Where the committed dry-run manifest (the exact draft the live step WOULD create) is written.
 const DRYRUN_MANIFEST_PATH = path.join(
@@ -231,7 +247,8 @@ function buildDraftBody(
 
 // ── Main ───────────────────────────────────────────────────────────────
 
-function main(): void {
+async function main(): Promise<void> {
+  const live = process.env.TYPEFULLY_LIVE === "1";
   const platforms: Platform[] = ["x", "threads"];
   const { xThread, threadsText } = readPost4Copy();
   const slots = xThreadSlots();
@@ -318,67 +335,215 @@ function main(): void {
   );
   if (!vf.videoUnitIsFirst && vf.message) console.warn(vf.message);
 
-  // ── DRY-RUN draft body + committed manifest (what the LIVE draft WOULD contain). ZERO network
-  // calls; no client. Placeholder media ids.
-  const mediaIds = new Map<string, string>(
-    allUploadPaths.map((p) => [p, `<upload:${path.basename(p)}>`]),
-  );
-  const threadsMediaIds = threadsMediaPaths.map((p) => mediaIds.get(p)!);
-  const body = buildDraftBody(platforms, xThread, threadsText, slots, mediaIds, threadsMediaIds);
-  console.log(`\nsocial_set_id: ${SOCIAL_SET_ID}`);
-  console.log("draft body (DRY-RUN — placeholder media ids, no publish_at ⇒ DRAFT):");
-  console.log(JSON.stringify(body, null, 2));
-  console.log(`\nThreads post[0].media_ids[0] = ${threadsMediaIds[0]}  (the HERO video leads)`);
-
-  const dryRunManifest = {
-    postSlug: POST_SLUG,
-    category: "demonstration",
-    structure: "video-hook+card-body",
-    generatedAt: new Date().toISOString(),
-    mode: "dry-run",
-    liveDraftCreated: false,
-    socialSetId: SOCIAL_SET_ID,
-    draftTitle: DRAFT_TITLE,
-    heroAspect: CONFIG.publish.heroVideoAspect,
-    gates: {
-      provenance810: "PASS",
-      copyLimits809: "PASS",
-      fidelity797: "PASS",
-    },
-    platforms: {
-      x: {
-        posts: xThread.map((text, i) => ({
-          unit: i + 1,
-          media: [
-            slots[i].kind === "video"
-              ? { kind: "video", file: path.basename(slots[i].path) }
-              : { kind: "card-over-art", file: path.basename(slots[i].path) },
-          ],
-          text,
-        })),
-      },
-      threads: {
-        posts: [
-          {
-            unit: 1,
-            media: THREADS_ORDERED_MEDIA.map((m) => ({ kind: m.kind, file: path.basename(m.path) })),
-            text: threadsText,
-          },
-        ],
-      },
-    },
-    draftBody: body,
-  };
-  fs.writeFileSync(DRYRUN_MANIFEST_PATH, JSON.stringify(dryRunManifest, null, 2) + "\n");
-  console.log(`\nDRY-RUN MANIFEST: wrote ${DRYRUN_MANIFEST_PATH}`);
+  // ── POST AUTO-ARCHIVE (both modes, non-fatal, #822). The post is assembled + gate-clean, so save its
+  // canonical copy + metadata into the DURABLE + in-repo archive NOW — automatically, no human step.
+  const archived = safeArchivePostAll(buildArchiveRecord(POST_SLUG, { primaryRoot: PRIMARY_ROOT }));
+  if (archived)
+    console.log(
+      `\nARCHIVE: ${POST_SLUG} copy+metadata saved → ${archived.external.archiveDir} (+ in-repo ${archived.inRepo.archiveDir})`,
+    );
 
   const mediaCount = xMediaPaths.length + threadsMediaPaths.length;
+
+  if (!live) {
+    // ── DRY-RUN draft body + committed manifest (what the LIVE draft WOULD contain). ZERO network
+    // calls; no client. Placeholder media ids.
+    const mediaIds = new Map<string, string>(
+      allUploadPaths.map((p) => [p, `<upload:${path.basename(p)}>`]),
+    );
+    const threadsMediaIds = threadsMediaPaths.map((p) => mediaIds.get(p)!);
+    const body = buildDraftBody(platforms, xThread, threadsText, slots, mediaIds, threadsMediaIds);
+    console.log(`\nsocial_set_id: ${SOCIAL_SET_ID}`);
+    console.log("draft body (DRY-RUN — placeholder media ids, no publish_at ⇒ DRAFT):");
+    console.log(JSON.stringify(body, null, 2));
+    console.log(`\nThreads post[0].media_ids[0] = ${threadsMediaIds[0]}  (the HERO video leads)`);
+
+    const dryRunManifest = {
+      postSlug: POST_SLUG,
+      category: "demonstration",
+      structure: "video-hook+card-body",
+      generatedAt: new Date().toISOString(),
+      mode: "dry-run",
+      liveDraftCreated: false,
+      socialSetId: SOCIAL_SET_ID,
+      draftTitle: DRAFT_TITLE,
+      heroAspect: CONFIG.publish.heroVideoAspect,
+      gates: {
+        provenance810: "PASS",
+        copyLimits809: "PASS",
+        fidelity797: "PASS",
+      },
+      platforms: {
+        x: {
+          posts: xThread.map((text, i) => ({
+            unit: i + 1,
+            media: [
+              slots[i].kind === "video"
+                ? { kind: "video", file: path.basename(slots[i].path) }
+                : { kind: "card-over-art", file: path.basename(slots[i].path) },
+            ],
+            text,
+          })),
+        },
+        threads: {
+          posts: [
+            {
+              unit: 1,
+              media: THREADS_ORDERED_MEDIA.map((m) => ({ kind: m.kind, file: path.basename(m.path) })),
+              text: threadsText,
+            },
+          ],
+        },
+      },
+      draftBody: body,
+    };
+    fs.writeFileSync(DRYRUN_MANIFEST_PATH, JSON.stringify(dryRunManifest, null, 2) + "\n");
+    console.log(`\nDRY-RUN MANIFEST: wrote ${DRYRUN_MANIFEST_PATH}`);
+
+    console.log(
+      `\nPUBLISH-TYPEFULLY-POST4: mode=dry-run posts=x:${body.platforms.x?.posts.length ?? 0},` +
+        `threads:${body.platforms.threads?.posts.length ?? 0} media=${mediaCount} (hero shared) ` +
+        `fidelity=PASS liveDraft=NONE`,
+    );
+    process.exit(0);
+  }
+
+  // ── LIVE — ORCHESTRATOR ONLY, after explicit operator authorization. Real upload + DRAFT create.
+  // publish_at is NEVER sent (the client refuses it) ⇒ Typefully saves a DRAFT; the operator publishes.
+  console.log("\n→ LIVE mode: verifying auth, uploading media, creating the DRAFT (no publish_at)…");
+  const client = new TypefullyClient();
+  await client.verifyAuth();
+
+  // Upload the X media (hook video + 3 cards) into a path→id map. The hero is uploaded once for X.
+  const mediaIds = new Map<string, string>();
+  for (const p of xMediaPaths) {
+    mediaIds.set(p, await client.uploadMedia(SOCIAL_SET_ID, p));
+    console.log(`  uploaded ${path.basename(p)} → ${mediaIds.get(p)}`);
+  }
+  // Upload the ordered Threads carousel media (video FIRST), preserving order. The hero is uploaded
+  // here independently of the X upload (mirrors posts #2/#3 per-platform upload semantics).
+  const threadsMediaIds: string[] = [];
+  for (const p of threadsMediaPaths) {
+    const id = await client.uploadMedia(SOCIAL_SET_ID, p);
+    threadsMediaIds.push(id);
+    console.log(`  uploaded ${path.basename(p)} (threads) → ${id}`);
+  }
+
+  const body = buildDraftBody(platforms, xThread, threadsText, slots, mediaIds, threadsMediaIds);
+  const res = await client.createDraft(SOCIAL_SET_ID, body);
+  const xCount = body.platforms.x?.posts.length ?? 0;
+  const tCount = body.platforms.threads?.posts.length ?? 0;
   console.log(
-    `\nPUBLISH-TYPEFULLY-POST4: mode=dry-run posts=x:${body.platforms.x?.posts.length ?? 0},` +
-      `threads:${body.platforms.threads?.posts.length ?? 0} media=${mediaCount} (hero shared) ` +
-      `fidelity=PASS liveDraft=NONE`,
+    `\nPUBLISH-TYPEFULLY-POST4: mode=live-draft draft_id=${res.id} status=${res.status} ` +
+      `posts=x:${xCount},threads:${tCount} media=${mediaCount} publish_at=NONE`,
+  );
+
+  // ── READ BACK the live DRAFT (#793). A submitted/stored state is NOT verified until read back. The
+  // draft is NOT published (status stays "draft", no live URLs yet) — so we do NOT call
+  // assertPublishedDraftShape (it requires status=="published"). Instead we read the draft back and
+  // confirm the DRAFT was stored correctly: both platforms present, the per-unit media attached, and
+  // the X tweet ORDER matches what we submitted (hero on tweet 1, cards on 2-4).
+  const expectedXIds = xMediaPaths.map((p) => mediaIds.get(p)!);
+  await readBackDraft(res.id, expectedXIds, threadsMediaIds);
+
+  // ── ARCHIVE WRITEBACK (#822, non-fatal). Record the draft id in the durable record. We do NOT set
+  // publishedDate / liveUrls — the post is a DRAFT, not yet published; those fill on a post-publish
+  // read-back after the operator's manual Publish.
+  const liveArchived = safeArchivePostAll(
+    buildArchiveRecord(POST_SLUG, {
+      primaryRoot: PRIMARY_ROOT,
+      dynamic: {
+        note:
+          `LIVE Typefully DRAFT created ${new Date().toISOString().slice(0, 10)} (#824) — draft_id=${res.id}, ` +
+          `social_set=${SOCIAL_SET_ID}, video-hook + card-body (X 4-tweet thread: hero video + cards A/B/C; ` +
+          `Threads: hero video + card A). NOT yet published — DRAFT ONLY; operator does the final manual ` +
+          `Publish. publishedDate/liveUrls fill on a post-publish read-back.`,
+      },
+    }),
+  );
+  if (liveArchived) {
+    console.log(
+      `ARCHIVE: ${POST_SLUG} draft-id written back → ${liveArchived.external.metaPath} (+ in-repo ${liveArchived.inRepo.metaPath})`,
+    );
+  }
+  console.log(
+    `\nDONE — LIVE DRAFT ${res.id} created (DRAFT ONLY, no publish_at). Open it in Typefully to review ` +
+      `and Publish manually. Edit link: https://typefully.com/?d=${res.id}`,
   );
   process.exit(0);
 }
 
-main();
+/**
+ * Read a just-created Typefully DRAFT back (read-only GET, free) and confirm it was STORED correctly:
+ * status is a draft (NOT yet published), both X + Threads platforms are present + enabled, every X
+ * tweet carries its media id in the SUBMITTED order (hero on tweet 1, cards on 2-4), and the Threads
+ * post carries the video-led carousel. Throws on any mismatch so a scrambled/partial draft is caught.
+ */
+async function readBackDraft(
+  draftId: string,
+  expectedXIds: string[],
+  expectedThreadsIds: string[],
+): Promise<void> {
+  const key = readTypefullyKey();
+  const url = `${TYPEFULLY_API_BASE}/social-sets/${SOCIAL_SET_ID}/drafts/${draftId}`;
+  console.log(`\n→ reading back live draft ${draftId} (read-only GET, no paid call)…`);
+  const res = await fetch(url, { method: "GET", headers: { Authorization: `Bearer ${key}` } });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`read-back GET draft HTTP ${res.status} ${res.statusText}: ${t.slice(0, 300)}`);
+  }
+  const draft = (await res.json()) as FetchedDraft;
+
+  // A DRAFT must NOT already be published (defends the draft-only contract).
+  if (draft.status === "published" || draft.published_at) {
+    throw new Error(
+      `read-back: draft ${draftId} is already published (status=${JSON.stringify(draft.status)}) — ` +
+        `expected a DRAFT. The draft-only contract was violated.`,
+    );
+  }
+
+  const xBlock = draft.platforms?.x;
+  const tBlock = draft.platforms?.threads;
+  if (!xBlock?.enabled || !Array.isArray(xBlock.posts)) {
+    throw new Error(`read-back: X platform missing/disabled in draft ${draftId}`);
+  }
+  if (!tBlock?.enabled || !Array.isArray(tBlock.posts)) {
+    throw new Error(`read-back: Threads platform missing/disabled in draft ${draftId}`);
+  }
+  if (xBlock.posts.length !== expectedXIds.length) {
+    throw new Error(
+      `read-back: stored X thread has ${xBlock.posts.length} tweets, expected ${expectedXIds.length}`,
+    );
+  }
+  expectedXIds.forEach((want, i) => {
+    const got = xBlock.posts![i]?.media_ids?.[0];
+    if (got !== want) {
+      throw new Error(
+        `read-back: stored X tweet ${i + 1} media id ${JSON.stringify(got)} != submitted ` +
+          `${JSON.stringify(want)} (${i === 0 ? "hero video" : `card ${String.fromCharCode(64 + i)}`}) — ORDER SCRAMBLED`,
+      );
+    }
+  });
+  const tPost0 = tBlock.posts[0];
+  if (!tPost0 || (tPost0.media_ids ?? []).length !== expectedThreadsIds.length) {
+    throw new Error(
+      `read-back: stored Threads post carries ${(tPost0?.media_ids ?? []).length} media, expected ` +
+        `${expectedThreadsIds.length} (video + card A)`,
+    );
+  }
+  if (tPost0.media_ids?.[0] !== expectedThreadsIds[0]) {
+    throw new Error(`read-back: Threads lead media is not the hero video — order scrambled`);
+  }
+
+  console.log(
+    `READ-BACK: status=${draft.status ?? "(draft)"} platforms=[x,threads] ` +
+      `x-tweets=${xBlock.posts.length} (hero on 1, cards 2-4 in order) ` +
+      `threads-media=${tPost0.media_ids?.length} (video leads, card A second) — VERIFIED STORED-CORRECT. ` +
+      `live-per-tweet-order=UNVERIFIED(needs X API; draft not yet published).`,
+  );
+}
+
+main().catch((err) => {
+  console.error("SMOKE FAIL (threw):", err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});
