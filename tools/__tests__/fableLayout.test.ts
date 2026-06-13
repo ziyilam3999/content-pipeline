@@ -33,6 +33,8 @@ import {
   CHAT_FILL_CONTRACT,
   worstInteriorGapPx,
   assertChatBeatInteriorFill,
+  assertChatContentClearsCaptionBand,
+  heroCaptionBandTopSpinePx,
 } from "../../video/fableLayout";
 
 describe("#824 fableLayout — the SHIPPED layout has NO caption/media overlap (the PASS end)", () => {
@@ -183,6 +185,23 @@ describe("#824 chat-beat INTERIOR fill — catches the empty-middle the containe
   });
 
   it("the chat beat is wired into the whole-video invariant (default PASS includes the interior check)", () => {
+    expect(() => assertFableBeatsSafeAndFilled()).not.toThrow();
+  });
+});
+
+describe("#824 chat-beat caption clearance — bottom rows must clear the lower-third caption band", () => {
+  it("the shipped contract clears the 9:16 caption band (the PASS end)", () => {
+    expect(() => assertChatContentClearsCaptionBand()).not.toThrow();
+    expect(CHAT_FILL_CONTRACT.innerBottomPx).toBeLessThanOrEqual(heroCaptionBandTopSpinePx() - 24);
+  });
+
+  it("a contract whose content extends INTO the caption band FAILS (the FAIL end — the original overlap)", () => {
+    // 1592 was the pre-fix chat-content bottom (no caption reserve) → lands under the 1430 band top.
+    const overlapping = { ...CHAT_FILL_CONTRACT, innerBottomPx: 1592 };
+    expect(() => assertChatContentClearsCaptionBand(overlapping)).toThrow(/caption (overlap|band)/i);
+  });
+
+  it("assertFableBeatsSafeAndFilled enforces caption clearance on the chat beat by default", () => {
     expect(() => assertFableBeatsSafeAndFilled()).not.toThrow();
   });
 });

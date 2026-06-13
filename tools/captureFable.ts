@@ -287,7 +287,11 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;background:#1c1917;overflow:hidden;
    short messages floating on a dead middle band (#824 "too much empty space"). The row count + min
    heights here mirror video/fableLayout.ts CHAT_FILL_CONTRACT, which the gate uses to reject a sparse
    layout (worst inter-row gap must stay under the dead-band limit). */
-#chat{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:40px 0 6px;overflow:hidden}
+/* margin-bottom RESERVES the lower-third caption band (CAP_BAND_H≈240 spine px): the global synced
+   caption is composited later over the bottom third, so the chat rows must END ABOVE it — else the last
+   deliverable row lands under the caption text. The composer still sits at the panel bottom (below the
+   caption text pill). Mirrors video/fableLayout.ts assertChatContentClearsCaptionBand. */
+#chat{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:40px 0 6px;margin-bottom:240px;overflow:hidden}
 .greet{align-self:flex-start;max-width:86%;color:#9c938b;font:500 46px/1.4 inherit;display:flex;align-items:center;gap:18px;min-height:86px}
 .greet .d{width:16px;height:16px;border-radius:50%;background:#7c7068}
 .you{align-self:flex-end;max-width:90%;background:#d97757;color:#fff;border-radius:42px 42px 12px 42px;

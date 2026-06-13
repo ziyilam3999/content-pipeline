@@ -244,7 +244,8 @@ export const CHAT_FILL_CONTRACT: ChatFillContract = {
   // box.top(120) + panel padding-top(52) + header block(~96) + #chat padding-top(40)
   innerTopPx: 120 + 52 + 96 + 40,
   // box.bottom(1800) − panel padding-bottom(52) − composer block(~150) − #chat padding-bottom(6)
-  innerBottomPx: CAP_H - 120 - 52 - 150 - 6,
+  //   − the 240px caption-band reserve (#chat margin-bottom) so the rows end ABOVE the 9:16 caption band.
+  innerBottomPx: CAP_H - 120 - 52 - 150 - 6 - 240,
   // greet, you-bubble, agent line, deliverables checklist (3 rows ≈ 462px) — mirror buildChatHtml min-heights.
   rowHeightsPx: [86, 210, 84, 462],
   justify: "between",
@@ -262,6 +263,35 @@ export function worstInteriorGapPx(c: ChatFillContract): number {
   if (c.justify === "between") return slack / (n - 1);
   if (c.justify === "evenly") return slack / (n + 1);
   return slack;
+}
+
+/**
+ * #824 — the chat beat's CROSS-LAYER caption-clearance invariant. The global synced caption is
+ * composited LATER (voiceFable) over the lower-third band (`captionBandRectInAspect`), so the chat's own
+ * bottom rows must end ABOVE the band — exactly the cross-layer rule `assertNoCaptionMediaOverlap`
+ * enforces for embedded output-beat MEDIA, but that guard never covered a CAPTURED PAGE beat's own
+ * content. Without this, the bottom deliverable row lands under the caption text (the 2026-06-13 miss).
+ * The 9:16 hero is native (cropY 0) so its `captionY` is the spine band top.
+ */
+export function heroCaptionBandTopSpinePx(): number {
+  const hero = FABLE_ASPECTS.find((a) => a.key === "9:16");
+  if (!hero) throw new Error("heroCaptionBandTopSpinePx: 9:16 aspect missing from FABLE_ASPECTS");
+  return hero.captionY; // native 9:16 → spine coords == final-frame coords
+}
+
+export function assertChatContentClearsCaptionBand(
+  c: ChatFillContract = CHAT_FILL_CONTRACT,
+  marginPx = 24,
+): void {
+  const bandTop = heroCaptionBandTopSpinePx();
+  if (c.innerBottomPx > bandTop - marginPx + 1e-4) {
+    throw new Error(
+      `#824 chat-beat caption overlap: chat content bottom is ${c.innerBottomPx}px, not clear of the 9:16 ` +
+        `caption band top ${bandTop}px (need ≤ ${bandTop - marginPx}px). The synced caption (composited ` +
+        `later over the lower third) would land over the bottom deliverable row — reserve the caption band ` +
+        `(end the chat rows above it via #chat margin-bottom).`,
+    );
+  }
 }
 
 /**
@@ -312,9 +342,13 @@ export function assertFableBeatsSafeAndFilled(layouts: ReadonlyArray<FableBeatLa
     const label = `beat ${l.beat} (${l.kind})`;
     assert4SideSafeArea({ content: l.content, label });
     if (l.fill) assertBeatFill({ content: l.content, label });
-    // The chat beat needs the cross-check the container box is blind to: its conversation must FILL the
-    // panel interior (no dead middle band), not just its border be full-bleed.
-    if (l.kind === "chat") assertChatBeatInteriorFill();
+    // The chat beat needs two cross-checks the container box is blind to: (1) its conversation must FILL
+    // the panel interior (no dead middle band), not just its border be full-bleed; (2) its bottom rows
+    // must clear the lower-third caption band the global synced caption is composited into later.
+    if (l.kind === "chat") {
+      assertChatBeatInteriorFill();
+      assertChatContentClearsCaptionBand();
+    }
   }
 }
 
