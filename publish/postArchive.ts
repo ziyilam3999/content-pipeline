@@ -199,6 +199,26 @@ export const ARCHIVE_POSTS: Record<PostSlug, StaticArchiveMeta> = {
     note:
       "X thread is LIVE (operator published 2026-06-11) but its exact status URL was not captured (the Typefully draft was deleted post-publish); Threads read-back verified.",
   },
+  "content-pipeline-demo-post4": {
+    postNumber: 4,
+    title: "content-pipeline — a content tool with no buttons",
+    subject:
+      "content-pipeline has no UI — you ask Claude Code in plain English and the AI agent builds the whole post (copy, card, captioned video in 3 shapes); a built-in checker flags any claim that doesn't match your facts. MIT, open-source.",
+    category: "demonstration",
+    producedDate: "2026-06-13",
+    // Not yet published — a DRAFT is created via the live publisher; the operator does the final manual
+    // Publish. publishedDate stays null until a post-publish read-back fills it.
+    publishedDate: null,
+    mediaBundleDir: "~/coding_projects/_launch-assets/content-pipeline-demo-post4-20260613",
+    publishManifestRef:
+      "content-pipeline/publish/manifests/content-pipeline-demo-post4.publish-manifest.json",
+    copyArchiveBasename: "post4-content-pipeline-demo-copy.json",
+    copySourceBasename: "content-pipeline-demo-post4-content.json",
+    numbers:
+      "no UI / agent-operated; 1 plain-English ask → copy + card + captioned video in 3 shapes; MIT, public.",
+    note:
+      "DEMONSTRATION post — the 85s voiced Fable-style demo IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 branded body cards A/B/C); Threads = single video-led mixed post (hero video + card A). All gate-clean (#810 provenance / #809-#827 length / #797 fidelity all PASS).",
+  },
 };
 
 /**

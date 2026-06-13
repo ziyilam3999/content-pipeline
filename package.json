@@ -17,6 +17,8 @@
     "smoke:launch-card:paid": "LAUNCH_CARD_PAID=1 tsx smoke/launch-card.ts",
     "smoke:launch-card-post2": "tsx smoke/launch-card-post2.ts",
     "smoke:launch-card-post2:paid": "LAUNCH_CARD_PAID=1 tsx smoke/launch-card-post2.ts",
+    "smoke:launch-card-post4": "tsx smoke/launch-card-post4.ts",
+    "smoke:launch-card-post4:paid": "LAUNCH_CARD_PAID=1 tsx smoke/launch-card-post4.ts",
     "smoke:demo": "tsx smoke/demo-video.ts",
     "smoke:demo-narrated": "tsx smoke/demo-narrated.ts",
     "smoke:demo-narrated:paid": "DEMO_NARRATED_PAID=1 tsx smoke/demo-narrated.ts",
@@ -31,13 +33,16 @@
     "smoke:publish-typefully-post2:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully-post2.ts",
     "smoke:publish-typefully-post3": "tsx smoke/publish-typefully-post3.ts",
     "smoke:publish-typefully-post3:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully-post3.ts",
+    "smoke:publish-typefully-post4": "tsx smoke/publish-typefully-post4.ts",
+    "smoke:publish-typefully-post4:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully-post4.ts",
     "smoke:verify-published": "tsx smoke/verify-published.ts",
     "capture:demo": "tsx tools/captureDemo.ts",
+    "capture:fable": "tsx tools/captureFable.ts",
     "publish:freeze-manifest": "tsx tools/freeze-publish-manifest.ts",
     "archive:backfill": "tsx tools/backfill-posts-archive.ts",
     "e2e:lfah": "tsx smoke/e2e-lfah.ts"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
@@ -54,6 +59,7 @@
     "playwright": "^1.60.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "remotion": "^4.0.474"
+    "remotion": "^4.0.474",
+    "tesseract.js": "^5.1.1"
   }
 }

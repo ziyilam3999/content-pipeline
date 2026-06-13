@@ -15,7 +15,7 @@ so any post can later be re-purposed for another platform (e.g. LinkedIn) withou
 > This file is GENERATED from the `*.meta.json` records in this directory — do not hand-edit; edits are
 > overwritten on the next archive. Change the source in `publish/postArchive.ts` (ARCHIVE_POSTS) instead.
 
-Last updated: 2026-06-11
+Last updated: 2026-06-13
 
 ---
 
@@ -50,6 +50,27 @@ Last updated: 2026-06-11
 - **Publish manifest:** `content-pipeline/publish/manifests/forge-harness-post3.publish-manifest.json`
 - **Numbers:** 8 primitives / 1 LLM tool; 16 calls / 2 paid; $0.80 plan / ~$0.20 story; MIT, public.
 - **Note:** X thread is LIVE (operator published 2026-06-11) but its exact status URL was not captured (the Typefully draft was deleted post-publish); Threads read-back verified.
+
+## Post #4 — content-pipeline — a content tool with no buttons  (DEMONSTRATION)
+- **Subject:** content-pipeline has no UI — you ask Claude Code in plain English and the AI agent builds the whole post (copy, card, captioned video in 3 shapes); a built-in checker flags any claim that doesn't match your facts. MIT, open-source.
+- **Produced:** 2026-06-13
+- **Published:** _(pending publish)_
+- **Live URLs:** _(pending publish)_
+- **Copy:** `post4-content-pipeline-demo-copy.json` (this dir)
+- **Media bundle:** `~/coding_projects/_launch-assets/content-pipeline-demo-post4-20260613/`
+- **Publish manifest:** `content-pipeline/publish/manifests/content-pipeline-demo-post4.publish-manifest.json`
+- **Numbers:** no UI / agent-operated; 1 plain-English ask → copy + card + captioned video in 3 shapes; MIT, public.
+- **Note:** LIVE Typefully DRAFT created 2026-06-13 (#824) — draft_id=9490878, social_set=312308, video-hook + card-body (X 4-tweet thread: hero video + cards A/B/C; Threads: hero video + card A). NOT yet published — DRAFT ONLY; operator does the final manual Publish. publishedDate/liveUrls fill on a post-publish read-back.
+
+## Post #4 — content-pipeline (a tool with no buttons — you just ask, the agent builds)  (DEMONSTRATION)
+- **Subject:** An agent-operated content tool with no human UI: ask Claude Code in plain English and the AI agent drives it to produce copy + an image card + a captioned video in 3 shapes; built-in checker flags claims that don't match your facts.
+- **Produced:** 2026-06-13
+- **Published:** _(pending publish)_
+- **Live URLs:** _(pending publish)_
+- **Copy:** `post4-content-pipeline-demo-copy.json` (this dir)
+- **Publish manifest:** `content-pipeline/publish/manifests/content-pipeline-post4.publish-manifest.json`
+- **Numbers:** no metrics claimed (qualitative demo post); 1 plain-English ask → copy + image card + captioned video in 3 shapes; open-source, MIT licensed, free to use (LICENSE added #824), public on GitHub.
+- **Note:** DEMONSTRATION post (video-led; 85s voiced Fable demo is the hero). 'open-source / MIT / free to use' framing REINSTATED + now coherent with the video CTA beat: content-pipeline IS MIT-licensed (#824 — LICENSE file added, package.json license='MIT', README 'MIT licensed — open-source and free to use'), repo public on GitHub (gh visibility=PUBLIC). Video needs NO re-render — its MIT claim is now honest. Not yet published. PostSlug/POST_ASSETS publish-SSOT entry deferred to the publish leg (copy leg writes the archive artifacts only).
 
 ---
 

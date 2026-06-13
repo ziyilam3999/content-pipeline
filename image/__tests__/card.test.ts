@@ -92,6 +92,31 @@ describe("buildCardHtml", () => {
     expect(withBg).toContain("83.8%"); // the exact number is STILL DOM text, not part of the image
   });
 
+  it("renders NO art-mask overlay layer when none is supplied (byte-identical to the pre-mask card)", () => {
+    // #824 mask-art-text: absent/empty overlays ⇒ the card HTML is unchanged.
+    expect(html).not.toContain("art-overlays");
+    expect(html).not.toContain("art-overlay");
+    expect(buildCardHtml(SPEC, DIMS, { maxFacts: 4, overlays: [] })).toBe(html);
+  });
+
+  it("paints an OPAQUE chip carrying the CLEAN label over a garbled art spot (#824 mask-art-text)", () => {
+    const withMask = buildCardHtml(SPEC, DIMS, {
+      maxFacts: 4,
+      backgroundDataUri: "data:image/png;base64,AAAA",
+      overlays: [
+        // The post-4 case: nano-banana baked the misspelled "imae card"; mask it with clean "image card".
+        { left: 700, top: 588, width: 184, height: 50, label: "image card", fontSize: 26 },
+        { left: 296, top: 520, width: 96, height: 44, variant: "scrim" },
+      ],
+    });
+    expect(withMask).toContain('class="art-overlays"');
+    expect(withMask).toContain("image card"); // the CLEAN corrected label is rendered
+    expect(withMask).toContain("art-overlay chip"); // opaque label chip
+    expect(withMask).toContain("art-overlay scrim"); // opaque darkening cover
+    expect(withMask).toContain("z-index: -1"); // above art, below the translucent content tiles
+    expect(withMask).toContain("left:700px"); // positioned in card-space px over the garble
+  });
+
   it("HTML-escapes a hostile label so it cannot break or inject markup", () => {
     const evil: ContentSpec = {
       ...SPEC,
