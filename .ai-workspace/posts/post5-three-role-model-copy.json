@@ -1,0 +1,45 @@
+{
+  "_what": "Post #5 copy — 'the 3-role development model: four AI subagents, nobody grades their own homework'. Authored by BUILD-1 (Leg 1) for the 3-role-model promo post. Subject = a WORKFLOW/methodology now packaged as a public Claude Code plugin. Every claim verified vs the public README of github.com/ziyilam3999/three-role-model (see claim_verification). Brand-clean (MIT, public, no employer brand). Every X tweet + the Threads post must PASS the per-platform length validator (publish/copyLimits.ts). DRAFT for operator review before any paid voiceover / art / live draft.",
+  "_honesty_guards": [
+    "This is a WORKFLOW/methodology, not a benchmark. We claim ZERO efficacy/performance numbers (no 'X% fewer bugs', no 'N% faster'). Every number in the copy is a STRUCTURAL count straight from the README: 4 roles, 2 knobs, 4 executor-placement options, 3 evaluator options. We never imply measured quality gains.",
+    "'mechanically enforced / provable' is accurate but scoped: the role-ledger binds each role to a real subagent transcript and a completion gate blocks if a role did not run — so WHICH ROLES RAN is provable. We do NOT claim the code it produces is 'provably correct'. Wording stays 'we followed the process is provable, not claimed'.",
+    "'nobody grades their own homework' / 'never self-review' = the reviewer subagent is always independent of the executor; the orchestrator coordinates but does not do or grade the substantive work. Mirrors the README's own headline framing.",
+    "Public, MIT, early. The repo is new (no adoption/stars claim). Framed 'early — feedback welcome'.",
+    "Brand-clean: MIT license, public repo github.com/ziyilam3999/three-role-model. No employer brand anywhere. No internal issue refs, no home paths."
+  ],
+  "x_thread": [
+    "Most AI coding setups use one agent for everything — it plans the work, does it, then decides it's done.\n\nIt grades its own homework. And when it's wrong, it's confidently wrong.\n\nThe 3-role model splits that into 4 subagents where nobody checks their own work. 🧵",
+    "Four jobs, four separate AI subagents:\n\nplanner → what to do\nplan-review → vet the plan\nexecutor → do it\nexecution-review → vet the result\n\nThe orchestrator just coordinates. The reviewer is never the one who wrote the thing.",
+    "Two knobs pick the shape per task:\n\n• executor: a test-loop, one subagent, several in parallel, or inline\n• evaluator: a real passing test, an independent reviewer, or both\n\nWhenever a real test exists, it beats an opinion.",
+    "Best part: it's mechanically enforced.\n\nHooks + a forgery-resistant ledger record which roles really ran, bound to real transcripts — so \"we followed the process\" is provable, not claimed.\n\nPublic, MIT, early → github.com/ziyilam3999/three-role-model"
+  ],
+  "threads_post": "Most AI coding setups use one agent for everything — it plans the work, does it, then decides it's done. It grades its own homework.\n\nThe 3-role model splits that into 4 subagents: planner → plan-review → executor → execution-review. Nobody reviews their own work.\n\nTwo knobs per task: how the executor runs, and how it's checked — a real test beats an opinion. And it's enforced: a ledger records which roles really ran.\n\nPublic, MIT, early.\ngithub.com/ziyilam3999/three-role-model",
+  "_video_target_seconds": 90,
+  "video_script_scenes": [
+    "This is the three-role model — a way to build software with AI where four helpers each do one job, and nobody checks their own work. Think of a kitchen: a head chef plans the dish, a taster checks the plan, a cook makes it, and a food critic judges the result. The cook never rates their own plate.",
+    "Here's the problem it fixes. Most AI coding setups use one agent for everything. It plans the work, does the work, then decides the work is done. It grades its own homework — and when it's wrong, it's confidently wrong.",
+    "The three-role model splits that across four separate subagents. A planner decides what to do. A plan-reviewer checks that plan. An executor does the work. And an execution-reviewer checks the result. The reviewer is never the one who wrote the thing.",
+    "Two simple dials shape each task. One picks how the work gets done — a test loop, one helper, several in parallel, or inline. The other picks how it's checked — a real passing test, an independent reviewer, or both. Whenever a real test exists, it wins.",
+    "Here's the part that makes it stick. It's not a polite suggestion — it's enforced by code. Hooks and a tamper-resistant ledger record which roles actually ran, tied to real transcripts. So saying we followed the process is something you can prove, not just claim.",
+    "It's now a Claude Code plugin — two commands to install. Open source, MIT licensed, and early, so feedback is welcome. Find it at github dot com, slash ziyi-lam three nine nine nine, slash three dash role dash model."
+  ],
+  "card_labels": {
+    "A_four_roles_no_self_review": ["FOUR ROLES, NO SELF-REVIEW", "planner -> plan-review", "executor -> execution-review", "nobody grades their own homework"],
+    "B_two_knobs_per_task": ["TWO KNOBS PER TASK", "executor: test-loop / one / parallel / inline", "evaluator: real test / reviewer / both", "a real test beats an opinion"],
+    "C_provable_not_claimed": ["PROVABLE, NOT CLAIMED", "hooks + forgery-resistant ledger", "roles bound to real transcripts", "MIT - public - feedback welcome"]
+  },
+  "claim_verification": {
+    "4 roles: planner -> plan-review -> executor -> execution-review": "README header diagram ('planner -> plan-review -> executor -> execution-review' with the (what)/(vet the plan)/(the how)/(vet the result) labels) ✓",
+    "nobody grades their own homework / never self-review": "README opening line 'four separate AI subagents each do one job and nobody grades their own homework' ✓",
+    "orchestrator coordinates; each role an independent subagent": "README 'The orchestrator coordinates; each role is an independent subagent' ✓",
+    "two knobs: executor placement + evaluator": "README 'Two knobs pick the shape per task: executor placement ... and evaluator ...' ✓",
+    "executor placement options = test-loop / one subagent / parallel / inline": "README 'executor placement (test-loop / one subagent / parallel / inline)' ✓",
+    "evaluator options = a real passing test / an independent reviewer / both": "README 'evaluator (a real passing test / an independent reviewer / both)' ✓",
+    "mechanically enforced by hooks + a forgery-resistant role-ledger; provable not claimed": "README 'mechanically enforced by hooks and recorded in a forgery-resistant role-ledger, so \"we followed the process\" is provable, not claimed' ✓",
+    "roles spawned on demand + tagged so the ledger binds to a real transcript": "README 'the orchestrator spawns each role on demand via the Agent tool ... tagging each spawn so the role-ledger can bind it to a real transcript' ✓",
+    "it's a Claude Code plugin; install = 2 commands": "README Install section: 'claude plugin marketplace add ziyilam3999/three-role-model' + 'claude plugin install three-role-model@three-role-model' (2 commands) ✓",
+    "MIT license": "README License section 'MIT' ✓",
+    "public repo url github.com/ziyilam3999/three-role-model": "README title link + install command org 'ziyilam3999/three-role-model' ✓",
+    "no efficacy/performance numbers claimed (honesty)": "README makes no benchmark/efficacy claim; copy intentionally claims only structural counts ✓"
+  }
+}

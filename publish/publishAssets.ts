@@ -18,7 +18,8 @@ export type PostSlug =
   | "lfah-post1"
   | "lfah-post2"
   | "forge-harness-post3"
-  | "content-pipeline-demo-post4";
+  | "content-pipeline-demo-post4"
+  | "three-role-model-post5";
 
 /** The role of a published asset — drives the hero-aspect/fidelity story + clearer error messages. */
 export type AssetRole = "hero-video" | "card";
@@ -93,6 +94,21 @@ export const POST_ASSETS: Record<PostSlug, PostAssetSpec> = {
       { role: "card", basename: "card-post4-C.png" }, // tweet 4 — "Run by an agent, not a person"
     ],
   },
+  // Post #5 — the "3-role development model" INTRODUCTION post. The ~90s voiced demo IS the hero
+  // (tweet 1 + the Threads lead); the X body tweets (2-4) each carry their own card-over-art still.
+  // The hero is the full-bleed 9:16 voiced cut (`post5-demo-9x16.mp4`, #794); the three body cards
+  // (`card-post5-{A,B,C}.png`) render over the post's shared generative art base. The hero's mobile
+  // proxy / 1x1 / 4x5 siblings are NOT uploaded.
+  "three-role-model-post5": {
+    slug: "three-role-model-post5",
+    defaultBundleDir: path.join(LAUNCH_ASSETS_ROOT, "three-role-model-post5-20260614"),
+    assets: [
+      { role: "hero-video", basename: "post5-demo-9x16.mp4" }, // full-bleed 9:16 voiced demo hero
+      { role: "card", basename: "card-post5-A.png" }, // tweet 2 — "four roles, no self-review"
+      { role: "card", basename: "card-post5-B.png" }, // tweet 3 — "two knobs per task"
+      { role: "card", basename: "card-post5-C.png" }, // tweet 4 — "provable, not claimed"
+    ],
+  },
 };
 
 /** Type-guard: is `s` a known post slug? */
@@ -101,6 +117,7 @@ export function isPostSlug(s: string): s is PostSlug {
     s === "lfah-post1" ||
     s === "lfah-post2" ||
     s === "forge-harness-post3" ||
-    s === "content-pipeline-demo-post4"
+    s === "content-pipeline-demo-post4" ||
+    s === "three-role-model-post5"
   );
 }
