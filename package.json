@@ -40,6 +40,8 @@
     "smoke:publish-typefully-post3:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully-post3.ts",
     "smoke:publish-typefully-post4": "tsx smoke/publish-typefully-post4.ts",
     "smoke:publish-typefully-post4:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully-post4.ts",
+    "smoke:publish-typefully-post5": "tsx smoke/publish-typefully-post5.ts",
+    "smoke:publish-typefully-post5:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully-post5.ts",
     "smoke:verify-published": "tsx smoke/verify-published.ts",
     "smoke:eyeball": "tsx smoke/eyeball-gate.ts",
     "eyeball:sheet": "tsx tools/eyeball-sheet.ts",

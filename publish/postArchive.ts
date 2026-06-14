@@ -219,6 +219,26 @@ export const ARCHIVE_POSTS: Record<PostSlug, StaticArchiveMeta> = {
     note:
       "DEMONSTRATION post — the 85s voiced Fable-style demo IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 branded body cards A/B/C); Threads = single video-led mixed post (hero video + card A). All gate-clean (#810 provenance / #809-#827 length / #797 fidelity all PASS).",
   },
+  "three-role-model-post5": {
+    postNumber: 5,
+    title: "the 3-role development model — nobody grades their own homework",
+    subject:
+      "a way to build software with AI where four subagents each do one job (planner → plan-review → executor → execution-review) and nobody reviews their own work; two knobs pick the shape per task; mechanically enforced by hooks + a forgery-resistant role-ledger. MIT, public Claude Code plugin.",
+    category: "introduction",
+    producedDate: "2026-06-14",
+    // Not yet published — a DRAFT is created via the live publisher; the operator does the final manual
+    // Publish. publishedDate stays null until a post-publish read-back fills it.
+    publishedDate: null,
+    mediaBundleDir: "~/coding_projects/_launch-assets/three-role-model-post5-20260614",
+    publishManifestRef:
+      "content-pipeline/publish/manifests/three-role-model-post5.publish-manifest.json",
+    copyArchiveBasename: "post5-three-role-model-copy.json",
+    copySourceBasename: "three-role-model-post-content.json",
+    numbers:
+      "4 roles / 2 knobs (4 executor-placements / 3 evaluators); roles bound to real transcripts via a forgery-resistant ledger; MIT, public.",
+    note:
+      "INTRODUCTION post — the ~90s voiced demo IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C); Threads = single video-led mixed post (hero video + card A). Workflow/methodology — ZERO efficacy numbers claimed, only structural counts. All gate-clean (#810 provenance / #809-#827 length / #797 fidelity all PASS).",
+  },
 };
 
 /**

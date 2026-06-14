@@ -1,0 +1,27 @@
+{
+  "postSlug": "three-role-model-post5",
+  "frozenAt": "2026-06-14T10:11:33.452Z",
+  "sourceDir": "/Users/ansonlam/coding_projects/_launch-assets/three-role-model-post5-20260614",
+  "assets": {
+    "post5-demo-9x16.mp4": {
+      "role": "hero-video",
+      "sha256": "2c623ce99b9c6bf6ebf85ce06ea25998e6c24d4259bc537179e3bb6017876f99",
+      "bytes": 30646051
+    },
+    "card-post5-A.png": {
+      "role": "card",
+      "sha256": "21614b84f510c4d28a94721ff535b9da20acac8e884fb59d3ab1e0243d45e313",
+      "bytes": 765054
+    },
+    "card-post5-B.png": {
+      "role": "card",
+      "sha256": "6f9b663254c978a507a2b9e4df4d288901bd733cd0959aba21c4e9c2752da752",
+      "bytes": 768203
+    },
+    "card-post5-C.png": {
+      "role": "card",
+      "sha256": "74757957721c7fdac8ec930150bdde6092a3966af2adb26867b84b7852e5e89e",
+      "bytes": 767829
+    }
+  }
+}
