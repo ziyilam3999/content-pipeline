@@ -1,7 +1,7 @@
 {
   "postSlug": "lfah-post1",
   "frozenAt": "2026-06-11T00:44:49.569Z",
-  "sourceDir": "/Users/ansonlam/coding_projects/_launch-assets/lfah-20260610",
+  "sourceDir": "~/coding_projects/_launch-assets/lfah-20260610",
   "assets": {
     "demo-9x16.mp4": {
       "role": "hero-video",

@@ -22,6 +22,8 @@ import {
   loadManifest,
   freezeManifest,
   manifestPath,
+  scrubHomePath,
+  MANIFEST_DIR,
   type PublishManifest,
   type PublishAsset,
 } from "../publishProvenance";
@@ -237,6 +239,55 @@ describe("freezeManifest", () => {
     fs.writeFileSync(p, JSON.stringify(manifest, null, 2) + "\n");
     const reloaded = loadManifest("lfah-post1", tmp);
     expect(reloaded.assets["demo-9x16.mp4"].sha256).toBe(manifest.assets["demo-9x16.mp4"].sha256);
+  });
+});
+
+describe("scrubHomePath (#901 — no username leak in committed manifests)", () => {
+  it("(a) tokenizes a home-rooted absolute path to ~ (no os.homedir() substring remains)", () => {
+    const scrubbed = scrubHomePath(os.homedir() + "/coding_projects/_launch-assets/x");
+    expect(scrubbed).toBe("~/coding_projects/_launch-assets/x");
+    expect(scrubbed.startsWith("~")).toBe(true);
+    expect(scrubbed.includes(os.homedir())).toBe(false);
+  });
+
+  it("tokenizes the homedir exactly to ~", () => {
+    expect(scrubHomePath(os.homedir())).toBe("~");
+  });
+
+  it("(b) leaves a relative path unchanged", () => {
+    expect(scrubHomePath("out/review/fable")).toBe("out/review/fable");
+  });
+
+  it("leaves a non-home absolute path unchanged", () => {
+    expect(scrubHomePath("/var/tmp/elsewhere")).toBe("/var/tmp/elsewhere");
+  });
+
+  it("(c) a manifest frozen from a home-rooted sourceDir has a ~-prefixed sourceDir, no /Users/, no homedir", () => {
+    // Make a real home-rooted source bundle so the freeze writer sees an absolute home path.
+    const homeSrc = fs.mkdtempSync(path.join(os.homedir(), ".prov-scrub-test-"));
+    try {
+      fs.writeFileSync(path.join(homeSrc, "demo-9x16.mp4"), "HERO-bytes");
+      const manifest = freezeManifest({
+        postSlug: "lfah-post1",
+        sourceDir: homeSrc,
+        assets: [{ role: "hero-video", basename: "demo-9x16.mp4" }],
+      });
+      expect(manifest.sourceDir.startsWith("~")).toBe(true);
+      expect(manifest.sourceDir.includes("/Users/")).toBe(false);
+      expect(manifest.sourceDir.includes(os.homedir())).toBe(false);
+    } finally {
+      fs.rmSync(homeSrc, { recursive: true, force: true });
+    }
+  });
+
+  it("GUARD — no committed manifest leaks an absolute home path in any field", () => {
+    const files = fs.readdirSync(MANIFEST_DIR).filter((f) => f.endsWith(".publish-manifest.json"));
+    expect(files.length).toBeGreaterThanOrEqual(1);
+    for (const f of files) {
+      const raw = fs.readFileSync(path.join(MANIFEST_DIR, f), "utf8");
+      expect(raw.includes(os.homedir())).toBe(false);
+      expect(raw.includes("/Users/")).toBe(false);
+    }
   });
 });
 
