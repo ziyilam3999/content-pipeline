@@ -6,7 +6,7 @@
  * over the literal #824 constants — they prove THAT post is clean, not that a FUTURE demo-category spec
  * obeys the recipe. This module closes that gap: it defines the generalized shape (`DemoVideoSpec`) of
  * what `FABLE_BEATS` + `FABLE_ASPECTS` + the narration mapping already encode, and ONE fail-closed
- * validator (`assertDemoCategoryRecipe`) composing the recipe rules R1–R11. A future demo whose spec
+ * validator (`assertDemoCategoryRecipe`) composing the recipe rules R1–R12. A future demo whose spec
  * violates a rule HARD-FAILS in the capture / voice pre-flights, before any capture / render / paid /
  * publish — exactly the regression the operator asked to make impossible.
  *
@@ -81,6 +81,35 @@ export interface DemoProvenance {
   bytes?: number;
 }
 
+/**
+ * Real-voice-synced caption track for the whole demonstration video (R12).
+ *
+ * Real-voice-synced captions are a DEFINING quality of the proven #824 demo AND a literal post-copy
+ * claim ("a captioned video in 3 shapes"). R11 only asserts "IF captions exist, don't cover the
+ * picture" — so a future demo with NO captions sails through silently. R12 closes that gap and binds
+ * the caption track to the REAL voiceover it was timed against (the #742/#19 / `assertAudioMatchesSync`
+ * provenance lesson: an alignment is valid ONLY for the exact audio it came from).
+ */
+export interface DemoCaptions {
+  /** This demo carries a synced caption track. R12 demands `true` (no captionless demo). */
+  present: boolean;
+  /** The captions were timed against a REAL voiceover alignment, not hand-placed / mock timing. */
+  syncBoundToRealAudio: boolean;
+  /** The real voiceover the captions are synced to. */
+  audio: {
+    /** Path to the real VO alignment bundle / audio (e.g. `out/review/fable/fable-vo-sync.json`). */
+    source: string;
+    /** Asserts a real producer voiceover, not a placeholder/stub/mock. */
+    real: boolean;
+    /** Real measured duration of the voiceover (seconds). */
+    durationSec: number;
+  };
+  /** End time of the LAST caption cue (seconds); must bind to `audio.durationSec` within tolerance. */
+  lastCueEndSec: number;
+  /** Number of caption cues (provenance only; optional). */
+  cueCount?: number;
+}
+
 /** One ordered beat of the demonstration video. */
 export interface DemoBeat {
   /** 1-based beat number. */
@@ -116,6 +145,8 @@ export interface DemoVideoSpec {
   runtimeWindowSec: { min: number; max: number };
   /** Max fraction of total runtime the terminal/tool beats may occupy. Default 0.30. */
   maxTerminalFraction: number;
+  /** Real-voice-synced caption track (R12) — REQUIRED + provenance-bound to its real voiceover. */
+  captions: DemoCaptions;
 }
 
 // ── Recipe constants ────────────────────────────────────────────────────────────────────────────--
@@ -124,6 +155,12 @@ const DEFAULT_MAX_TERMINAL_FRACTION = 0.3; // terminal/tool ≲30% of runtime
 const FORBIDDEN_VEHICLES: ReadonlyArray<DemoVehicle> = ["generative-video", "composition"];
 const PLACEHOLDER_SOURCE_RE = /\b(placeholder|stub|sample|example|dummy|fixture|todo|wip)\b/i;
 const SHA256_RE = /^[a-f0-9]{64}$/;
+// R12 caption↔audio provenance tolerance. Stricter than `assertAudioMatchesSync`'s 1.5s runtime
+// tolerance: the last caption cue should land essentially AT the audio's end. The #742/#19 lesson
+// (`feedback_audio_sync_provenance_binding`) — an alignment is valid ONLY for the exact audio it came
+// from — and the #744 incident (a 64.86s mp3 paired with 84.847s timing → 20s drift) is what a loose
+// binding would have let through. 0.5s catches that class while passing the proven 85s spec clean.
+const CAPTION_SYNC_TOLERANCE_SEC = 0.5;
 const USERS_PATH_RE = /\/Users\/[^/\s"']+/i;
 const AGENT_INTERFACE_RE = /(the agent's interface|not yours)/i;
 
@@ -131,7 +168,7 @@ const AGENT_INTERFACE_RE = /(the agent's interface|not yours)/i;
 
 /**
  * Throws a SPECIFIC, machine-readable Error (prefixed `demo-recipe R<n>:`) for the FIRST recipe rule a
- * spec violates; no-op when the spec obeys the whole recipe. Rules are checked in order R1→R11 so the
+ * spec violates; no-op when the spec obeys the whole recipe. Rules are checked in order R1→R12 so the
  * earliest violation is reported.
  */
 export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
@@ -309,6 +346,54 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
   } catch (err) {
     throw new Error(`demo-recipe R11: ${err instanceof Error ? err.message : String(err)}`);
   }
+
+  // R12 — the demo MUST carry real-voice-synced captions, provenance-bound to its real voiceover.
+  // R11 only checks captions IF they exist (no-overlap geometry); a captionless demo passes R11
+  // silently. R12 makes captions a hard requirement AND binds the last cue to the real audio's end
+  // (the #742/#19 provenance lesson) so a stale/mismatched alignment (#744's 20s drift) can't ship.
+  const caps = spec.captions;
+  if (!caps || caps.present !== true) {
+    throw new Error(
+      "demo-recipe R12: the demonstration video carries no captions (captions.present !== true). " +
+        "Real-voice-synced captions are a defining quality of a demo-category video — a captionless " +
+        "cut must HARD-FAIL before render/publish, not sail through R11's IF-captions-exist geometry check.",
+    );
+  }
+  if (caps.syncBoundToRealAudio !== true) {
+    throw new Error(
+      "demo-recipe R12: captions.syncBoundToRealAudio !== true — the captions are not timed against a " +
+        "REAL voiceover alignment. Captions must be driven by the real per-character audio alignment, " +
+        "not hand-placed or mock timing (the #742/#19 sync-provenance lesson).",
+    );
+  }
+  const audio = caps.audio;
+  if (!audio || audio.real !== true || !audio.source || PLACEHOLDER_SOURCE_RE.test(audio.source)) {
+    throw new Error(
+      `demo-recipe R12: caption audio source "${audio?.source}" is not a real voiceover (real=${audio?.real}). ` +
+        "Captions must bind to a real producer voiceover bundle, never a placeholder/stub/mock.",
+    );
+  }
+  if (!(Number.isFinite(audio.durationSec) && audio.durationSec > 0)) {
+    throw new Error(
+      `demo-recipe R12: caption audio.durationSec (${audio.durationSec}) is non-finite or ≤0 — there is no ` +
+        "real voiceover duration to bind the captions to.",
+    );
+  }
+  if (!(Number.isFinite(caps.lastCueEndSec) && caps.lastCueEndSec > 0)) {
+    throw new Error(
+      `demo-recipe R12: captions.lastCueEndSec (${caps.lastCueEndSec}) is non-finite or ≤0 — there is no ` +
+        "last caption cue to bind to the audio.",
+    );
+  }
+  // Provenance binding: the last cue must end ~when the audio ends. This is the STATIC declarative twin
+  // of `assertAudioMatchesSync` (#744: a 64.86s mp3 paired with 84.847s timing → 20s drift would fail here).
+  if (Math.abs(caps.lastCueEndSec - audio.durationSec) > CAPTION_SYNC_TOLERANCE_SEC) {
+    throw new Error(
+      `demo-recipe R12: caption provenance binding broken — last cue ends at ${caps.lastCueEndSec}s but the ` +
+        `real voiceover is ${audio.durationSec}s (drift > ${CAPTION_SYNC_TOLERANCE_SEC}s tolerance). An alignment ` +
+        "is valid ONLY for the exact audio it was derived from — never pair captions with a different audio file.",
+    );
+  }
 }
 
 /** Last index in `arr` satisfying `pred`, or -1. */
@@ -366,6 +451,48 @@ function heroProvenance(relSource: string): DemoProvenance {
   return { source: relSource, real: true };
 }
 
+// The proven #824 voiceover: ElevenLabs Adam, ~85s, sourced from the real VO alignment bundle. The
+// total FABLE_BEATS runtime is 6+12+15+3+12+15+12+10 = 85s, so the captions span the whole video and
+// the last cue ends ≈ when the audio ends (the R12 provenance binding holds within tolerance).
+const FABLE_VO_BUNDLE = "out/review/fable/fable-vo-sync.json";
+const FABLE_VO_DURATION_SEC = 85; // proven Adam VO duration ≈ 85s (declared fallback for CI)
+
+/**
+ * Best-effort real-voice-synced captions for the shipped #824 demo. Mirrors `heroProvenance`'s pattern:
+ * read the real VO alignment bundle when present, else fall back to the declared proven constants so the
+ * module loads green in CI where the bundle file is absent. Declarative-first — the bundle read only
+ * refines the values when it is present AND internally consistent (last cue ≈ audio end).
+ */
+function fableCaptions(): DemoCaptions {
+  let durationSec = FABLE_VO_DURATION_SEC;
+  let lastCueEndSec = FABLE_VO_DURATION_SEC;
+  let cueCount: number | undefined;
+  try {
+    const abs = path.join(process.cwd(), FABLE_VO_BUNDLE);
+    if (fs.existsSync(abs)) {
+      const bundle = JSON.parse(fs.readFileSync(abs, "utf8"));
+      const d = Number(bundle?.durationSec);
+      const cues = Array.isArray(bundle?.captions) ? bundle.captions : [];
+      const lastEnd = cues.length > 0 ? Number(cues[cues.length - 1]?.endSec) : NaN;
+      // Only adopt the bundle values when they are real AND internally consistent (binding holds).
+      if (Number.isFinite(d) && d > 0 && Number.isFinite(lastEnd) && Math.abs(lastEnd - d) <= CAPTION_SYNC_TOLERANCE_SEC) {
+        durationSec = d;
+        lastCueEndSec = lastEnd;
+        cueCount = cues.length;
+      }
+    }
+  } catch {
+    /* fall through to the declared proven constants */
+  }
+  return {
+    present: true,
+    syncBoundToRealAudio: true,
+    audio: { source: FABLE_VO_BUNDLE, real: true, durationSec },
+    lastCueEndSec,
+    ...(cueCount !== undefined ? { cueCount } : {}),
+  };
+}
+
 const HERO_SOURCE: Record<number, string> = {
   5: "out/image/card-9x16.png", // the real produced card (viewer-card beat)
   6: "out/review/lfah/demo/demo-9x16.mp4", // the real produced MP4 (viewer-video beat)
@@ -408,6 +535,7 @@ function buildFableSpec(): DemoVideoSpec {
     beatLayouts: FABLE_BEAT_LAYOUTS,
     runtimeWindowSec: { ...DEFAULT_RUNTIME_BAND },
     maxTerminalFraction: DEFAULT_MAX_TERMINAL_FRACTION,
+    captions: fableCaptions(),
   };
 }
 

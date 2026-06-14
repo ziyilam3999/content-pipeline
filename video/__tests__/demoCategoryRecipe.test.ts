@@ -218,3 +218,61 @@ describe("#870 R11 — every beat layout is 4-side title-safe + fill + caption-b
     expect(() => assertDemoCategoryRecipe(clone())).not.toThrow();
   });
 });
+
+describe("#873 R12 — captions required (real-voice-synced, provenance-bound)", () => {
+  test("the #824 fableSpec carries real-voice-synced captions and PASSES R12 clean", () => {
+    expect(fableSpec.captions).toBeDefined();
+    expect(fableSpec.captions.present).toBe(true);
+    expect(fableSpec.captions.syncBoundToRealAudio).toBe(true);
+    expect(fableSpec.captions.audio.real).toBe(true);
+    expect(fableSpec.captions.audio.source.length).toBeGreaterThan(0);
+    expect(Number.isFinite(fableSpec.captions.audio.durationSec)).toBe(true);
+    expect(fableSpec.captions.audio.durationSec).toBeGreaterThan(0);
+    // provenance binding: the last caption ends ~when the audio ends (the #742/#19 lesson).
+    expect(Math.abs(fableSpec.captions.lastCueEndSec - fableSpec.captions.audio.durationSec)).toBeLessThanOrEqual(0.5);
+    expect(() => assertDemoCategoryRecipe(fableSpec)).not.toThrow();
+  });
+
+  test("captions absent (field deleted) THROWS (R12)", () => {
+    const s = clone();
+    delete (s as Partial<DemoVideoSpec>).captions;
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/demo-recipe R12/);
+  });
+
+  test("captions.present = false THROWS (R12)", () => {
+    const s = clone();
+    s.captions.present = false;
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/demo-recipe R12/);
+  });
+
+  test("captions not bound to real audio (syncBoundToRealAudio = false) THROWS (R12)", () => {
+    const s = clone();
+    s.captions.syncBoundToRealAudio = false;
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/demo-recipe R12/);
+  });
+
+  test("provenance binding broken (lastCueEndSec far from audio.durationSec) THROWS (R12)", () => {
+    const s = clone();
+    s.captions.lastCueEndSec = s.captions.audio.durationSec - 20; // 20s drift (the #744 sync bug shape)
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/demo-recipe R12/);
+  });
+
+  test("audio not real (audio.real = false) THROWS (R12)", () => {
+    const s = clone();
+    s.captions.audio.real = false;
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/demo-recipe R12/);
+  });
+
+  test("a placeholder/stub caption audio source THROWS (R12)", () => {
+    const s = clone();
+    s.captions.audio.source = "out/review/fable/placeholder-vo.json";
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/demo-recipe R12/);
+  });
+
+  test("non-finite / non-positive durationSec THROWS (R12)", () => {
+    const s = clone();
+    s.captions.audio.durationSec = 0;
+    s.captions.lastCueEndSec = 0;
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/demo-recipe R12/);
+  });
+});
