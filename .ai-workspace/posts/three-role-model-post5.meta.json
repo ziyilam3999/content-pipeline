@@ -5,14 +5,25 @@
   "subject": "a way to build software with AI where four subagents each do one job (planner → plan-review → executor → execution-review) and nobody reviews their own work; two knobs pick the shape per task; mechanically enforced by hooks + a forgery-resistant role-ledger. MIT, public Claude Code plugin.",
   "category": "introduction",
   "producedDate": "2026-06-14",
-  "publishedDate": "",
+  "publishedDate": "2026-06-14",
+  "liveUrls": {
+    "x": "https://x.com/anson3999/status/2066109505214316797",
+    "threads": "https://www.threads.com/@gotextrameal/post/DZkDx0KARAl"
+  },
+  "publishVerified": {
+    "method": "npm run smoke:verify-published 9502422 (read-only Typefully GET)",
+    "verifiedDate": "2026-06-14",
+    "status": "published",
+    "storedOrder": "OK",
+    "livePerTweetOrder": "UNVERIFIED (needs X API — Typefully GET returns only the root tweet URL, not the live reply chain; honest, not faked)"
+  },
   "liveDraft": {
     "platform": "typefully",
     "draftId": "9502422",
     "socialSetId": "312308",
     "reviewUrl": "https://typefully.com/?d=9502422&a=312308",
     "createdDate": "2026-06-14",
-    "status": "draft (NOT yet published — operator does the final manual Publish; publishedDate + liveUrls fill on a post-publish read-back)"
+    "status": "published 2026-06-14 (see liveUrls); draft id retained for provenance"
   },
   "mediaBundleDir": "~/coding_projects/_launch-assets/three-role-model-post5-20260614",
   "publishManifestRef": "content-pipeline/publish/manifests/three-role-model-post5.publish-manifest.json",
