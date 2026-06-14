@@ -39,7 +39,13 @@ import type { AssetRole, PostSlug } from "./publishAssets";
 export function scrubHomePath(p: string): string {
   const home = os.homedir();
   if (p === home) return "~";
-  if (p.startsWith(home + path.sep)) return "~" + p.slice(home.length);
+  // Accept EITHER separator after the home prefix. On Windows os.homedir() is `C:\Users\<name>`
+  // (backslashes) while a manifest bundle path may use forward slashes, so a strict `home + path.sep`
+  // check would miss the mixed-separator case. Require the home prefix followed by a `/` or `\`.
+  if (p.startsWith(home)) {
+    const next = p.charAt(home.length);
+    if (next === "/" || next === "\\") return "~" + p.slice(home.length);
+  }
   return p;
 }
 
