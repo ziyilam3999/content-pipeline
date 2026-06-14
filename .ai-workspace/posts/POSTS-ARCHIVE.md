@@ -75,8 +75,9 @@ Last updated: 2026-06-14
 ## Post #5 — the 3-role development model — nobody grades their own homework  (INTRODUCTION)
 - **Subject:** a way to build software with AI where four subagents each do one job (planner → plan-review → executor → execution-review) and nobody reviews their own work; two knobs pick the shape per task; mechanically enforced by hooks + a forgery-resistant role-ledger. MIT, public Claude Code plugin.
 - **Produced:** 2026-06-14
-- **Published:** _(pending publish)_
+- **Published:** _(pending publish — LIVE Typefully DRAFT created 2026-06-14)_
 - **Live URLs:** _(pending publish)_
+- **Live draft (review):** https://typefully.com/?d=9502422&a=312308 (draft_id=9502422, social_set=312308; X 4-tweet thread + Threads post; DRAFT ONLY — operator does the final manual Publish; publishedDate/liveUrls fill on a post-publish read-back)
 - **Copy:** `post5-three-role-model-copy.json` (this dir)
 - **Media bundle:** `~/coding_projects/_launch-assets/three-role-model-post5-20260614/`
 - **Publish manifest:** `content-pipeline/publish/manifests/three-role-model-post5.publish-manifest.json`
