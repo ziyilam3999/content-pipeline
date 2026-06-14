@@ -1,3 +1,9 @@
+## [0.25.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.24.0...v0.25.0) (2026-06-14)
+
+### Features
+
+* **post5:** three-role-model promo post (#841) — an INTRODUCTION-category post for the 3-role development model ("four AI subagents, nobody grades their own homework"; planner → plan-review → executor → execution-review). Lands the full production source: `inputs/threeRoleModelSpec.ts` ContentSpec (numbers single-sourced from the reviewed, README-claim-verified copy; abstract art prompt; honesty guards as scopeGuards — ZERO efficacy numbers, only structural counts: 4 roles / 2 knobs / 4 executor placements / 3 evaluator options), the git-tracked copy archive + POSTS-ARCHIVE entry, the Remotion demo scaffolding (`remotion/post5-index.tsx`, `video/post5{Narration,Timeline}.ts`, `adapters/video-post5.ts`, `smoke/post5-demo-*.ts`, `smoke/launch-card-post5.ts`), the Typefully publisher (`smoke/publish-typefully-post5.ts`, reusing the #797 fidelity + #810 provenance + #809/#827 length gates) with a frozen 4-asset provenance manifest, and PostSlug/POST_ASSETS/ARCHIVE_POSTS SSOT entries. `adapters/voice.ts` gains an optional, backward-compatible `voice_settings.speed` (default unchanged). Live Typefully draft created for operator review+publish ([#114](https://github.com/ziyilam3999/content-pipeline/pull/114))
+
 ## [0.24.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.23.0...v0.24.0) (2026-06-14)
 
 ### Features
