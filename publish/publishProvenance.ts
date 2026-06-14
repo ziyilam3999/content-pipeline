@@ -23,9 +23,25 @@
 
 import * as crypto from "crypto";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 import type { AssetRole, PostSlug } from "./publishAssets";
+
+/**
+ * Scrub a leading home-directory prefix from a path so a committed manifest never leaks the OS
+ * username. `sourceDir` is an INFORMATIONAL provenance breadcrumb only — the #810 gate
+ * (`assertPublishAssetsMatchManifest`) hashes the actual asset bytes and never reads `sourceDir`, so
+ * tokenizing the home prefix to `~` changes NO behavior. Returns `p` UNCHANGED when it does not start
+ * with the real `os.homedir()` (relative paths like `out/review/fable` pass straight through).
+ * OS-correct: uses the runtime `os.homedir()`, never a hardcoded `/Users`.
+ */
+export function scrubHomePath(p: string): string {
+  const home = os.homedir();
+  if (p === home) return "~";
+  if (p.startsWith(home + path.sep)) return "~" + p.slice(home.length);
+  return p;
+}
 
 /** A single frozen asset record in a manifest (keyed by basename in `assets`). */
 export interface ManifestAsset {
@@ -202,7 +218,7 @@ export function freezeManifest(input: FreezeInput): PublishManifest {
   return {
     postSlug: input.postSlug,
     frozenAt: new Date().toISOString(),
-    sourceDir: input.sourceDir,
+    sourceDir: scrubHomePath(input.sourceDir),
     assets,
   };
 }
