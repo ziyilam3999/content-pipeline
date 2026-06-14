@@ -1,3 +1,13 @@
+## [0.25.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.25.0...v0.25.1) (2026-06-14)
+
+### Bug Fixes
+
+* **publish:** scrub a leading `os.homedir()` prefix to `~` at manifest freeze time so a committed publish manifest never leaks the OS username; retro-scrub the three leaky prior manifests (lfah-post1/2/3). `sourceDir` is informational-only — the #810 provenance gate hashes asset bytes and never reads it, so behavior is unchanged. Cross-platform-safe (accepts either path separator after the home prefix). ([#116](https://github.com/ziyilam3999/content-pipeline/pull/116))
+
+### Miscellaneous
+
+* **post5:** record the verified live X + Threads URLs into the post5 meta.json + POSTS-ARCHIVE after the operator published the 3-role-model promo (read back via `smoke:verify-published 9502422`; status=published, stored-order=OK; live per-tweet order honestly marked UNVERIFIED — needs X API). ([#117](https://github.com/ziyilam3999/content-pipeline/pull/117))
+
 ## [0.25.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.24.0...v0.25.0) (2026-06-14)
 
 ### Features
