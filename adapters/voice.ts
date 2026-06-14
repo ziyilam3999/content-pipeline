@@ -89,6 +89,14 @@ export interface ElevenLabsOpts {
   outputFormat?: string;
   keySource?: KeySource;
   timeoutMs?: number;
+  /**
+   * Optional speaking-rate multiplier (ElevenLabs `voice_settings.speed`, range 0.7–1.2; 1.0 = the
+   * model default). Lets a long-but-verbatim narration land inside the demo duration window WITHOUT
+   * cutting a single reviewed word. Omit for the unchanged default voice behavior (no voice_settings
+   * is sent). The returned per-character alignment reflects the actual (sped) audio, so caption +
+   * scene sync stay correct.
+   */
+  speed?: number;
 }
 
 interface ElevenLabsTimestampResponse {
@@ -112,6 +120,14 @@ export function elevenLabsCaller(opts?: ElevenLabsOpts): VoiceCaller {
       `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}` +
       `/with-timestamps?output_format=${encodeURIComponent(outputFormat)}`;
 
+    // Optional speaking-rate control — only sent when a speed is supplied, so the default request
+    // body (and thus the default voice behavior) is byte-for-byte unchanged. Clamp to the documented
+    // ElevenLabs range so a typo can never send an out-of-range value.
+    const reqBody: Record<string, unknown> = { text: req.text, model_id: modelId };
+    if (typeof opts?.speed === "number" && Number.isFinite(opts.speed)) {
+      reqBody.voice_settings = { speed: Math.min(1.2, Math.max(0.7, opts.speed)) };
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 120_000);
     let res: Response;
@@ -123,7 +139,7 @@ export function elevenLabsCaller(opts?: ElevenLabsOpts): VoiceCaller {
           "content-type": "application/json",
           accept: "application/json",
         },
-        body: JSON.stringify({ text: req.text, model_id: modelId }),
+        body: JSON.stringify(reqBody),
         signal: controller.signal,
       });
     } finally {
@@ -196,6 +212,7 @@ export async function synthesizeVoiceToFile(
       outputFormat: opts?.outputFormat,
       keySource: opts?.keySource,
       timeoutMs: opts?.timeoutMs,
+      speed: opts?.speed,
     });
 
   let vo: VoiceoverResult;
