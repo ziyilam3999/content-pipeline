@@ -1,3 +1,13 @@
+## [0.24.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.23.0...v0.24.0) (2026-06-14)
+
+### Features
+
+* **recipe:** R12 — demonstration videos must carry real-voice-synced captions, provenance-bound to real audio (#873) (#112)
+
+### Bug Fixes
+
+* Provenance gate: also verify the frozen bytes field, not just sha256 (#70) (#100)
+
 ## [0.23.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.22.2...v0.23.0) (2026-06-14)
 
 ### Features
