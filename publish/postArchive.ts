@@ -239,6 +239,25 @@ export const ARCHIVE_POSTS: Record<PostSlug, StaticArchiveMeta> = {
     note:
       "INTRODUCTION post — the ~90s voiced demo IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C); Threads = single video-led mixed post (hero video + card A). Workflow/methodology — ZERO efficacy numbers claimed, only structural counts. All gate-clean (#810 provenance / #809-#827 length / #797 fidelity all PASS).",
   },
+  "forge-demo-871": {
+    postNumber: 6,
+    title: "forge-harness — your tests decide what ships",
+    subject:
+      "a DEMONSTRATION of forge-harness's real dashboard: a story hits Retry when a check fails, shows which one, then slides to Done after the fix; 8 building blocks, only one calls the model; $0 out of pocket on a Max plan. MIT, public.",
+    category: "demonstration",
+    producedDate: "2026-06-15",
+    // Not yet published — a DRAFT is created via the live publisher; the operator does the final manual
+    // Publish. publishedDate stays null until a post-publish read-back fills it.
+    publishedDate: null,
+    mediaBundleDir: "~/coding_projects/_launch-assets/forge-demo-871-20260615",
+    publishManifestRef: "content-pipeline/publish/manifests/forge-demo-871.publish-manifest.json",
+    copyArchiveBasename: "forge-demo-871-copy.json",
+    copySourceBasename: "forge-demo-copy.json",
+    numbers:
+      "96% don't fully trust AI code / 48% verify (Sonar 2026, external); 8 blocks / 1 calls the model; Retry→Done; $0 out of pocket on Max; MIT, public.",
+    note:
+      "DEMONSTRATION post — the ~88s voiced cut IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C); Threads = single video-led mixed post (hero video + card A). 96%/48% are EXTERNAL industry stats (Sonar State of Code 2026), shown with a source chip — NOT a forge metric. All gate-clean (#810 provenance / #809-#827 length / #797 fidelity all PASS).",
+  },
 };
 
 /**

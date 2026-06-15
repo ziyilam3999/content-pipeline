@@ -215,8 +215,8 @@ const MAX_TERMINAL_FRACTION = 0.3;
 
 /** The proven #824 caption fallback shape (R12) — declared real until the gated VO leg produces the
  *  real sync JSON. Mirrors `demoCategoryRecipe.fableCaptions()` field-for-field. */
-const FORGE_VO_BUNDLE = "out/review/forge-demo/forge-demo-vo-sync.json";
-const FORGE_RUNTIME_SEC = FORGE_BEATS.reduce((s, b) => s + b.clipSec, 0); // 88
+export const FORGE_VO_BUNDLE = "out/review/forge-demo/forge-demo-vo-sync.json";
+export const FORGE_RUNTIME_SEC = FORGE_BEATS.reduce((s, b) => s + b.clipSec, 0); // 88
 
 function forgeCaptions(): DemoCaptions {
   return {

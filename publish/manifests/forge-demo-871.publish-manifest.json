@@ -1,0 +1,27 @@
+{
+  "postSlug": "forge-demo-871",
+  "frozenAt": "2026-06-15T02:15:17.617Z",
+  "sourceDir": "~/coding_projects/_launch-assets/forge-demo-871-20260615",
+  "assets": {
+    "forge-demo-voiced-9x16.mp4": {
+      "role": "hero-video",
+      "sha256": "a5cb9f2c8afd1842bb73e54d72a4cb36fb61abb7fe596370f81770580d471384",
+      "bytes": 9981466
+    },
+    "card-forge-demo-A.png": {
+      "role": "card",
+      "sha256": "fd6266c1f6b75c8521347efaf1efc7fc322182125d68442e13c338ca661ac56b",
+      "bytes": 798065
+    },
+    "card-forge-demo-B.png": {
+      "role": "card",
+      "sha256": "d9aa3f3e2aafa74de43ef21e7e2099d9b6200ae4e686a304d82a7bf2ae01efd8",
+      "bytes": 805286
+    },
+    "card-forge-demo-C.png": {
+      "role": "card",
+      "sha256": "b0ecd7c6643fdb04f330fa9d84fa933023b2338c704a7dc1c44f1d65dc421a5f",
+      "bytes": 792763
+    }
+  }
+}
