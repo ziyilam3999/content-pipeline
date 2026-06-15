@@ -80,6 +80,16 @@ export interface PostArchiveRecord {
   numbers?: string;
   /** Free-form note (e.g. publish-status caveat). */
   note?: string;
+  /**
+   * Typefully draft id created by the live publisher (numeric). Filled by the live write-back so the
+   * archive carries a pointer to the actual draft — #948 (prior: the writer never captured it, so a
+   * draft swap left the archive with no draft pointer; recurred #841/post5 + #871/#927).
+   */
+  typefullyDraftId?: number | null;
+  /** Typefully draft status at create/read-back time (e.g. "draft"). */
+  typefullyDraftStatus?: string;
+  /** A prior draft id this draft SUPERSEDED + deleted (draft-swap breadcrumb). */
+  supersedesDraftId?: number | null;
 }
 
 /** Result of an archive write — the durable paths touched. */
@@ -243,7 +253,7 @@ export const ARCHIVE_POSTS: Record<PostSlug, StaticArchiveMeta> = {
     postNumber: 6,
     title: "forge-harness — your tests decide what ships",
     subject:
-      "a DEMONSTRATION of forge-harness's real dashboard: a story hits Retry when a check fails, shows which one, then slides to Done after the fix; 8 building blocks, only one calls the model; $0 out of pocket on a Max plan. MIT, public.",
+      "a DEMONSTRATION of forge-harness: shape the work with forge's /prd skill, decompose it with forge_plan into binary pass-or-fail checks, run it with forge_evaluate (your real shell commands), then watch the real dashboard — a story hits Retry when a check fails (you see which one), then slides to Done. The model planned; your tests judged. $0 out of pocket on a Max plan. MIT, public.",
     category: "demonstration",
     producedDate: "2026-06-15",
     // Not yet published — a DRAFT is created via the live publisher; the operator does the final manual
@@ -254,9 +264,9 @@ export const ARCHIVE_POSTS: Record<PostSlug, StaticArchiveMeta> = {
     copyArchiveBasename: "forge-demo-871-copy.json",
     copySourceBasename: "forge-demo-copy.json",
     numbers:
-      "96% don't fully trust AI code / 48% verify (Sonar 2026, external); 8 blocks / 1 calls the model; Retry→Done; $0 out of pocket on Max; MIT, public.",
+      "96% don't fully trust AI code / 48% verify (Sonar State of Code 2026, external); /prd writes the spec, forge_plan splits it into binary pass-or-fail checks, forge_evaluate runs your real shell commands; Retry→Done; $0 out of pocket on Max; MIT, public.",
     note:
-      "DEMONSTRATION post — the ~88s voiced cut IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C); Threads = single video-led mixed post (hero video + card A). 96%/48% are EXTERNAL industry stats (Sonar State of Code 2026), shown with a source chip — NOT a forge metric. All gate-clean (#810 provenance / #809-#827 length / #797 fidelity all PASS).",
+      "DEMONSTRATION post — REVISED 2026-06-15 (#927-rev) so the copy is COHERENT with the new video storyboard (R1-R5 + #944 VO sync): the ~94s voiced cut IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C); Threads = single video-led mixed post (hero video + card A). 96%/48% are EXTERNAL industry stats (Sonar State of Code 2026), shown with a source chip — NOT a forge metric. All gate-clean (#810 provenance / #809-#827 length / #797 fidelity / #867 eyeball all PASS).",
   },
 };
 
