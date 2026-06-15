@@ -1,3 +1,9 @@
+## [0.28.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.27.1...v0.28.0) (2026-06-15)
+
+### Features
+
+* **#927:** forge-demo DEMONSTRATION video revision (R1–R5) + #944 voiced-cut VO-sync fix. R1 rebuilds the chat beat as an authentic Claude Code terminal running `/prd`; R2 regenerates the tool→dashboard transition from the mobile board (no desktop→mobile flip); R3 adds an honest decomposition scene (PRD→phases→stories→binary checks, siblings via dep-graph); R4 re-choreographs the hero camera to push in to each narrated element; R5 updates narration + gates. The #944 sync fix introduces an SSOT `FORGE_VO_SEG_SEC` so each narrated beat is cut to its measured spoken length, splices a 3s transition-silence at the tool→dashboard seam, and shifts post-seam alignment by +3s so audio total == spine total == caption timeline (`video/forgeVoSync.ts` pure-math seam/drift/shift, `assertForgeVoMatchesSpine` ≤0.5s drift gate both-ends, `FORGE_RUNTIME_SEC` ≈93.882s derived from beats). Reuses the cached Adam voiceover — no new paid synthesis. Adds `tools/gen-forge-dashboards.mjs` (reproducible dashboard generator, `os.homedir()`-based). ([#125](https://github.com/ziyilam3999/content-pipeline/pull/125))
+
 ## [0.27.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.27.0...v0.27.1) (2026-06-15)
 
 ### Bug Fixes
