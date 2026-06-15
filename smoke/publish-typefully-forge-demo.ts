@@ -466,19 +466,41 @@ async function main() {
       `posts=x:${xCount},threads:${tCount} media=${xMediaPaths.length + threadsMediaPaths.length}`,
   );
 
-  // ── LIVE URL WRITEBACK (non-fatal). forge-demo was NOT yet live; once published, MERGE the publish
-  // date + live x/threads URLs into the durable record (fresh URLs come from a read-back via
-  // smoke/verify-published.ts — pass them here). Merge — never erase the rest of the record.
+  // ── LIVE WRITEBACK (non-fatal). MERGE the live draft pointer (id + status) + publish date into the
+  // durable record so the archive points at the ACTUAL draft just created — #948 (the writer never
+  // captured createDraft's id, so a copy revision / draft swap left the archive with no draft pointer;
+  // recurred #841/post5 + #871/#927). Live x/threads URLs come later from a read-back via
+  // smoke/verify-published.ts. Merge — never erase the rest of the record (supersedesDraftId etc.).
   const liveArchived = safeArchivePostAll(
     buildArchiveRecord("forge-demo-871", {
       primaryRoot: ROOT,
-      dynamic: { publishedDate: new Date().toISOString().slice(0, 10) },
+      dynamic: {
+        publishedDate: new Date().toISOString().slice(0, 10),
+        // Typefully returns the draft id as a numeric-looking STRING — coerce to a number so the archive
+        // carries a numeric pointer (the both-ends gate below rejects a non-numeric / NaN result).
+        typefullyDraftId: Number(res.id),
+        typefullyDraftStatus: res.status,
+      },
     }),
   );
   if (liveArchived) {
     console.log(
       `ARCHIVE: forge-demo-871 publish state written back → ${liveArchived.external.metaPath} (+ in-repo ${liveArchived.inRepo.metaPath})`,
     );
+    // #948 both-ends gate: a live publish MUST leave a numeric draft pointer in the persisted meta, or
+    // the archive-writer has silently regressed (the recurring stale-meta gap). Fail-closed on BOTH the
+    // durable + in-repo copies — read them back from disk and assert, never trust the in-memory record.
+    for (const metaPath of [liveArchived.external.metaPath, liveArchived.inRepo.metaPath]) {
+      const persisted = JSON.parse(fs.readFileSync(metaPath, "utf8")) as {
+        typefullyDraftId?: unknown;
+      };
+      if (typeof persisted.typefullyDraftId !== "number" || !Number.isFinite(persisted.typefullyDraftId)) {
+        throw new Error(
+          `ARCHIVE WRITEBACK REGRESSION (#948): ${metaPath} has no numeric typefullyDraftId after a live ` +
+            `publish (got ${JSON.stringify(persisted.typefullyDraftId)}). The draft pointer was not persisted.`,
+        );
+      }
+    }
   }
   process.exit(0);
 }

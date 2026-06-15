@@ -175,6 +175,34 @@ describe("archivePost", () => {
     expect(countSections(md)).toBe(1);
   });
 
+  it("#948: a draft-id writeback persists the typefullyDraftId + status and preserves a prior supersedesDraftId", () => {
+    const dir = freshDir();
+    // 1 — archive the full record carrying a draft-swap breadcrumb (supersededDraftId), no draft id yet.
+    archivePost(post1Record({ publishedDate: null, supersedesDraftId: 9510567 }), dir);
+
+    // 2 — live publish writeback: only the slug + the fresh draft pointer (a partial record).
+    archivePost(
+      {
+        slug: "lfah-post1",
+        publishedDate: "2026-06-15",
+        typefullyDraftId: 9517372,
+        typefullyDraftStatus: "draft",
+      },
+      dir,
+    );
+
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, "lfah-post1.meta.json"), "utf8"));
+    // the draft pointer landed, numeric…
+    expect(typeof meta.typefullyDraftId).toBe("number");
+    expect(meta.typefullyDraftId).toBe(9517372);
+    expect(meta.typefullyDraftStatus).toBe("draft");
+    expect(meta.publishedDate).toBe("2026-06-15");
+    // …and the earlier breadcrumb + the rest of the record survived the partial writeback.
+    expect(meta.supersedesDraftId).toBe(9510567);
+    expect(meta.subject).toBe("fixes real bugs cheaply");
+    expect(meta.numbers).toBe("13 bugs, 62% hybrid");
+  });
+
   it("merges one live URL without clobbering a previously-stored other URL", () => {
     const dir = freshDir();
     archivePost(post1Record({ liveUrls: { x: "https://x/first", threads: "https://t/first" } }), dir);
