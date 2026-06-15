@@ -1,3 +1,9 @@
+## [0.27.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.26.0...v0.27.0) (2026-06-15)
+
+### Features
+
+* **871:** forge-harness DEMONSTRATION post Tier-3 — voiced cut + cards + Typefully assembly (#121). Completes #871 on top of the v0.26.0 silent cut: `tools/voiceForge.ts` (compose path that binds the real ElevenLabs voiceover + synced captions onto the forge storyboard), `video/forgeNarration.ts` (the narration script SSOT), `smoke/launch-card-forge-demo.ts` (the 3-card renderer mirroring the post-4 template — art-once + cross-post art-uniqueness guard + PRIMARY-only paid proof + per-card DOM-fidelity check), `smoke/publish-typefully-forge-demo.ts` (Typefully assembly through the #810 provenance / #809–#827 length / #797 fidelity gates, DRY-RUN default, LIVE behind `TYPEFULLY_LIVE=1`), the `forge-demo-871` `POST_ASSETS` entry + frozen `publish/manifests/forge-demo-871.publish-manifest.json`, and the in-repo post archive (`.ai-workspace/posts/forge-demo-871.*` + `POSTS-ARCHIVE.md` Post #6). Adds `video/__tests__/gitattributesEolPin.test.ts` — a jest guard that fails if any git-tracked byte/sha256-asserted TEXT asset under `assets/` lacks a `-text`/`binary` `.gitattributes` pin (prevents the Windows-CRLF hash-inflation class from recurring). The hero voiced cut (~88s) was produced and a live Typefully DRAFT created + read-back-verified (status=draft); publish stays the operator's action — `publishedDate` is `null` until a post-publish read-back. ([#121](https://github.com/ziyilam3999/content-pipeline/pull/121))
+
 ## [0.26.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.25.1...v0.26.0) (2026-06-15)
 
 ### Features
