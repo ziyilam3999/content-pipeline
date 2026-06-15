@@ -15,7 +15,7 @@ so any post can later be re-purposed for another platform (e.g. LinkedIn) withou
 > This file is GENERATED from the `*.meta.json` records in this directory — do not hand-edit; edits are
 > overwritten on the next archive. Change the source in `publish/postArchive.ts` (ARCHIVE_POSTS) instead.
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 ---
 
@@ -75,14 +75,24 @@ Last updated: 2026-06-14
 ## Post #5 — the 3-role development model — nobody grades their own homework  (INTRODUCTION)
 - **Subject:** a way to build software with AI where four subagents each do one job (planner → plan-review → executor → execution-review) and nobody reviews their own work; two knobs pick the shape per task; mechanically enforced by hooks + a forgery-resistant role-ledger. MIT, public Claude Code plugin.
 - **Produced:** 2026-06-14
-- **Published:** 2026-06-14 ✅ (verified live via read-back `smoke:verify-published 9502422`; status=published, stored-order=OK; live per-tweet order UNVERIFIED — needs X API, honest)
-- **Live URLs:** X → https://x.com/anson3999/status/2066109505214316797 · Threads → https://www.threads.com/@gotextrameal/post/DZkDx0KARAl
-- **Live draft (review):** https://typefully.com/?d=9502422&a=312308 (draft_id=9502422, social_set=312308; X 4-tweet thread + Threads post — PUBLISHED 2026-06-14, draft id retained for provenance)
+- **Published:** 2026-06-14 (LIVE).
+- **Live URLs:** X https://x.com/anson3999/status/2066109505214316797 · Threads https://www.threads.com/@gotextrameal/post/DZkDx0KARAl
 - **Copy:** `post5-three-role-model-copy.json` (this dir)
 - **Media bundle:** `~/coding_projects/_launch-assets/three-role-model-post5-20260614/`
 - **Publish manifest:** `content-pipeline/publish/manifests/three-role-model-post5.publish-manifest.json`
 - **Numbers:** 4 roles / 2 knobs (4 executor-placements / 3 evaluators); roles bound to real transcripts via a forgery-resistant ledger; MIT, public.
 - **Note:** INTRODUCTION post — the ~90s voiced demo IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C); Threads = single video-led mixed post (hero video + card A). Workflow/methodology — ZERO efficacy numbers claimed, only structural counts. All gate-clean (#810 provenance / #809-#827 length / #797 fidelity all PASS).
+
+## Post #6 — forge-harness — your tests decide what ships  (DEMONSTRATION)
+- **Subject:** a DEMONSTRATION of forge-harness's real dashboard: a story hits Retry when a check fails, shows which one, then slides to Done after the fix; 8 building blocks, only one calls the model; $0 out of pocket on a Max plan. MIT, public.
+- **Produced:** 2026-06-15
+- **Published:** 2026-06-15 (LIVE).
+- **Live URLs:** _(pending publish)_
+- **Copy:** `forge-demo-871-copy.json` (this dir)
+- **Media bundle:** `~/coding_projects/_launch-assets/forge-demo-871-20260615/`
+- **Publish manifest:** `content-pipeline/publish/manifests/forge-demo-871.publish-manifest.json`
+- **Numbers:** 96% don't fully trust AI code / 48% verify (Sonar 2026, external); 8 blocks / 1 calls the model; Retry→Done; $0 out of pocket on Max; MIT, public.
+- **Note:** DEMONSTRATION post — the ~88s voiced cut IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C); Threads = single video-led mixed post (hero video + card A). 96%/48% are EXTERNAL industry stats (Sonar State of Code 2026), shown with a source chip — NOT a forge metric. All gate-clean (#810 provenance / #809-#827 length / #797 fidelity all PASS).
 
 ---
 
