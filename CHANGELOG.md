@@ -1,3 +1,9 @@
+## [0.26.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.25.1...v0.26.0) (2026-06-15)
+
+### Features
+
+* **871:** forge-harness DEMONSTRATION-category video — live-captured dashboard hero (#119). Applies the #870 demonstration recipe to forge-harness: a 9-beat silent cut whose 3 hero beats render forge's REAL `.forge/dashboard.html` LIVE (Playwright iframe at a narrow 680px width so the wide kanban board reflows TALLER and FILLS the 9:16 frame) under a directed CSS-transform camera — beat 5 opens on the full board (3s hold) then flies to the breathing Forge Pulse hexagon; beats 6/7 are column-locked detail pushes carrying the DEMO-2 Retry→Done journey. Lands `video/forgeStoryboard.ts` (9-beat DemoVideoSpec SSOT), `tools/captureForge.ts` (live-capture harness, deviceScaleFactor 2), 3 committed `assets/forge-demo/dashboard-*.html` with byte+sha256 provenance asserted in `video/__tests__/forgeSpec.test.ts` (camera-framing guard: each hero beat is full-board-establishing OR column-locked — no cross-column sweep), the copy JSON + `publish/__tests__/forgeCopy.test.ts`, and a `.gitattributes` pinning the demo HTML to `-text` so the provenance byte counts stay stable across platforms (Windows CRLF would otherwise inflate them). Silent cut only — paid VO/art synthesis + the Typefully draft remain gated on explicit per-step approval. ([#119](https://github.com/ziyilam3999/content-pipeline/pull/119))
+
 ## [0.25.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.25.0...v0.25.1) (2026-06-14)
 
 ### Bug Fixes
