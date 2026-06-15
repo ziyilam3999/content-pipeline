@@ -19,7 +19,8 @@ export type PostSlug =
   | "lfah-post2"
   | "forge-harness-post3"
   | "content-pipeline-demo-post4"
-  | "three-role-model-post5";
+  | "three-role-model-post5"
+  | "forge-demo-871";
 
 /** The role of a published asset — drives the hero-aspect/fidelity story + clearer error messages. */
 export type AssetRole = "hero-video" | "card";
@@ -109,6 +110,21 @@ export const POST_ASSETS: Record<PostSlug, PostAssetSpec> = {
       { role: "card", basename: "card-post5-C.png" }, // tweet 4 — "provable, not claimed"
     ],
   },
+  // #871 — the forge-harness DEMONSTRATION-category post. The ~88s voiced cut IS the hero (tweet 1 +
+  // the Threads lead); the X body tweets (2-4) each carry their own card-over-art still. The hero is
+  // the full-bleed 9:16 voiced cut (`forge-demo-voiced-9x16.mp4`, #794) rendered to out/video/; the
+  // three body cards (`card-forge-demo-{A,B,C}.png`) live under out/review/fable/. The hero's siblings
+  // (mobile proxy / other aspects) are NOT uploaded.
+  "forge-demo-871": {
+    slug: "forge-demo-871",
+    defaultBundleDir: path.join(LAUNCH_ASSETS_ROOT, "forge-demo-871-20260615"),
+    assets: [
+      { role: "hero-video", basename: "forge-demo-voiced-9x16.mp4" }, // full-bleed 9:16 voiced demo hero
+      { role: "card", basename: "card-forge-demo-A.png" }, // tweet 2 — Retry→Done on the real dashboard
+      { role: "card", basename: "card-forge-demo-B.png" }, // tweet 3 — 8 blocks, only one calls the model
+      { role: "card", basename: "card-forge-demo-C.png" }, // tweet 4 — your tests decide what ships
+    ],
+  },
 };
 
 /** Type-guard: is `s` a known post slug? */
@@ -118,6 +134,7 @@ export function isPostSlug(s: string): s is PostSlug {
     s === "lfah-post2" ||
     s === "forge-harness-post3" ||
     s === "content-pipeline-demo-post4" ||
-    s === "three-role-model-post5"
+    s === "three-role-model-post5" ||
+    s === "forge-demo-871"
   );
 }
