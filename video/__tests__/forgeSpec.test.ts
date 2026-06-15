@@ -15,7 +15,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 
-import { assertDemoCategoryRecipe } from "../demoCategoryRecipe";
+import { assertDemoCategoryRecipe, assertPhoneFullScreenAspectDiscipline } from "../demoCategoryRecipe";
+import { FABLE_ASPECTS } from "../fableLayout";
 import { forgeSpec, FORGE_BEATS } from "../forgeStoryboard";
 
 const REPO_ROOT = process.cwd();
@@ -104,4 +105,32 @@ describe("#871 hero camera-framing guards (full-board establishing OR column-loc
       expect(fullBoardEstablishing || columnLocked).toBe(true);
     },
   );
+});
+
+// ── #871/#927 R13 — PHONE FULL-SCREEN ASPECT DISCIPLINE (keep 9:16, never render taller) ─────────────
+// The operator's S25 Ultra (3120×1440 = 19.5:9) is TALLER than 9:16, so a fit-player pads the 9:16 master
+// with thin top/bottom bars — inherent + ACCEPTED. The rejected-twice "fix" was rendering the master TALLER
+// to fill that one phone; a taller-than-9:16 master then CROPS the board on every other viewer. R13 locks the
+// 9:16 gold standard mechanically. See feedback_keep_9x16_social_standard_dont_render_taller.
+describe("#871/#927 R13 phone-full-screen aspect discipline (keep 9:16, never taller)", () => {
+  test("the forge demo's publish aspects pass the discipline (9:16 present + nothing taller than 9:16)", () => {
+    expect(() => assertPhoneFullScreenAspectDiscipline(forgeSpec.aspects)).not.toThrow();
+    expect(() => assertPhoneFullScreenAspectDiscipline(FABLE_ASPECTS)).not.toThrow();
+  });
+
+  test("a 9:16 aspect exists, sized exactly 1080×1920", () => {
+    const hero = forgeSpec.aspects.find((a) => a.key === "9:16")!;
+    expect(hero).toBeDefined();
+    expect([hero.width, hero.height]).toEqual([1080, 1920]);
+  });
+
+  test("a TALLER-than-9:16 master (the 9:20 'fill-my-S25' trap) FAILS the gate", () => {
+    const tall = [{ key: "9:16", width: 1080, height: 2400, cropY: 0, captionY: 1430, crop: "" }];
+    expect(() => assertPhoneFullScreenAspectDiscipline(tall)).toThrow(/taller than 9:16|1080x1920/i);
+  });
+
+  test("dropping the 9:16 aspect entirely FAILS the gate", () => {
+    const noHero = FABLE_ASPECTS.filter((a) => a.key !== "9:16");
+    expect(() => assertPhoneFullScreenAspectDiscipline(noHero)).toThrow(/no 9:16 aspect|primary/i);
+  });
 });

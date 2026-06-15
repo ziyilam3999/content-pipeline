@@ -34,6 +34,8 @@ import * as crypto from "crypto";
 import {
   assertFableBeatsSafeAndFilled,
   assertNoCaptionMediaOverlap,
+  CAP_W,
+  CAP_H,
   FABLE_ASPECTS,
   FABLE_BEAT_LAYOUTS,
   type FableAspect,
@@ -393,6 +395,58 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
         `real voiceover is ${audio.durationSec}s (drift > ${CAPTION_SYNC_TOLERANCE_SEC}s tolerance). An alignment ` +
         "is valid ONLY for the exact audio it was derived from — never pair captions with a different audio file.",
     );
+  }
+
+  // R13 — PHONE FULL-SCREEN ASPECT DISCIPLINE (#871/#927, 2026-06-15). The vertical social GOLD STANDARD is
+  // 9:16 (1080×1920). A modern phone is TALLER than 9:16 (Samsung S25 Ultra 3120×1440 = 19.5:9; many Android
+  // 20:9), so a fit-player letterboxes a 9:16 master with thin top/bottom bars — that is INHERENT and ACCEPTED,
+  // not a defect. The rejected-twice "fix" (#871, 2026-06-15) was rendering the master TALLER to fill ONE
+  // reviewer's phone; a taller-than-9:16 master then CROPS the subject on every OTHER viewer's device and on the
+  // platforms. So the primary social aspect MUST be 9:16, and NO publish aspect may be taller than 9:16. Keep the
+  // whole subject legible inside the #823 horizontal title-safe band, never chase phone-fill by changing aspect.
+  try {
+    assertPhoneFullScreenAspectDiscipline(spec.aspects);
+  } catch (err) {
+    throw new Error(`demo-recipe R13: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * R13 helper (#871/#927) — PHONE FULL-SCREEN ASPECT DISCIPLINE. Asserts the publish-aspect set keeps the 9:16
+ * vertical social gold standard and NEVER goes taller than 9:16. Concretely: (a) a 9:16 aspect exists, sized
+ * exactly 1080×1920; (b) every publish aspect's height/width ≤ 16/9 (none taller than 9:16). A future
+ * 1080×2400 (9:20 "fill-my-S25") master FAILS here by design — it would crop on every other viewer. The bars a
+ * fit-player adds to a 9:16 cut on a >9:16 phone are inherent + accepted; the subject is kept whole via the
+ * #823 horizontal safe band, not by re-shaping the frame. See feedback_keep_9x16_social_standard_dont_render_taller.
+ */
+export function assertPhoneFullScreenAspectDiscipline(aspects: ReadonlyArray<FableAspect>): void {
+  const NINE_BY_SIXTEEN = 16 / 9; // height/width of the 9:16 standard ≈ 1.7778
+  const EPS = 1e-3;
+  const hero = aspects.find((a) => a.key === "9:16");
+  if (!hero) {
+    throw new Error(
+      "no 9:16 aspect — the PRIMARY vertical social aspect MUST be 9:16 (the gold standard). A demo that drops " +
+        "9:16 (e.g. ships only a taller 9:20 'fills-my-phone' cut) crops the subject on every viewer whose device " +
+        "is not exactly that shape. Keep 9:16 as the primary publish aspect.",
+    );
+  }
+  if (hero.width !== CAP_W || hero.height !== CAP_H) {
+    throw new Error(
+      `the 9:16 aspect is ${hero.width}x${hero.height}, expected exactly ${CAP_W}x${CAP_H} (1080x1920). The ` +
+        "social-standard vertical spine is 1080x1920; do not resize it to chase one device's full-screen fill.",
+    );
+  }
+  for (const a of aspects) {
+    const ratio = a.height / a.width; // height/width; > 16/9 means TALLER than 9:16
+    if (ratio > NINE_BY_SIXTEEN + EPS) {
+      throw new Error(
+        `publish aspect "${a.key}" is ${a.width}x${a.height} (height/width ${ratio.toFixed(3)}) — TALLER than ` +
+          `9:16 (${NINE_BY_SIXTEEN.toFixed(3)}). A taller-than-9:16 master fills one tall phone but CROPS the ` +
+          "subject on every other device and on the platforms. The top/bottom bars a fit-player adds to a 9:16 " +
+          "cut are inherent and accepted; never render taller than 9:16 to remove them. Keep the subject inside " +
+          "the #823 horizontal title-safe band instead.",
+      );
+    }
   }
 }
 
