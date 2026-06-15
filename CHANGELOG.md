@@ -1,3 +1,9 @@
+## [0.27.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.27.0...v0.27.1) (2026-06-15)
+
+### Bug Fixes
+
+* **#927:** keep demo video at 9:16 — R13 phone-full-screen aspect discipline gate (never render taller than 9:16) ([#123](https://github.com/ziyilam3999/content-pipeline/pull/123))
+
 ## [0.27.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.26.0...v0.27.0) (2026-06-15)
 
 ### Features
