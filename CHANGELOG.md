@@ -1,3 +1,10 @@
+## [0.28.2](https://github.com/ziyilam3999/content-pipeline/compare/v0.28.1...v0.28.2) (2026-06-15)
+
+### Bug Fixes
+
+* **publish:** archive-writer records the live Typefully draft_id + un-stale forge-demo meta; both-ends gate asserts a numeric draftId after a live publish (#948/#947) ([#129](https://github.com/ziyilam3999/content-pipeline/pull/129))
+* **publish:** tighten draft-id gate to integer + record live published X/Threads URLs for the forge-demo post (#926)
+
 ## [0.28.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.28.0...v0.28.1) (2026-06-15)
 
 ### Bug Fixes
