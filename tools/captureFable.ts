@@ -161,7 +161,13 @@ function lowerThird(label: string, dark: boolean): string {
 }
 
 /** A clean modern terminal page (system-mono, tool-world navy, teal prompt) + the agent-interface label. */
-export function buildTerminalHtml(label = "content-pipeline — the agent's interface, not yours"): string {
+export function buildTerminalHtml(
+  label = "content-pipeline — the agent's interface, not yours",
+  // REQUIRED (no default): the window-chrome product name. Forcing every caller to name it prevents a
+  // non-content-pipeline demo (e.g. the #871 forge cut) from silently inheriting the wrong brand — the
+  // bug this guards against. A missing windowTitle is now a compile error, not a wrong label on screen.
+  windowTitle: string,
+): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:${CAP_W}px;height:${CAP_H}px;background:${BG_TOOL};overflow:hidden;position:relative}
@@ -176,7 +182,7 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;background:${BG_TOOL};overflow:hidd
 @keyframes b{50%{opacity:0}}
 </style></head><body>
 <div id="frame">
-  <div id="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">content-pipeline</span></div>
+  <div id="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">${windowTitle}</span></div>
   <div id="out"></div><span id="cur"></span>
 </div>
 ${lowerThird(label, true)}
@@ -353,6 +359,94 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;
 </body></html>`;
 }
 
+// ── #871 PAN-ZOOM output-world builder (net-new — directed Ken-Burns over a WIDE landscape PNG) ─────
+
+/** A pan-zoom focus point, NORMALIZED 0..1 on the SOURCE image (cx,cy = focus center; zoom = fraction
+ *  of source WIDTH visible, smaller = tighter). The builder CLAMPS so the image always COVERS the frame. */
+export interface PanZoomFocus {
+  cx: number;
+  cy: number;
+  zoom: number;
+}
+
+/** The resolved CSS background geometry for one focus keyframe (px in the output frame). */
+export interface PanZoomBgGeom {
+  bgW: number;
+  bgH: number;
+  posX: number;
+  posY: number;
+}
+
+/**
+ * Resolve a normalized focus rect to a clamped `background-size` + `background-position`. The image is
+ * sized to COVER the frame (bgW ≥ frameW AND bgH ≥ frameH) and the position is clamped so the frame is
+ * never larger than the image on any edge — guaranteeing NO letterbox / NO empty-cream island at EVERY
+ * point of the animation (both endpoints cover, and a convex interpolation of two covering states with
+ * sizes ≥ the cover floor stays covering).
+ *
+ * NOTE on the landscape→portrait math: with a 2880×2048 landscape source and a 1080×1920 portrait frame,
+ * the WIDEST coverable view is `zoom ≈ 0.4` (at which the full source HEIGHT exactly fills the frame, so
+ * the empty bottom cream is visible and there is no vertical pan room). To EXCLUDE the empty bottom cream
+ * AND gain vertical pan room, a focus must use `zoom ≲ 0.29`. Focus values wider than the cover floor are
+ * clamped here; the orchestrator tunes the rects in `video/forgeStoryboard.ts`.
+ */
+export function panZoomBgGeom(
+  focus: PanZoomFocus,
+  srcW: number,
+  srcH: number,
+  frameW: number,
+  frameH: number,
+): PanZoomBgGeom {
+  const coverFloorW = Math.max(frameW, (frameH * srcW) / srcH); // smallest bgW that still covers
+  const z = Math.min(Math.max(focus.zoom, 1e-3), 1);
+  const bgW = Math.max(coverFloorW, frameW / z);
+  const bgH = (bgW * srcH) / srcW;
+  // Center the focus point, then clamp so the image keeps covering the frame on every edge.
+  const posX = Math.min(0, Math.max(frameW - bgW, frameW / 2 - focus.cx * bgW));
+  const posY = Math.min(0, Math.max(frameH - bgH, frameH / 2 - focus.cy * bgH));
+  return { bgW, bgH, posX, posY };
+}
+
+/**
+ * OUTPUT — pan-zoom viewer (net-new). Renders a WIDE landscape PNG (a real `.forge/dashboard.html`
+ * screenshot) FULL-BLEED, animating a directed pan + zoom from `focusStart` → `focusEnd` over the beat
+ * duration via animatable `background-size` + `background-position` (the image COVERS the frame at all
+ * times — no letterbox, no empty-cream island). The lower-third pill carries the output label.
+ */
+export function buildViewerPanZoomHtml(opts: {
+  imgDataUri: string;
+  focusStart: PanZoomFocus;
+  focusEnd: PanZoomFocus;
+  durationSec: number;
+  label?: string;
+  srcW: number;
+  srcH: number;
+}): string {
+  const { imgDataUri, focusStart, focusEnd, durationSec, srcW, srcH } = opts;
+  const label = opts.label ?? "the output";
+  const a = panZoomBgGeom(focusStart, srcW, srcH, CAP_W, CAP_H);
+  const b = panZoomBgGeom(focusEnd, srcW, srcH, CAP_W, CAP_H);
+  const sz = (g: PanZoomBgGeom) => `${g.bgW.toFixed(1)}px ${g.bgH.toFixed(1)}px`;
+  const pos = (g: PanZoomBgGeom) => `${g.posX.toFixed(1)}px ${g.posY.toFixed(1)}px`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;background:${BG_OUTPUT_A};
+  font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif}
+#pz{position:absolute;inset:0;background-image:url(${imgDataUri});background-repeat:no-repeat;
+  background-size:${sz(a)};background-position:${pos(a)};
+  animation:pz ${durationSec.toFixed(2)}s ease-in-out forwards}
+@keyframes pz{
+  from{background-size:${sz(a)};background-position:${pos(a)}}
+  to{background-size:${sz(b)};background-position:${pos(b)}}
+}
+#pill{position:absolute;left:50%;top:64px;transform:translateX(-50%);background:#14100c;color:#f7f1e6;
+  border-radius:999px;font:700 30px/1.2 inherit;padding:18px 40px;letter-spacing:.3px;z-index:2;white-space:nowrap}
+</style></head><body>
+<div id="pz"></div>
+<div id="pill">${label}</div>
+</body></html>`;
+}
+
 /** OUTPUT — video viewer. Plays the REAL produced MP4, FRAMED on the DISTINCT light output world. */
 export function buildViewerVideoHtml(videoUrl: string, label = "the output"): string {
   const d = outputDeviceSpineRect();
@@ -461,7 +555,7 @@ async function recordTerminalBeat(beat: FableBeat, recDir: string, chromium: any
     recordVideo: { dir: recDir, size: { width: CAP_W, height: CAP_H } },
   });
   const page = await context.newPage();
-  await page.setContent(buildTerminalHtml(beat.stepLabel), { waitUntil: "domcontentloaded" });
+  await page.setContent(buildTerminalHtml(beat.stepLabel, "content-pipeline"), { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(700);
 
   for (const cmd of beat.commands) {

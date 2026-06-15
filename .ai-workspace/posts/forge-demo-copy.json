@@ -1,0 +1,26 @@
+{
+  "_what": "Forge-demo copy — the #871 forge-harness DEMONSTRATION-category video post (X thread + Threads). DEMONSTRATION framing: it points at what you WATCH on forge's real dashboard (a story hits Retry, shows which check failed, then slides to Done), distinct from post #3's INTRODUCTION pitch. The 96%/48% are EXTERNAL industry stats (Sonar State of Code, 2026) shown with a visible source chip — NOT a forge metric. Every X tweet + the Threads post PROVEN within the #809/#827 per-platform length validator (publish/copyLimits.ts). DRAFT for operator review before any paid voiceover / art / live draft.",
+  "_honesty_guards": [
+    "96% don't fully trust AI code / barely half (48%) always verify are INDUSTRY-discourse stats from the Sonar State of Code survey, 2026 — shown with an on-screen source chip and framed as the industry problem. They are explicitly NOT a forge efficacy/perf claim; the demo makes zero forge numeric-efficacy claim.",
+    "Retry->Done is what forge's REAL dashboard shows: a single failed acceptance criterion maps to ready-for-retry (the Retry column), and the story moves to Done after the fix re-evaluates PASS. Captured from the genuine .forge/dashboard.html run-record (dashboard-renderer.ts status->column map).",
+    "'$0 out of pocket' = API-equivalent cost is covered by a Max subscription (the real dashboard Budget card reads 'Max plan — $0 actual'). We do NOT claim forge itself is free of all cost; only that on a Max plan there is $0 out-of-pocket.",
+    "'8 building blocks, only one calls the model' mirrors the README's own framing (forge_plan is the only primitive that talks to the model; the other seven are deterministic). Edge modes exist and are footnoted in the README — wording stays 'only one calls the model' / 'on the normal path'.",
+    "Brand-clean: MIT license, public repo github.com/ziyilam3999/forge-harness. No employer brand mentioned anywhere. The implementation work runs in YOUR Claude Code session — forge plans, grades, and coordinates."
+  ],
+  "x_thread": [
+    "96% of developers don't fully trust AI-written code. Barely half ever check it before they commit.\n\nHere's a 90-second look at forge-harness — where your tests, not the agent, decide what's done. 🧵",
+    "Watch forge's real dashboard. A story hits Retry: a check failed, and the board shows you exactly which one.\n\nFix it, re-run, and it slides to Done carrying its evidence. Same inputs, same verdict, every run.",
+    "Under the hood: 8 building blocks, and only one ever calls the model — the planner. The other seven are plain code running your shell commands as the pass/fail checks.\n\nNo agent grading its own homework.",
+    "The whole loop — plan, build, verdict — and on a Max plan that's $0 out of pocket.\n\nOpen-source, MIT. Your tests decide what ships.\ngithub.com/ziyilam3999/forge-harness"
+  ],
+  "threads_post": "96% of developers don't fully trust AI-written code — and barely half check it before committing (Sonar State of Code, 2026).\n\nforge-harness gives the verdict to your tests, not the agent. Watch its real dashboard: a story hits Retry when a check fails, shows you exactly which one, then slides to Done after the fix — same inputs, same verdict every run.\n\n8 building blocks, only one calls the model. On a Max plan, $0 out of pocket. Open-source, MIT.\ngithub.com/ziyilam3999/forge-harness",
+  "_video_target_seconds": 88,
+  "number_verification": {
+    "96% don't fully trust AI-written code": "external-cited — Sonar State of Code survey, 2026 (~1,100 developers): 96% don't fully trust AI code is correct. INDUSTRY stat, shown with on-screen 'Sonar State of Code, 2026' chip; NOT a forge metric.",
+    "barely half / 48% ever verify before committing": "external-cited — Sonar State of Code survey, 2026: only 48% always verify AI code before committing. INDUSTRY stat, same source chip; NOT a forge metric.",
+    "8 building blocks, only one (forge_plan) calls the model": "forge README L7/L15/L51 — eight MCP primitives; only forge_plan talks to the model, the other seven are deterministic code.",
+    "your tests are the pass/fail checks (Retry->Done)": "forge_evaluate runs the acceptance-criteria shell commands from your plan (exit 0 = PASS); a single failed AC maps to ready-for-retry (Retry column) and to Done after the fix re-evaluates PASS — dashboard-renderer.ts status->column map; captured from the real .forge/dashboard.html run-record.",
+    "$0 out of pocket on a Max plan": "forge README — API-equivalent cost is covered by the Max/OAuth subscription; the real dashboard Budget card reads 'Max plan — $0 actual'.",
+    "MIT license + public repo github.com/ziyilam3999/forge-harness": "forge README CTA (L31 git clone / L260 MIT)."
+  }
+}

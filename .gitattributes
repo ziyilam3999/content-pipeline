@@ -1,0 +1,6 @@
+# Hash-provenance demo assets (#871) must be byte-for-byte identical on every
+# platform — forgeSpec.test.ts asserts each committed dashboard HTML's exact
+# byte length + sha256. Windows checkout would otherwise convert LF→CRLF and
+# inflate the byte count, breaking the provenance assertion. Treat as binary
+# (no EOL conversion) so the working tree matches the committed bytes everywhere.
+assets/forge-demo/*.html -text

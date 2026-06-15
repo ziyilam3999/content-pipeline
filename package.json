@@ -48,6 +48,7 @@
     "eyeball:ack": "tsx tools/eyeball-ack.ts",
     "capture:demo": "tsx tools/captureDemo.ts",
     "capture:fable": "tsx tools/captureFable.ts",
+    "capture:forge": "tsx tools/captureForge.ts",
     "publish:freeze-manifest": "tsx tools/freeze-publish-manifest.ts",
     "archive:backfill": "tsx tools/backfill-posts-archive.ts",
     "e2e:lfah": "tsx smoke/e2e-lfah.ts"
