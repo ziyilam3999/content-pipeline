@@ -32,13 +32,12 @@ import {
   buildTransitionHtml,
   filterPublicLines,
 } from "./captureFable";
-import { BG_CHAT } from "../video/fableStoryboard";
+import { BG_CHAT, BG_TOOL } from "../video/fableStoryboard";
 import { assertBrandClean } from "../inputs/frames";
 import { assertNoInternalDevTokens, assertNoPlaceholderUrls } from "../video/visualRedFlags";
 import {
   assertFableBeatsSafeAndFilled,
   assertNoCaptionMediaOverlap,
-  CHAT_CONTENT_BOX,
   FABLE_ASPECTS,
 } from "../video/fableLayout";
 import { assertDemoCategoryRecipe } from "../video/demoCategoryRecipe";
@@ -52,59 +51,66 @@ import { resolveVendoredFfmpeg, probeRender } from "../video/renderProbe";
 
 const REPO_ROOT = fs.realpathSync(process.cwd());
 
-// ── Forge /prd CHAT surface (mirrors #824 buildChatHtml geometry → CHAT_FILL_CONTRACT holds) ────────
-
-/** The forge /prd chat beat: same 4-row structure (greet · you-bubble · agent · 3 deliverable rows) and
- *  the same min-heights as #824's `buildChatHtml`, so `assertChatBeatInteriorFill` /
- *  `assertChatContentClearsCaptionBand` pass — only the (forge) CONTENT differs. */
-function buildForgePrdChatHtml(label = "you → /prd · plain multiple-choice"): string {
-  const c = CHAT_CONTENT_BOX;
+// ── Forge /prd surface — an AUTHENTIC Claude Code TERMINAL running /prd (R1, operator 2026-06-15) ────
+//
+// The prior version was a messenger-bubble chat clone; the operator called it "clearly fake" with the font
+// "too small to read." This rebuild renders the REAL Claude Code experience: a warm-dark terminal where the
+// human types `/prd`, Claude asks a couple of plain multiple-choice questions, the human's pick is shown, and
+// the spec lands. Big monospace (≥40px) so it is legible on a phone. Warm-clay world (BG_CHAT) keeps it
+// visually DISTINCT from the navy forge-tool terminal (beat 4). Still the HUMAN's interface (R3 chat beat);
+// the agent's REAL work is the forge terminal + the live dashboard later. The typed request streams in via
+// `window.__chatType`; `window.__chatSend` reveals Claude's answered questions + the written-spec line.
+function buildForgePrdChatHtml(label = "you → Claude Code · /prd"): string {
+  // Full-bleed terminal box (matches the beat-2 `terminal` layout in FORGE_BEAT_LAYOUTS — fills + 4-side safe).
+  const L = 90, T = 110, R = CAP_W - 90, B = CAP_H - 110;
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:${CAP_W}px;height:${CAP_H}px;background:${BG_CHAT};overflow:hidden;position:relative;
-  font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif}
-#content{position:absolute;left:${c.left}px;top:${c.top}px;width:${c.right - c.left}px;height:${c.bottom - c.top}px;
-  display:flex;flex-direction:column;padding:52px 56px;border-radius:52px;
-  background:linear-gradient(180deg,#231c18 0%,#1a1512 100%);border:2px solid rgba(231,226,219,.09);
-  box-shadow:0 40px 120px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.04)}
-#hdr{display:flex;align-items:center;gap:22px;padding-bottom:30px;border-bottom:2px solid rgba(231,226,219,.10)}
-#hdr .mark{width:48px;height:48px;border-radius:13px;background:#d97757}
-#hdr .name{color:#e7e2db;font:700 46px/1 inherit}
-#hdr .sub{color:#8a817a;font:500 31px/1 inherit;margin-left:auto}
-#chat{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:40px 0 6px;margin-bottom:240px;overflow:hidden}
-.greet{align-self:flex-start;max-width:86%;color:#9c938b;font:500 46px/1.4 inherit;display:flex;align-items:center;gap:18px;min-height:86px}
-.greet .d{width:16px;height:16px;border-radius:50%;background:#7c7068}
-.you{align-self:flex-end;max-width:90%;background:#d97757;color:#fff;border-radius:42px 42px 12px 42px;
-  padding:54px 60px;font:600 56px/1.36 inherit;box-shadow:0 24px 64px rgba(217,119,87,.34);min-height:210px;
-  display:flex;align-items:center}
-#caret{display:inline-block;width:6px;height:60px;background:#fff;vertical-align:-12px;margin-left:4px;animation:b 1s steps(1) infinite}
+  font-family:ui-monospace,SFMono-Regular,Menlo,'Cascadia Code',monospace}
+#content{position:absolute;left:${L}px;top:${T}px;width:${R - L}px;height:${B - T}px;
+  display:flex;flex-direction:column;padding:46px 50px;border-radius:34px;
+  background:linear-gradient(180deg,#211a16 0%,#171210 100%);border:2px solid rgba(231,226,219,.10);
+  box-shadow:0 40px 120px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.04)}
+#bar{display:flex;align-items:center;gap:16px;padding-bottom:26px;border-bottom:2px solid rgba(231,226,219,.10)}
+#bar .dot{width:20px;height:20px;border-radius:50%}
+.r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+#bar .star{margin-left:14px;color:#d97757;font-size:38px;line-height:1}
+#bar .who{color:#e7e2db;font-weight:700;font-size:38px}
+#bar .tag{margin-left:auto;color:#8a817a;font-size:30px}
+#term{flex:1;display:flex;flex-direction:column;justify-content:flex-start;gap:30px;padding:40px 4px 6px;
+  margin-bottom:110px;overflow:hidden;color:#e9e3da;font-size:43px;line-height:1.4}
+.you-line{display:flex;align-items:baseline;gap:18px;font-size:46px}
+.you-line .p{color:#5eead4;font-weight:700}
+.you-line .t{color:#f4efe7;font-weight:600}
+#caret{display:inline-block;width:18px;height:46px;background:#5eead4;transform:translateY(6px);
+  animation:b 1s steps(1) infinite}
 @keyframes b{50%{opacity:0}}
-.agent{align-self:flex-start;max-width:92%;color:#cbc3ba;font:600 50px/1.4 inherit;display:flex;align-items:center;gap:18px;min-height:84px;opacity:0;transition:opacity .5s}
-.agent .d{width:18px;height:18px;border-radius:50%;background:#7c7068;animation:p 1.2s ease-in-out infinite}
-@keyframes p{0%,100%{opacity:.3}50%{opacity:1}}
-#deliv{align-self:stretch;display:flex;flex-direction:column;gap:30px;opacity:0;transition:opacity .6s}
-#deliv .row{display:flex;align-items:center;gap:28px;background:rgba(217,119,87,.12);
-  border:2px solid rgba(217,119,87,.34);border-radius:28px;padding:38px 46px}
-#deliv .tick{width:56px;height:56px;border-radius:50%;background:#5eead4;color:#0b1020;
-  font:800 34px/1 inherit;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
-#deliv .lbl{color:#eab69f;font:600 46px/1 inherit}
-#deliv .sub{color:#8a817a;font:500 32px/1 inherit;margin-left:auto}
-#composer{margin-top:30px;display:flex;align-items:center;gap:20px;background:rgba(12,10,9,.55);
-  border:2px solid rgba(94,234,212,.30);border-radius:30px;padding:30px 38px}
-#composer .txt{color:#5eead4;font:600 34px/1.2 inherit;letter-spacing:.2px}
+#resp{flex:1;display:flex;flex-direction:column;justify-content:space-between;gap:26px;opacity:0;transition:opacity .5s}
+.ask{color:#cbb8ac;font-size:40px}
+.q{display:flex;align-items:baseline;gap:20px}
+.q .n{color:#d97757;font-weight:700;min-width:52px}
+.q .label{color:#b7ada3}
+.q .pick{margin-left:auto;color:#5eead4;font-weight:700;white-space:nowrap}
+.q .pick::before{content:'▸ '}
+#done{display:flex;align-items:center;gap:22px;margin-top:8px;color:#9ad9b0;font-size:40px;font-weight:700}
+#done .ok{color:#28c840}
+#composer{margin-top:24px;display:flex;align-items:center;gap:20px;background:rgba(12,10,9,.5);
+  border:2px solid rgba(94,234,212,.28);border-radius:24px;padding:28px 36px}
+#composer .txt{color:#5eead4;font-size:34px;font-weight:600;letter-spacing:.2px}
 #composer .send{margin-left:auto;width:56px;height:56px;border-radius:50%;background:#5eead4;
-  display:flex;align-items:center;justify-content:center;color:#0b1020;font:800 32px/1 inherit}
+  display:flex;align-items:center;justify-content:center;color:#0b1020;font-size:34px;font-weight:800}
 </style></head><body>
 <div id="content">
-  <div id="hdr"><span class="mark"></span><span class="name">/prd</span><span class="sub">multiple-choice</span></div>
-  <div id="chat">
-    <div class="greet"><span class="d"></span>A few quick questions to shape the spec.</div>
-    <div class="you" id="bubble"><span id="txt"></span><span id="caret"></span></div>
-    <div class="agent" id="agent"><span class="d"></span>Got it — assembling the PRD…</div>
-    <div id="deliv">
-      <div class="row"><span class="tick">✓</span><span class="lbl">spec</span><span class="sub">written with you</span></div>
-      <div class="row"><span class="tick">✓</span><span class="lbl">stories</span><span class="sub">binary acceptance criteria</span></div>
-      <div class="row"><span class="tick">✓</span><span class="lbl">checks</span><span class="sub">your shell commands</span></div>
+  <div id="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="star">✻</span><span class="who">Claude Code</span><span class="tag">/prd</span></div>
+  <div id="term">
+    <div class="you-line"><span class="p">&gt;</span><span class="t"><span id="txt"></span><span id="caret"></span></span></div>
+    <div id="resp">
+      <div class="ask">A few quick questions to shape the spec —</div>
+      <div class="q"><span class="n">1.</span><span class="label">Who is it for?</span><span class="pick">developers</span></div>
+      <div class="q"><span class="n">2.</span><span class="label">Tone?</span><span class="pick">confident, plain</span></div>
+      <div class="q"><span class="n">3.</span><span class="label">How long?</span><span class="pick">short</span></div>
+      <div id="done"><span class="ok">✓</span><span>PRD + user stories written — each with binary checks</span></div>
     </div>
   </div>
   <div id="composer"><span class="txt">${label}</span><span class="send">↑</span></div>
@@ -112,8 +118,86 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;background:${BG_CHAT};overflow:hidd
 <script>
 window.__chatType=(c)=>{document.getElementById('txt').textContent+=String(c);};
 window.__chatSend=()=>{const cr=document.getElementById('caret');if(cr)cr.style.display='none';
-  document.getElementById('agent').style.opacity='1';document.getElementById('deliv').style.opacity='1';};
+  document.getElementById('resp').style.opacity='1';};
 </script></body></html>`;
+}
+
+// ── Decomposition diagram (R3, operator 2026-06-15) — HONEST forge_plan breakdown ──────────────────
+//
+// The operator asked to "elaborate that forge auto-divides a complex PRD into multiple user stories, and
+// splits a big story into smaller ones." VERIFIED against forge-harness (execution-plan schema v3.0.0 +
+// planner.ts): the real hierarchy is PRD → phases → user stories (a FLAT list linked by a dependency graph)
+// → acceptanceCriteria (binary shell-command checks). "Big story → multiple smaller stories" is TRUE but
+// produces SIBLING stories at plan time — NOT children nested under a parent, and forge has NO "sub-task"
+// object. So this diagram fans phases into SIBLING stories and shows one big story SPLIT into two siblings;
+// it never draws a nested sub-task tree and never uses the word "sub-task". Dark tool-world; animated tiers
+// reveal top→bottom; large legible type. Fills the beat-3 `diagram` layout box (4-side safe + fill).
+function buildForgeDecompositionHtml(label = "forge_plan — breaks the work down"): string {
+  const L = 72, T = 120, R = CAP_W - 72, B = 1700;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:${CAP_W}px;height:${CAP_H}px;background:
+  radial-gradient(1200px 1200px at 50% 26%, #131a31 0%, ${BG_TOOL} 62%);overflow:hidden;position:relative;
+  font-family:ui-sans-serif,-apple-system,Helvetica,Arial,sans-serif;color:#eef2fb}
+#wrap{position:absolute;left:${L}px;top:${T}px;width:${R - L}px;height:${B - T}px;
+  display:flex;flex-direction:column;align-items:center;justify-content:space-between}
+.tier{width:100%;display:flex;flex-direction:column;align-items:center;gap:14px;opacity:0;
+  transform:translateY(26px);animation:rise .6s ease-out forwards}
+.t1{animation-delay:.2s}.a1{animation-delay:.7s}.t2{animation-delay:1.0s}.a2{animation-delay:1.7s}
+.t3{animation-delay:2.0s}.a3{animation-delay:3.0s}.t4{animation-delay:3.3s}
+.cap{font-size:30px;font-weight:600;color:#9fb0d8;letter-spacing:.04em;text-transform:uppercase}
+.row{display:flex;gap:22px;justify-content:center;align-items:stretch;flex-wrap:nowrap;width:100%}
+.node{background:#1b2440;border:2px solid #38456e;border-radius:20px;padding:24px 30px;text-align:center;
+  box-shadow:0 14px 40px rgba(0,0,0,.4)}
+.node .h{font-size:38px;font-weight:800;line-height:1.1}
+.node .s{font-size:27px;font-weight:500;color:#9fb0d8;margin-top:6px}
+.prd{background:#20305a;border-color:#4a5e96;min-width:420px}
+.prd .h{font-size:46px}
+.phase{flex:1;max-width:360px;border-color:#4a5e96}
+.phase .h{color:#bcd0ff}
+.story{flex:1;max-width:300px;border-color:#5e6f9e}
+.story .h{color:#e7ecf8;font-size:34px}
+.story.split{border-color:#d97757;background:#2a2230}
+.story.split .h{color:#f0b79f}
+.story .tag{display:inline-block;margin-top:8px;font-size:22px;font-weight:700;color:#f3c8b4;
+  background:rgba(217,119,87,.16);border:1px solid #d97757;border-radius:8px;padding:3px 12px}
+.check{flex:1;max-width:300px;background:#16291f;border-color:#2f7a52}
+.check .h{color:#9ad9b0;font-size:30px}
+.check .ok{color:#28c840;font-weight:800;margin-right:8px}
+.arrow{font-size:40px;color:#6376a8;line-height:1;font-weight:800}
+.arrow .lbl{display:block;font-size:26px;font-weight:600;color:#8fa0c8;margin-top:2px;font-family:ui-monospace,Menlo,monospace}
+@keyframes rise{to{opacity:1;transform:none}}
+#pill{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);background:rgba(94,234,212,.12);
+  color:#5eead4;border:2px solid rgba(94,234,212,.35);border-radius:999px;font:600 30px/1.2 inherit;
+  padding:20px 38px;white-space:nowrap}
+</style></head><body>
+<div id="wrap">
+  <div class="tier t1"><div class="cap">your spec</div>
+    <div class="row"><div class="node prd"><div class="h">PRD</div><div class="s">what to build</div></div></div></div>
+  <div class="tier a1"><div class="arrow">↓<span class="lbl">forge_plan</span></div></div>
+  <div class="tier t2"><div class="cap">phases</div>
+    <div class="row">
+      <div class="node phase"><div class="h">Phase 1</div><div class="s">foundation</div></div>
+      <div class="node phase"><div class="h">Phase 2</div><div class="s">features</div></div>
+    </div></div>
+  <div class="tier a2"><div class="arrow">↓</div></div>
+  <div class="tier t3"><div class="cap">user stories &nbsp;·&nbsp; ordered by dependency</div>
+    <div class="row">
+      <div class="node story"><div class="h">US-01</div></div>
+      <div class="node story split"><div class="h">US-02</div><div class="tag">too big → split</div></div>
+      <div class="node story"><div class="h">US-02a</div></div>
+      <div class="node story"><div class="h">US-02b</div></div>
+    </div></div>
+  <div class="tier a3"><div class="arrow">↓</div></div>
+  <div class="tier t4"><div class="cap">binary checks &nbsp;·&nbsp; your shell commands</div>
+    <div class="row">
+      <div class="node check"><div class="h"><span class="ok">✓</span>npm test</div></div>
+      <div class="node check"><div class="h"><span class="ok">✓</span>build</div></div>
+      <div class="node check"><div class="h"><span class="ok">✓</span>lint</div></div>
+    </div></div>
+</div>
+<div id="pill">${label}</div>
+</body></html>`;
 }
 
 // Authored, public-safe terminal output per shown forge command (no live forge MCP in this render leg;
@@ -142,6 +226,23 @@ const FORGE_TERMINAL_OUTPUT: Record<string, string[]> = {
 
 function fileToDataUri(p: string, mime: string): string {
   return `data:${mime};base64,${fs.readFileSync(p).toString("base64")}`;
+}
+
+/** R2 (operator 2026-06-15) — screenshot the MOBILE dashboard (reflowed at `width`) to a PNG data URI.
+ *  The transition beat used to load the OLD DESKTOP png (`dashboard-working-green.png`), so at 0:36 the
+ *  handoff showed the desktop board for one beat then cut to the mobile board — a jarring desktop→mobile
+ *  flip. This renders the SAME mobile HTML the hero beats use, so the whole tool→dashboard handoff is
+ *  mobile-consistent. Returned as a data URI fed to `buildTransitionHtml`'s emerging card. */
+async function mobileDashboardDataUri(dashHtmlAbs: string, chromium: any, width = 440): Promise<string> {
+  const browser = await chromium.launch();
+  const context = await browser.newContext({ viewport: { width, height: 1200 }, deviceScaleFactor: 2 });
+  const page = await context.newPage();
+  await page.setContent(fs.readFileSync(dashHtmlAbs, "utf8"), { waitUntil: "networkidle" });
+  await page.waitForTimeout(300);
+  const buf = await page.screenshot({ fullPage: true });
+  await context.close();
+  await browser.close();
+  return `data:image/png;base64,${buf.toString("base64")}`;
 }
 
 // ── LIVE dashboard camera (net-new for #871) ────────────────────────────────────────────────────────
@@ -183,8 +284,22 @@ function liveDashboardCamGeom(
   return { scale, tx, ty };
 }
 
-/** Build the live-dashboard camera HTML: the dashboard HTML embedded as an iframe `srcdoc`, with a camera
- *  transform that HOLDS `focusStart` for `holdSec` then eases to `focusEnd` by the end of the beat. */
+/** A normalized "elaboration" highlight on the SOURCE dashboard (sx/sy/sw/sh ∈ [0,1] on srcW×srcH) — drawn
+ *  as a glowing ring + a small label, computed at the `focusEnd` camera framing so it lands on the element
+ *  AFTER the camera has settled (operator R3/R4 2026-06-15: "elaborate on which part → pan zoom to it"). */
+interface HeroHighlight {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+  label: string;
+  /** Put the label BELOW the ring (for a top-of-board element like the pulse); default ABOVE. */
+  labelBelow?: boolean;
+}
+
+/** Build the live-dashboard camera HTML: the dashboard embedded as an iframe `srcdoc`, with a camera that
+ *  HOLDS `focusStart` (establishing) for `holdSec`, EASES to `focusEnd` (the narrated element), then HOLDS
+ *  `focusEnd` for the rest of the beat. An optional highlight ring fades in over the element once settled. */
 function buildLiveDashboardCamHtml(opts: {
   dashboardHtml: string;
   srcW: number;
@@ -194,14 +309,33 @@ function buildLiveDashboardCamHtml(opts: {
   holdSec: number;
   durationSec: number;
   label: string;
+  highlight?: HeroHighlight;
 }): string {
-  const { dashboardHtml, srcW, srcH, focusStart, focusEnd, holdSec, durationSec, label } = opts;
+  const { dashboardHtml, srcW, srcH, focusStart, focusEnd, holdSec, durationSec, label, highlight } = opts;
   const a = liveDashboardCamGeom(focusStart, srcW, srcH, CAP_W, CAP_H);
   const b = liveDashboardCamGeom(focusEnd, srcW, srcH, CAP_W, CAP_H);
   const tf = (g: LiveCam) => `scale(${g.scale.toFixed(4)}) translate(${g.tx.toFixed(1)}px, ${g.ty.toFixed(1)}px)`;
-  const holdPct = Math.max(0, Math.min(90, (holdSec / durationSec) * 100)).toFixed(1);
+  // Establishing hold on A, ease A→B, then HOLD B. settlePct is when the camera reaches the element.
+  const holdPct = Math.max(0, Math.min(40, (holdSec / durationSec) * 100));
+  const settlePct = Math.min(72, holdPct + 42);
   // srcdoc is a double-quoted attribute → escape inner double-quotes (the dashboard renders identically).
   const srcdoc = dashboardHtml.replace(/"/g, "&quot;");
+
+  // The highlight ring's screen rect at the focusEnd (b) framing: screen = b.scale·(src·dim + b.t).
+  let ringHtml = "";
+  if (highlight) {
+    const pad = 14;
+    const rx = b.scale * (highlight.sx * srcW + b.tx) - pad;
+    const ry = b.scale * (highlight.sy * srcH + b.ty) - pad;
+    const rw = b.scale * highlight.sw * srcW + pad * 2;
+    const rh = b.scale * highlight.sh * srcH + pad * 2;
+    const labelTop = highlight.labelBelow ? ry + rh + 16 : ry - 70;
+    // fade the ring + label in from just after the camera settles.
+    const ringDelay = (settlePct / 100) * durationSec;
+    ringHtml = `<div id="ring" style="left:${rx.toFixed(0)}px;top:${ry.toFixed(0)}px;width:${rw.toFixed(0)}px;height:${rh.toFixed(0)}px;animation-delay:${ringDelay.toFixed(2)}s"></div>` +
+      `<div id="ringlabel" style="left:${rx.toFixed(0)}px;top:${labelTop.toFixed(0)}px;max-width:${Math.max(rw, 520).toFixed(0)}px;animation-delay:${ringDelay.toFixed(2)}s">${highlight.label}</div>`;
+  }
+
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;background:${FORGE_DASH_BG};
@@ -209,11 +343,18 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;b
 #stage{position:absolute;inset:0;overflow:hidden}
 #frm{position:absolute;left:0;top:0;width:${srcW}px;height:${srcH}px;border:0;transform-origin:0 0;
   transform:${tf(a)};animation:cam ${durationSec.toFixed(2)}s ease-in-out forwards}
-@keyframes cam{0%{transform:${tf(a)}}${holdPct}%{transform:${tf(a)}}100%{transform:${tf(b)}}}
+@keyframes cam{0%{transform:${tf(a)}}${holdPct.toFixed(1)}%{transform:${tf(a)}}${settlePct.toFixed(1)}%{transform:${tf(b)}}100%{transform:${tf(b)}}}
 #pill{position:absolute;left:50%;top:64px;transform:translateX(-50%);background:#14100c;color:#f7f1e6;
-  border-radius:999px;font:700 30px/1.2 inherit;padding:18px 40px;letter-spacing:.3px;z-index:2;white-space:nowrap}
+  border-radius:999px;font:700 30px/1.2 inherit;padding:18px 40px;letter-spacing:.3px;z-index:3;white-space:nowrap}
+#ring{position:absolute;z-index:2;border:5px solid #d97757;border-radius:18px;opacity:0;
+  box-shadow:0 0 0 4px rgba(217,119,87,.25),0 0 34px 8px rgba(217,119,87,.45);animation:ringin .5s ease-out forwards}
+#ringlabel{position:absolute;z-index:3;color:#14100c;background:#f3c8b4;border:2px solid #d97757;
+  border-radius:12px;padding:10px 20px;font:700 30px/1.25 inherit;opacity:0;animation:ringin .5s ease-out forwards;
+  box-shadow:0 8px 26px rgba(20,16,12,.28)}
+@keyframes ringin{from{opacity:0;transform:scale(1.06)}to{opacity:1;transform:scale(1)}}
 </style></head><body>
 <div id="stage"><iframe id="frm" srcdoc="${srcdoc}"></iframe></div>
+${ringHtml}
 <div id="pill">${label}</div>
 </body></html>`;
 }
@@ -277,10 +418,12 @@ function assertForgeBeatsClean(): void {
   assertFableBeatsSafeAndFilled(FORGE_BEAT_LAYOUTS); // 4-side safe + fill
   assertNoCaptionMediaOverlap(FABLE_ASPECTS); // cross-layer caption/media band clearance
   for (const b of FORGE_BEATS) {
-    for (const t of [b.stepLabel, b.headline ?? "", b.sub ?? "", b.url ?? "", b.chatRequest ?? "", b.chip ?? ""].filter((s) => s.length > 0)) {
+    // The hero "elaboration" highlight label is a public on-screen text field too — scrub it like the rest.
+    const hl = b.hero?.highlight?.label ?? "";
+    for (const t of [b.stepLabel, b.headline ?? "", b.sub ?? "", b.url ?? "", b.chatRequest ?? "", b.chip ?? "", hl].filter((s) => s.length > 0)) {
       assertBrandClean(t);
     }
-    assertNoInternalDevTokens([b.stepLabel, b.headline ?? "", b.sub ?? "", b.chatRequest ?? "", b.chip ?? ""].filter((s) => s.length > 0), `beat ${b.n}`);
+    assertNoInternalDevTokens([b.stepLabel, b.headline ?? "", b.sub ?? "", b.chatRequest ?? "", b.chip ?? "", hl].filter((s) => s.length > 0), `beat ${b.n}`);
     assertNoPlaceholderUrls([b.url ?? ""].filter((s) => s.length > 0), `beat ${b.n} url`);
   }
   // Authored terminal output lines are public frames too — scrub them the same way.
@@ -367,6 +510,7 @@ async function recordLiveDashboardBeat(beat: ForgeBeat, recordSec: number, recDi
     holdSec: h.holdSec ?? 0,
     durationSec: beat.clipSec,
     label: beat.stepLabel,
+    highlight: h.highlight,
   });
   const browser = await chromium.launch();
   const context = await browser.newContext({
@@ -402,11 +546,16 @@ async function recordBeat(beat: ForgeBeat, recDir: string, chromium: any): Promi
       });
     case "tool":
       return recordForgeTerminal(beat, rec, recDir, chromium);
+    case "title":
+      // The R3 decomposition diagram (the only "title"-kind forge beat): forge_plan's honest PRD → phases →
+      // sibling stories (a big story split into siblings) → binary checks breakdown.
+      return recordHtml(buildForgeDecompositionHtml(beat.stepLabel || "forge_plan — breaks the work down"), rec, recDir, chromium);
     case "transition": {
-      // The transition card is a still of the real dashboard (the committed PNG snapshot is kept purely for
-      // this beat; the HERO beats render the dashboard HTML live).
-      const heroPng = path.join(REPO_ROOT, "assets/forge-demo/dashboard-working-green.png");
-      return recordHtml(buildTransitionHtml(fileToDataUri(heroPng, "image/png")), rec, recDir, chromium, undefined, "networkidle");
+      // R2: the transition card is a LIVE screenshot of the MOBILE dashboard (same reflowed board the hero
+      // beats show) — NOT the old desktop PNG — so the tool→dashboard handoff stays mobile-consistent.
+      const dashHtml = path.join(REPO_ROOT, "assets/forge-demo/dashboard-working-green.html");
+      const uri = await mobileDashboardDataUri(dashHtml, chromium);
+      return recordHtml(buildTransitionHtml(uri), rec, recDir, chromium, undefined, "networkidle");
     }
     case "output":
       // HERO — live-captured dashboard under an animated camera (full board → detail; breathing runs).
@@ -452,8 +601,8 @@ async function runRender(): Promise<void> {
   concatBeats(beatMp4s, out9x16);
   const dur = probeRender(out9x16).videoDurationSec;
   console.log(`[forge] 9:16 silent cut → out/video/forge-demo-9x16.mp4 (${dur.toFixed(1)}s)`);
-  if (dur < 85 || dur > 92) {
-    throw new Error(`captureForge: 9:16 runtime ${dur.toFixed(1)}s is outside the 85–92s band.`);
+  if (dur < 92 || dur > 100) {
+    throw new Error(`captureForge: 9:16 runtime ${dur.toFixed(1)}s is outside the 92–100s band.`);
   }
 
   // Then the two cropped aspects.
@@ -474,7 +623,7 @@ async function main(): Promise<void> {
   if (process.argv.includes("--dry-run")) {
     const total = FORGE_BEATS.reduce((s, b) => s + b.clipSec, 0);
     console.log("FORGE-RENDER: recipe-passed (#870 demonstration-category recipe R1–R12 enforced).");
-    console.log(`FORGE-RENDER: --dry-run (gates passed). 9 beats, ${total}s:`);
+    console.log(`FORGE-RENDER: --dry-run (gates passed). ${FORGE_BEATS.length} beats, ${total}s:`);
     for (const b of FORGE_BEATS) {
       const what = b.kind === "tool" ? b.commands.join("  ;  ")
         : b.kind === "chat" ? `chat: "${b.chatRequest}"`

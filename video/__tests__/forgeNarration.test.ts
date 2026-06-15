@@ -1,8 +1,8 @@
 /**
  * #871 forge-demo VOICED — the narration SSOT (`video/forgeNarration.ts`).
  *
- * Pins the forge-specific twist over the fable narration: NINE captured beats, but only EIGHT spoken
- * segments (the beat-4 transition is silent). Proves the derived narration drops exactly that beat,
+ * Pins the forge-specific twist over the fable narration: TEN captured beats, but only NINE spoken
+ * segments (the beat-5 transition is silent). Proves the derived narration drops exactly that beat,
  * stays beat-ordered, single-sources the text from `FORGE_VO_LINES`, and joins into a script the
  * timeline/caption builders consume 1:1.
  */
@@ -14,13 +14,13 @@ describe("#871 forgeNarration — derived from the storyboard, transition droppe
   it("has one segment per NARRATED beat (the silent transition is skipped)", () => {
     const spokenCount = FORGE_VO_LINES.filter((l) => l.trim().length > 0).length;
     expect(FORGE_NARRATION.length).toBe(spokenCount);
-    expect(FORGE_NARRATION.length).toBe(8); // 9 beats − 1 silent transition
+    expect(FORGE_NARRATION.length).toBe(9); // 10 beats − 1 silent transition
   });
 
-  it("excludes the silent transition beat (beat 4) and keeps every other beat, in order", () => {
+  it("excludes the silent transition beat (beat 5) and keeps every other beat, in order", () => {
     const beats = FORGE_NARRATION.map((s) => s.beat);
-    expect(beats).toEqual([1, 2, 3, 5, 6, 7, 8, 9]);
-    expect(beats).not.toContain(4);
+    expect(beats).toEqual([1, 2, 3, 4, 6, 7, 8, 9, 10]);
+    expect(beats).not.toContain(5);
   });
 
   it("carries each beat's kind + clipSec verbatim from the storyboard (single-sourced)", () => {

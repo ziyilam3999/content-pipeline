@@ -41,7 +41,8 @@ import {
   forgeNarrationScript,
   forgeCaptionDisplayText,
 } from "../video/forgeNarration";
-import { FORGE_RUNTIME_SEC, FORGE_BEAT_LAYOUTS, forgeSpec } from "../video/forgeStoryboard";
+import { FORGE_RUNTIME_SEC, FORGE_TRANSITION_SEC, FORGE_BEAT_LAYOUTS, forgeSpec } from "../video/forgeStoryboard";
+import { assertForgeVoMatchesSpine, applyForgeTransitionGap } from "../video/forgeVoSync";
 import { narrationSceneEndTimes } from "../video/demoTimeline";
 import { buildDemoCaptionCues } from "../video/demoCaptions";
 import { assertAudioMatchesSync, audioDurationSec } from "../video/audioDuration";
@@ -88,6 +89,30 @@ function ff(args: string[], label: string): void {
   if (r.status !== 0) {
     throw new Error(`voiceForge: ffmpeg failed (${label}): ${(r.stderr || r.stdout || "").slice(-800)}`);
   }
+}
+
+/** #944 — splice `silenceSec` of silence into `srcAudio` at `seamSec`, writing a synced WAV. The seam is
+ *  the tool→dashboard transition beat (no VO); inserting matching silence makes the audio total equal the
+ *  spine total so audio + video + captions stay locked. Normalizes to 44.1k stereo (the mux re-encodes to
+ *  aac anyway). Pairs `applyForgeTransitionGap`, which shifts the post-seam char-timestamps by the same gap. */
+function insertTransitionSilence(srcAudio: string, seamSec: number, silenceSec: number, outWav: string): void {
+  const fmt = "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo";
+  const filter = [
+    `[0:a]${fmt},atrim=0:${seamSec.toFixed(3)},asetpts=N/SR/TB[a1]`,
+    `[0:a]${fmt},atrim=${seamSec.toFixed(3)},asetpts=N/SR/TB[a2]`,
+    `[1:a]${fmt},asetpts=N/SR/TB[sil]`,
+    `[a1][sil][a2]concat=n=3:v=0:a=1[out]`,
+  ].join(";");
+  ff(
+    [
+      "-y",
+      "-i", srcAudio,
+      "-f", "lavfi", "-t", silenceSec.toFixed(3), "-i", "anullsrc=r=44100:cl=stereo",
+      "-filter_complex", filter,
+      "-map", "[out]", "-c:a", "pcm_s16le", outWav,
+    ],
+    "insert transition silence",
+  );
 }
 
 function probeStreams(p: string): { width: number; height: number; durationSec: number; hasAudio: boolean } {
@@ -246,20 +271,38 @@ async function main(): Promise<void> {
     providerLabel = voice.usedProvider;
   }
   if (!charEndTimesSec || charEndTimesSec.length === 0) throw new Error("voiceForge: no per-character alignment returned — cannot sync.");
-  console.log(`  VO duration = ${durationSec.toFixed(2)}s (Adam, ${providerLabel})`);
+  console.log(`  VO duration = ${durationSec.toFixed(2)}s (Adam, ${providerLabel}) — RAW spoken length`);
 
-  // 2 — per-segment scene-end-times from the alignment + provenance bind.
-  const sceneEndTimesSec = narrationSceneEndTimes(FORGE_NARRATION, charEndTimesSec, durationSec);
-  if (!sceneEndTimesSec) throw new Error("voiceForge: narrationSceneEndTimes returned null — the alignment did not line up with the script.");
-  assertAudioMatchesSync(audioPath, sceneEndTimesSec);
-  const audioDur = audioDurationSec(audioPath);
-  console.log(`  per-segment end-times (s): ${sceneEndTimesSec.map((s) => s.toFixed(2)).join(", ")}`);
-  console.log(`  assertAudioMatchesSync: PASS (audio=${audioDur?.toFixed(2) ?? "?"}s ≈ alignment end=${sceneEndTimesSec[sceneEndTimesSec.length - 1].toFixed(2)}s)`);
-
-  // 3 — synced captions (real-voice timing), rendered as transparent alpha PNGs.
-  const cues = buildDemoCaptionCues(script, { durationSec, charEndTimesSec });
-  console.log(`  captions: ${cues.length} cues (first="${forgeCaptionDisplayText(cues[0].text)}" … last="${forgeCaptionDisplayText(cues[cues.length - 1].text)}")`);
+  // 2 — #944 SYNC. The silent spine renders each narrated beat at its measured VO-segment length plus a
+  // FORGE_TRANSITION_SEC silent transition beat. The continuous VO has no gap at that seam, so: DRIFT-GATE the
+  // cached VO against the spine (both-ends), then splice FORGE_TRANSITION_SEC of silence into BOTH the audio
+  // (insertTransitionSilence) and the alignment (applyForgeTransitionGap), so audio + video + captions share
+  // one timeline. Without this the continuous VO slides off the spine — the operator's ~8s desync + truncated CTA.
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "forge-voice-"));
+  const rawSceneEndTimesSec = narrationSceneEndTimes(FORGE_NARRATION, charEndTimesSec, durationSec);
+  if (!rawSceneEndTimesSec) throw new Error("voiceForge: narrationSceneEndTimes(raw) returned null — the alignment did not line up with the script.");
+  assertForgeVoMatchesSpine(rawSceneEndTimesSec); // both-ends spine↔VO drift gate (throws if any beat drifts >0.5s)
+  const synced = applyForgeTransitionGap(charEndTimesSec, durationSec, rawSceneEndTimesSec);
+  const syncedCharEndTimesSec = synced.charEndTimesSec;
+  const syncedDurationSec = synced.durationSec;
+  const syncedAudioPath = path.join(work, "forge-vo-synced.wav");
+  insertTransitionSilence(audioPath, synced.seamTimeSec, FORGE_TRANSITION_SEC, syncedAudioPath);
+  console.log(
+    `  #944 sync: spine↔VO drift gate PASS; spliced ${FORGE_TRANSITION_SEC}s transition silence at ` +
+      `${synced.seamTimeSec.toFixed(2)}s → synced VO ${syncedDurationSec.toFixed(2)}s (spine target ${FORGE_RUNTIME_SEC.toFixed(2)}s)`,
+  );
+
+  // per-segment scene-end-times on the SYNCED timeline + provenance bind (against the synced audio file).
+  const sceneEndTimesSec = narrationSceneEndTimes(FORGE_NARRATION, syncedCharEndTimesSec, syncedDurationSec);
+  if (!sceneEndTimesSec) throw new Error("voiceForge: narrationSceneEndTimes(synced) returned null — the synced alignment did not line up.");
+  assertAudioMatchesSync(syncedAudioPath, sceneEndTimesSec);
+  const audioDur = audioDurationSec(syncedAudioPath);
+  console.log(`  per-segment end-times (s): ${sceneEndTimesSec.map((s) => s.toFixed(2)).join(", ")}`);
+  console.log(`  assertAudioMatchesSync: PASS (synced audio=${audioDur?.toFixed(2) ?? "?"}s ≈ alignment end=${sceneEndTimesSec[sceneEndTimesSec.length - 1].toFixed(2)}s)`);
+
+  // 3 — synced captions (real-voice timing on the SYNCED timeline), rendered as transparent alpha PNGs.
+  const cues = buildDemoCaptionCues(script, { durationSec: syncedDurationSec, charEndTimesSec: syncedCharEndTimesSec });
+  console.log(`  captions: ${cues.length} cues (first="${forgeCaptionDisplayText(cues[0].text)}" … last="${forgeCaptionDisplayText(cues[cues.length - 1].text)}")`);
   const pngDir = fs.mkdtempSync(path.join(work, "caps-"));
   const { chromium } = await import("playwright");
   const capPngs = await renderCaptionPngs(cues, pngDir, chromium);
@@ -274,7 +317,7 @@ async function main(): Promise<void> {
   for (const a of FABLE_ASPECTS) {
     const inputs: string[] = ["-i", spine];
     for (const p of capPngs) inputs.push("-i", p);
-    inputs.push("-i", audioPath);
+    inputs.push("-i", syncedAudioPath); // #944 — the transition-spliced VO (== spine length), not the raw mp3
     const audioIdx = capPngs.length + 1;
 
     const parts: string[] = [];
@@ -306,8 +349,10 @@ async function main(): Promise<void> {
   void W;
   void H;
 
-  // 5 — provenance bundle (SOURCE alignment so a future caption re-render is FREE). Paths are
-  // repo-relative (never absolute home paths) since the bundle is a data manifest.
+  // 5 — provenance bundle. `durationSec` + `charEndTimesSec` are the RAW Adam VO alignment — the REUSE
+  // cache (a future FREE re-render re-derives the #944 sync from these, no paid call). `sceneEndTimesSec` +
+  // `captions` are on the SYNCED timeline (what was actually rendered: raw spoken + the spliced transition
+  // silence). Paths are repo-relative (never absolute home paths) since the bundle is a data manifest.
   const bundle = {
     task: 871,
     leg: "voiced",
@@ -317,13 +362,16 @@ async function main(): Promise<void> {
     voiceGender: "male",
     script,
     scriptChars: script.length,
-    durationSec: Number(durationSec.toFixed(4)),
+    durationSec: Number(durationSec.toFixed(4)), // RAW spoken length (reuse cache)
+    transitionSec: FORGE_TRANSITION_SEC, // #944 — silence spliced at the seam
+    seamTimeSec: Number(synced.seamTimeSec.toFixed(4)),
+    syncedDurationSec: Number(syncedDurationSec.toFixed(4)), // raw + transition (the rendered timeline ≈ spine)
     narratedBeats: FORGE_NARRATION.map((s) => ({ beat: s.beat, kind: s.kind, clipSec: s.clipSec })),
-    sceneEndTimesSec: sceneEndTimesSec.map((s) => Number(s.toFixed(4))),
-    charEndTimesSec: charEndTimesSec.map((s) => Number(s.toFixed(4))),
+    sceneEndTimesSec: sceneEndTimesSec.map((s) => Number(s.toFixed(4))), // SYNCED timeline
+    charEndTimesSec: charEndTimesSec.map((s) => Number(s.toFixed(4))), // RAW alignment (reuse cache)
     captionCount: cues.length,
     captions: cues.map((c) => ({ text: forgeCaptionDisplayText(c.text), startSec: Number(c.startSec.toFixed(3)), endSec: Number(c.endSec.toFixed(3)) })),
-    audioPath: rel(audioPath),
+    audioPath: rel(audioPath), // the RAW cached mp3 (the synced WAV is a per-run temp)
     spine: rel(spine),
     renders: rendered.map((r) => ({ aspect: r.aspect, file: rel(r.file), width: r.width, height: r.height, durationSec: Number(r.durationSec.toFixed(3)), bytes: r.bytes })),
     createdAt: new Date().toISOString(),

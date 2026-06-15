@@ -48,7 +48,8 @@ describe("#871 voiceForge MOCK alignment — shape", () => {
   it("produces one char-time per script character, last == duration (FORGE_RUNTIME_SEC)", () => {
     expect(CHAR_ENDS.length).toBe(SCRIPT.length);
     expect(CHAR_ENDS[CHAR_ENDS.length - 1]).toBe(DURATION);
-    expect(DURATION).toBe(88);
+    // #944: FORGE_RUNTIME_SEC is now the VO-locked spine total (90.88s spoken + 3s silent transition).
+    expect(DURATION).toBeCloseTo(93.882, 2);
   });
 
   it("char-times are finite and non-decreasing", () => {
