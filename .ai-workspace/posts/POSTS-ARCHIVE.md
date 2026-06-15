@@ -86,7 +86,7 @@ Last updated: 2026-06-15
 ## Post #6 — forge-harness — your tests decide what ships  (DEMONSTRATION)
 - **Subject:** a DEMONSTRATION of forge-harness's real dashboard: a story hits Retry when a check fails, shows which one, then slides to Done after the fix; 8 building blocks, only one calls the model; $0 out of pocket on a Max plan. MIT, public.
 - **Produced:** 2026-06-15
-- **Published:** 2026-06-15 (LIVE).
+- **Published:** _(pending publish)_
 - **Live URLs:** _(pending publish)_
 - **Copy:** `forge-demo-871-copy.json` (this dir)
 - **Media bundle:** `~/coding_projects/_launch-assets/forge-demo-871-20260615/`
