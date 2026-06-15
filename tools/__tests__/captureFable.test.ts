@@ -80,7 +80,7 @@ describe("#824 Fable — the REVISED ~90s 8-beat storyboard", () => {
 
 describe("#824 Fable — the TOOL and the OUTPUT have VISUALLY DISTINCT backgrounds (hard requirement 5)", () => {
   it("the tool world (terminal) is the dark navy bg; the output world (card/video) is a DIFFERENT light bg", () => {
-    const term = buildTerminalHtml("content-pipeline — the agent's interface, not yours");
+    const term = buildTerminalHtml("content-pipeline — the agent's interface, not yours", "content-pipeline");
     const card = buildViewerCardHtml("data:image/png;base64,AAAA");
     const video = buildViewerVideoHtml("http://127.0.0.1:9/x.mp4");
     expect(term).toContain(BG_TOOL); // tool = dark navy
@@ -94,7 +94,7 @@ describe("#824 Fable — the TOOL and the OUTPUT have VISUALLY DISTINCT backgrou
   it("the output beats carry the 'the output' label and the tool beat carries the agent-interface label", () => {
     expect(buildViewerCardHtml("data:image/png;base64,AAAA", "the output")).toContain("the output");
     expect(buildViewerVideoHtml("http://127.0.0.1:9/x.mp4", "the output")).toContain("the output");
-    expect(buildTerminalHtml("content-pipeline — the agent's interface, not yours")).toContain("the agent's interface");
+    expect(buildTerminalHtml("content-pipeline — the agent's interface, not yours", "content-pipeline")).toContain("the agent's interface");
   });
 
   it("the chat surface carries the 'you → Claude Code' label", () => {
@@ -224,7 +224,7 @@ describe("#824 Fable — public-safe stdout curation scrubs dev-process text (DE
 describe("#824 Fable — every page HTML is 9:16 and leaks no path", () => {
   it("all six page builders declare the 1080×1920 frame and contain no /Users path", () => {
     const htmls = [
-      buildTerminalHtml(),
+      buildTerminalHtml(undefined, "content-pipeline"),
       buildChatHtml(),
       buildTitleHtml({ headline: "This tool has no buttons.", sub: "Because you're not the one using it." }),
       buildTransitionHtml("data:image/png;base64,AAAA"),
