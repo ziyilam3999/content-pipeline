@@ -1,3 +1,9 @@
+## [0.28.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.28.0...v0.28.1) (2026-06-15)
+
+### Bug Fixes
+
+* forge-demo copy revision coherent with new video storyboard + provenance re-freeze ([#127](https://github.com/ziyilam3999/content-pipeline/pull/127))
+
 ## [0.28.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.27.1...v0.28.0) (2026-06-15)
 
 ### Features
