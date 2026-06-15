@@ -494,7 +494,7 @@ async function main() {
       const persisted = JSON.parse(fs.readFileSync(metaPath, "utf8")) as {
         typefullyDraftId?: unknown;
       };
-      if (typeof persisted.typefullyDraftId !== "number" || !Number.isFinite(persisted.typefullyDraftId)) {
+      if (typeof persisted.typefullyDraftId !== "number" || !Number.isInteger(persisted.typefullyDraftId)) {
         throw new Error(
           `ARCHIVE WRITEBACK REGRESSION (#948): ${metaPath} has no numeric typefullyDraftId after a live ` +
             `publish (got ${JSON.stringify(persisted.typefullyDraftId)}). The draft pointer was not persisted.`,
