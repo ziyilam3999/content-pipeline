@@ -118,18 +118,17 @@ const DRAFT_TITLE = "forge-harness demonstration — your tests decide what ship
  * strings (hook + 3 body), threads_post is the single Threads post copy.
  */
 const FALLBACK_X_THREAD: string[] = [
-  "96% of developers don't fully trust AI-written code. Barely half ever check it before they commit.\n\nHere's a 90-second look at forge-harness — where your tests, not the agent, decide what's done. 🧵",
-  "Watch forge's real dashboard. A story hits Retry: a check failed, and the board shows you exactly which one.\n\nFix it, re-run, and it slides to Done carrying its evidence. Same inputs, same verdict, every run.",
-  "Under the hood: 8 building blocks, and only one ever calls the model — the planner. The other seven are plain code running your shell commands as the pass/fail checks.\n\nNo agent grading its own homework.",
-  "The whole loop — plan, build, verdict — and on a Max plan that's $0 out of pocket.\n\nOpen-source, MIT. Your tests decide what ships.\ngithub.com/ziyilam3999/forge-harness",
+  "96% of developers don't fully trust AI-written code. Barely half ever check it before they commit.\n\nHere's 90 seconds of forge-harness — where your tests, not the agent, decide what's done. 🧵",
+  "It starts in Claude Code: forge's /prd skill asks a few plain questions and writes the spec with you — no blank page.\n\nThen forge_plan breaks that spec into phases, user stories, and binary pass-or-fail checks. Anything too big to verify gets split.",
+  "Now it runs. forge_evaluate executes your real shell commands — your actual tests — and only a passing check moves a story forward.\n\nWatch its real dashboard: a story hits Retry (you see which check failed), then slides to Done with its evidence.",
+  "The model planned. Your tests judged. No agent grading its own homework.\n\nOn a Max plan, that's $0 out of pocket. Open-source, MIT.\ngithub.com/ziyilam3999/forge-harness",
 ];
 
 const FALLBACK_THREADS_TEXT = `96% of developers don't fully trust AI-written code — and barely half check it before committing (Sonar State of Code, 2026).
 
-forge-harness gives the verdict to your tests, not the agent. Watch its real dashboard: a story hits Retry when a check fails, shows you exactly which one, then slides to Done after the fix — same inputs, same verdict every run.
+forge-harness gives the verdict to your tests, not the agent. Its /prd skill writes the spec with you, forge_plan splits it into binary pass-or-fail checks, and forge_evaluate runs your real shell commands. Watch its dashboard: a story hits Retry, then slides to Done — same verdict every run.
 
-8 building blocks, only one calls the model. On a Max plan, $0 out of pocket. Open-source, MIT.
-github.com/ziyilam3999/forge-harness`;
+Open-source, MIT. github.com/ziyilam3999/forge-harness`;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
