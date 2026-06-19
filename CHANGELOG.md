@@ -1,3 +1,9 @@
+## [0.29.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.28.2...v0.29.0) (2026-06-19)
+
+### Features
+
+* **publish:** ui-evolve before/after social post (#1026) — the band-inversion discovery→fix→proof DEMONSTRATION post; registers the ui-evolve post SSOT + publish smoke (6-tweet X thread, every worded tweet carries media; Threads video-led + proof card), frozen provenance, #810/#809/#797/#867 gates, Typefully DRAFT-only ([#131](https://github.com/ziyilam3999/content-pipeline/pull/131))
+
 ## [0.28.2](https://github.com/ziyilam3999/content-pipeline/compare/v0.28.1...v0.28.2) (2026-06-15)
 
 ### Bug Fixes
