@@ -15,7 +15,7 @@ so any post can later be re-purposed for another platform (e.g. LinkedIn) withou
 > This file is GENERATED from the `*.meta.json` records in this directory — do not hand-edit; edits are
 > overwritten on the next archive. Change the source in `publish/postArchive.ts` (ARCHIVE_POSTS) instead.
 
-Last updated: 2026-06-15
+Last updated: 2026-06-19
 
 ---
 
@@ -84,15 +84,26 @@ Last updated: 2026-06-15
 - **Note:** INTRODUCTION post — the ~90s voiced demo IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C); Threads = single video-led mixed post (hero video + card A). Workflow/methodology — ZERO efficacy numbers claimed, only structural counts. All gate-clean (#810 provenance / #809-#827 length / #797 fidelity all PASS).
 
 ## Post #6 — forge-harness — your tests decide what ships  (DEMONSTRATION)
-- **Subject:** a DEMONSTRATION of forge-harness's real dashboard: a story hits Retry when a check fails, shows which one, then slides to Done after the fix; 8 building blocks, only one calls the model; $0 out of pocket on a Max plan. MIT, public.
+- **Subject:** a DEMONSTRATION of forge-harness: shape the work with forge's /prd skill, decompose it with forge_plan into binary pass-or-fail checks, run it with forge_evaluate (your real shell commands), then watch the real dashboard — a story hits Retry when a check fails (you see which one), then slides to Done. The model planned; your tests judged. $0 out of pocket on a Max plan. MIT, public.
 - **Produced:** 2026-06-15
-- **Published:** _(pending publish)_
-- **Live URLs:** _(pending publish)_
+- **Published:** 2026-06-15 (LIVE).
+- **Live URLs:** X https://x.com/anson3999/status/2066504718961303678 · Threads https://www.threads.com/@gotextrameal/post/DZm3e6XjgJA
 - **Copy:** `forge-demo-871-copy.json` (this dir)
 - **Media bundle:** `~/coding_projects/_launch-assets/forge-demo-871-20260615/`
 - **Publish manifest:** `content-pipeline/publish/manifests/forge-demo-871.publish-manifest.json`
-- **Numbers:** 96% don't fully trust AI code / 48% verify (Sonar 2026, external); 8 blocks / 1 calls the model; Retry→Done; $0 out of pocket on Max; MIT, public.
-- **Note:** DEMONSTRATION post — the ~88s voiced cut IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C); Threads = single video-led mixed post (hero video + card A). 96%/48% are EXTERNAL industry stats (Sonar State of Code 2026), shown with a source chip — NOT a forge metric. All gate-clean (#810 provenance / #809-#827 length / #797 fidelity all PASS).
+- **Numbers:** 96% don't fully trust AI code / 48% verify (Sonar State of Code 2026, external); /prd writes the spec, forge_plan splits it into binary pass-or-fail checks, forge_evaluate runs your real shell commands; Retry→Done; $0 out of pocket on Max; MIT, public.
+- **Note:** DEMONSTRATION post — REVISED 2026-06-15 (#927-rev) so the copy is COHERENT with the new video storyboard (R1-R5 + #944 VO sync): the ~94s voiced cut IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C); Threads = single video-led mixed post (hero video + card A). New live draft 9517372 (created 2026-06-15) SUPERSEDED the stale draft 9510567 (deleted, was unpublished). PUBLISHED LIVE 2026-06-15T12:55:05Z (#926 read-back): X https://x.com/anson3999/status/2066504718961303678 + Threads https://www.threads.com/@gotextrameal/post/DZm3e6XjgJA; stored-order=OK; live-per-tweet-order UNVERIFIED (needs X API). 96%/48% are EXTERNAL industry stats (Sonar State of Code 2026), shown with a source chip — NOT a forge metric. All gate-clean (#810 provenance / #809-#827 length / #797 fidelity / #867 eyeball all PASS).
+
+## Post #7 — ui-evolve — I caught my AI design tool's judge rewarding emptiness  (DEMONSTRATION)
+- **Subject:** a DEMONSTRATION of ui-evolve (a Claude Code skill that validates every UI change with objective metrics AND a vision-judge): I caught its own taste-judge scoring a near-empty page ABOVE a clean one, rebuilt the judge (11 dimensions, 5 structural, scored on a band that peaks in the middle — you can't win by being empty or cluttered), then proved the fix BLIND on 6 real screenshots (old generic site 4.8, three redesigns 7.7, 6/6 correct). MIT, public, early.
+- **Produced:** 2026-06-19
+- **Published:** _(pending publish)_
+- **Live URLs:** _(pending publish)_
+- **Copy:** `ui-evolve-content-copy.json` (this dir)
+- **Media bundle:** `~/coding_projects/_launch-assets/ui-evolve-20260619/`
+- **Publish manifest:** `content-pipeline/publish/manifests/ui-evolve.publish-manifest.json`
+- **Numbers:** OLD 6-dim judge (0-100): near-empty 87.1 > clean 83.1 (the inversion). NEW 11-dim judge (0-10, 5 structural): generic 4.8 → three redesigns 7.7 each; blind 6/6 correct; structural separation bad 3.4-4.4 vs round-6 7.4-7.8. MIT, public.
+- **Note:** DEMONSTRATION post — the ~110s voiced+subtitled cut IS the hero. X = 6-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C; tweet 5 before/after hero still; tweet 6 CTA trio still) so every worded tweet carries media (#792). Threads = single video-led mixed post (hero video + card C). TWO SCALES guarded: 83.1/87.1 = OLD 6-dim 0-100; 4.8/7.7 = NEW 11-dim 0-10 — never conflated. Before/after screenshots are the operator's OWN already-public résumé (design-led, no employer-brand token, name as-is per clearance). Custom Playwright+ffmpeg toolchain (off the Remotion harness) → routed through #810 provenance / #809 length / #797 fidelity / #867 eyeball gates explicitly.
 
 ---
 
