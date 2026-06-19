@@ -1,3 +1,9 @@
+## [0.29.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.29.0...v0.29.1) (2026-06-19)
+
+### Bug Fixes
+
+* **publish:** ui-evolve corrected assets — safe-band hero + max-contrast before/after + mobile trio (#1030) ([#133](https://github.com/ziyilam3999/content-pipeline/pull/133))
+
 ## [0.29.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.28.2...v0.29.0) (2026-06-19)
 
 ### Features
