@@ -1,0 +1,9 @@
+{
+  "_what": "DURABLE COMMITTED copy of Post (#1026) 'ui-evolve' card_labels — the source of truth for the launch-card-ui-evolve smoke. The original lives in out/copy/ui-evolve-content.json which is GITIGNORED (out/ is runtime-only), so it does not travel to CI or a fresh checkout. This fixture carries the verbatim, number-verified lines into the repo so the smoke works everywhere. Each value is a 4-element array: element[0] is the card HEADER/title (caps), elements[1..3] are the three stat lines. Every stat is number-verified vs ui-evolve/evals/LAYER2-FINDING.md (see the original file's number_verification block); do NOT edit a number here without re-verifying against that source.",
+  "_provenance": "out/copy/ui-evolve-content.json -> card_labels (Post #1026).",
+  "card_labels": {
+    "A_the_judge_rewarded_emptiness": ["THE JUDGE REWARDED EMPTINESS", "old judge: 6 legibility rules only", "near-empty page scored 87.1", "above a clean page at 83.1"],
+    "B_a_band_you_cant_game": ["A BAND YOU CAN'T GAME", "11 dimensions · 5 structural", "depth · rhythm · contrast · distinctiveness", "peaks in the middle: not empty, not cluttered"],
+    "C_proven_blind": ["PROVEN BLIND · 6 / 6", "blind judge, no labels", "generic 4.8 → redesigns 7.7", "same résumé · receipts, not vibes"]
+  }
+}

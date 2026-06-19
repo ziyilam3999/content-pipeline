@@ -20,7 +20,8 @@ export type PostSlug =
   | "forge-harness-post3"
   | "content-pipeline-demo-post4"
   | "three-role-model-post5"
-  | "forge-demo-871";
+  | "forge-demo-871"
+  | "ui-evolve";
 
 /** The role of a published asset — drives the hero-aspect/fidelity story + clearer error messages. */
 export type AssetRole = "hero-video" | "card";
@@ -125,6 +126,27 @@ export const POST_ASSETS: Record<PostSlug, PostAssetSpec> = {
       { role: "card", basename: "card-forge-demo-C.png" }, // tweet 4 — your tests decide what ships
     ],
   },
+  // #1026 — the "before/after ui-evolve" DEMONSTRATION post (discovery→fix→proof: I caught my AI
+  // design tool's own taste-judge rewarding emptiness, rebuilt it, proved the fix blind). The ~110s
+  // voiced+subtitled cut IS the hero (tweet 1 + the Threads lead). The X thread is 6 tweets so EVERY
+  // worded tweet carries its own media (#792 gate): tweet 1 = hero video; tweets 2-4 = the three
+  // body cards A/B/C; tweet 5 (before 4.8 → after 7.7) = the editorial before/after hero still;
+  // tweet 6 (CTA) = the 3-redesign trio still. The hero is the full-bleed 9:16 voiced+subtitled cut
+  // (`ui-evolve-hero-9x16-voiced-subtitled.mp4`, #794) under out/review/ui-evolve/video/; all the
+  // stills (cards + the two extra images) live under out/review/ui-evolve/image/. The hero's silent /
+  // SMALL / non-subtitled siblings are NOT uploaded.
+  "ui-evolve": {
+    slug: "ui-evolve",
+    defaultBundleDir: path.join(LAUNCH_ASSETS_ROOT, "ui-evolve-20260619"),
+    assets: [
+      { role: "hero-video", basename: "ui-evolve-hero-9x16-voiced-subtitled.mp4" }, // full-bleed 9:16 voiced+subtitled hero
+      { role: "card", basename: "card-ui-evolve-A.png" }, // tweet 2 — the judge rewarded emptiness (87.1 > 83.1)
+      { role: "card", basename: "card-ui-evolve-B.png" }, // tweet 3 — a band you can't game (11 dims, 5 structural)
+      { role: "card", basename: "card-ui-evolve-C.png" }, // tweet 4 — proven blind 6/6 (generic 4.8 → 7.7)
+      { role: "card", basename: "before-after-hero-editorial-9x16.png" }, // tweet 5 — same résumé, before 4.8 → after 7.7
+      { role: "card", basename: "redesign-trio-hero-1x1.png" }, // tweet 6 (CTA) — three directions, all 7.7
+    ],
+  },
 };
 
 /** Type-guard: is `s` a known post slug? */
@@ -135,6 +157,7 @@ export function isPostSlug(s: string): s is PostSlug {
     s === "forge-harness-post3" ||
     s === "content-pipeline-demo-post4" ||
     s === "three-role-model-post5" ||
-    s === "forge-demo-871"
+    s === "forge-demo-871" ||
+    s === "ui-evolve"
   );
 }

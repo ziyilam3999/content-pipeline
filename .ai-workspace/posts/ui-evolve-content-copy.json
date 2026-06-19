@@ -1,0 +1,55 @@
+{
+  "_what": "Post (#1026) copy — 'ui-evolve: I caught my AI design tool's own judge rewarding empty pages, fixed it, and proved the fix blind'. Narrative spine: discovery -> fix -> proof. Every number verified vs ui-evolve/evals/LAYER2-FINDING.md (committed receipt, v0.6.0; see number_verification). Brand-clean (MIT, public repo github.com/ziyilam3999/ui-evolve; no employer brand). Shows all 3 round-6 redesigns (operator deferred the single pick). DRAFT for operator review before any paid voiceover / art / live draft.",
+  "_honesty_guards": [
+    "TWO DIFFERENT SCALES — do not conflate. The 83.1 / 87.1 numbers are the OLD 6-dimension judge's roundScore on a 0-100 scale. The 4.8 / 7.7 numbers are the NEW 11-dimension judge's overall on a 0-10 scale. They are NOT the same metric. The bug beat uses the OLD scale to show the inversion (87.1 empty > 83.1 clean); the before/after beat uses the NEW judge apples-to-apples (same site 4.8, redesign 7.7). Never imply 87.1 and 4.8 are comparable numbers.",
+    "The 4.8 -> 7.7 before/after is the SAME judge (the new 11-dim) scoring the original generic site vs a round-6 redesign — a fair like-for-like comparison, not two different rulers. The redesigns are real, deployed sites.",
+    "'6/6 correct, blind' = each of six designs was judged by an INDEPENDENT agent blind to the design's origin (anonymized A-F, no good/bad/round-N hint). Accurate per LAYER2-FINDING Method + Result 1.",
+    "All three redesigns TIE at overall 7.7 — the copy says 'three valid directions, all proven 7.7' and never claims one is best (the rubric does not bias toward one aesthetic).",
+    "'distinctive-good is not uniformly high on every dimension' — swiss earns its 7.7 via cohesion+distinctiveness and trades away depth (real depth 4). Only used as an optional nuance line; the headline stays the structural-block gap.",
+    "ui-evolve is open source, MIT, public, EARLY — framed 'open source, try it', no adoption/stars claim. Brand-clean: no employer brand anywhere.",
+    "The before/after screenshots are the operator's OWN already-public resume site. Featuring the design/layout; keep identifying personal detail low-key. No employer brand token in any rendered card or caption."
+  ],
+  "x_thread": [
+    "I built an AI tool to redesign my portfolio.\n\nThen I caught its own taste-judge scoring a nearly-blank page HIGHER than a clean one. It was rewarding emptiness.\n\nHere's how I caught it — and proved the fix blind. 🧵",
+    "Its original judge scored looks on 6 legibility rules — hierarchy, spacing, alignment.\n\nBut a page can be flawlessly legible and say nothing. So it scored a nearly-empty draft 87.1 — ABOVE a clean page at 83.1.\n\nTop marks for doing the least.",
+    "So I rebuilt the judge: 11 dimensions, 5 of them STRUCTURAL — depth, rhythm, hierarchy-contrast, distinctiveness.\n\nThe trick is a band that PEAKS in the middle. You can't max it by being empty OR by being cluttered. Genuinely-composed design is what scores high.",
+    "Then I tested the fix honestly: ran the new judge BLIND on 6 real screenshots — no labels, no hints.\n\nIt scored my old generic site 4.8, and three new redesigns 7.7 — and sorted all six into the right buckets. 6 for 6.",
+    "Same résumé. Before 4.8, after 7.7 — on the same ruler.\n\nThree redesigns, three directions (editorial / terminal / Swiss), all proven better — not just \"looks different.\"",
+    "It's open source — a Claude Code skill that validates every UI change with objective metrics AND a vision-judge, and reverts anything that isn't genuinely better.\n\nReceipts, not vibes. Early — feedback welcome.\n\ngithub.com/ziyilam3999/ui-evolve"
+  ],
+  "threads_post": "I built an AI tool to redesign my portfolio — and it taught me its own blind spot.\n\nIts original judge scored 6 legibility rules. But a page can be perfectly legible and say nothing — so it scored a nearly-empty draft 87.1, above a clean page at 83.1.\n\nSo I rebuilt it: 11 dimensions, 5 structural. Ran it BLIND on 6 real screenshots: old site 4.8, three redesigns 7.7 — 6/6 correct.\n\nSame résumé, 4.8 → 7.7. Open source, a Claude Code skill.\ngithub.com/ziyilam3999/ui-evolve",
+  "_video_target_seconds": 90,
+  "video_script_scenes": [
+    "I built a tool that uses AI to redesign a website — and then it taught me something about itself. To score a design's looks, it had an AI judge. And that judge had a blind spot.",
+    "Its original judge rated six things: hierarchy, spacing, alignment — all about legibility. But here's the catch: a page can be perfectly legible and still be empty. So the judge gave a nearly-blank draft its highest score — above a clean, finished page. It was rewarding nothing.",
+    "So I rebuilt the judge. Eleven dimensions now, and five of them are structural — depth, rhythm, contrast, distinctiveness. The scoring uses a band that peaks in the middle: you can't top it out by being empty, and you can't top it out by being cluttered. Real, composed design is what scores high.",
+    "Then I checked the fix honestly. I ran the new judge blind — six real screenshots, no labels, no hints about which was good. It scored my old generic site a four-point-eight, and three new redesigns a seven-point-seven. And it sorted all six into the right buckets. Six for six.",
+    "Same résumé, same ruler: before, four-point-eight. After, seven-point-seven. Three different redesigns — editorial, terminal, and Swiss — all proven better, not just different-looking.",
+    "It's open source — a Claude Code skill. It checks every change with hard metrics and a vision-judge, and it throws away anything that isn't actually better. Receipts, not vibes. It's early, so feedback is welcome. Find it at github dot com slash ziyilam three-nine-nine-nine slash ui dash evolve."
+  ],
+  "card_labels": {
+    "A_the_judge_rewarded_emptiness": ["THE JUDGE REWARDED EMPTINESS", "old judge: 6 legibility rules only", "near-empty page scored 87.1", "above a clean page at 83.1"],
+    "B_a_band_you_cant_game": ["A BAND YOU CAN'T GAME", "11 dimensions · 5 structural", "depth · rhythm · contrast · distinctiveness", "peaks in the middle: not empty, not cluttered"],
+    "C_proven_blind": ["PROVEN BLIND · 6 / 6", "blind judge, no labels", "generic 4.8 → redesigns 7.7", "same résumé · receipts, not vibes"]
+  },
+  "number_verification": {
+    "old judge had 6 legibility dimensions": "LAYER2-FINDING 'the old 6-dim legibility-only judge' + Result 1 bullet 'Under the old 6-dim legibility-only judge' ✓",
+    "near-empty (round-4) scored 87.1 ABOVE clean (round-1) 83.1 [OLD 0-100 scale]": "LAYER2-FINDING Result 1: 'the same round-4 scored 87.1, ABOVE round-1's 83.1 — the loop literally rewarded emptiness' ✓ (OLD roundScore scale, guarded vs the new 0-10 scale)",
+    "new judge has 11 dimensions, 5 structural": "LAYER2-FINDING 'UPDATED 11-dimension vision-judge'; structural five = depth/cohesion/rhythm/hierarchyContrast/distinctiveness (Result 1 structuralBlock column) ✓",
+    "band peaks in the middle (not empty, not cluttered)": "LAYER2-FINDING What-this-proves + Conclusion: structurally-real design beats BOTH extremes (too-busy AND too-subtle poles below round-6) ✓",
+    "blind run, 6/6 correct pole classification": "LAYER2-FINDING Result 1: 'Blind classification: 6/6 correct' ✓ (each judged by an independent agent blind to origin, anonymized A-F)",
+    "generic site overall 4.8 [NEW 0-10 scale]": "LAYER2-FINDING Result 1 table: round-1 (generic) overall 4.8 ✓",
+    "three round-6 redesigns overall 7.7 each [NEW 0-10 scale]": "LAYER2-FINDING Result 1 table: editorial/terminal/swiss overall 7.7 / 7.7 / 7.7 ✓; 'All 3 round-6 designs tie at overall 7.7' ✓",
+    "structural separation ~3 points (bad 3.4-4.4 vs round-6 7.4-7.8)": "LAYER2-FINDING Result 1: 'Structural separation is real: bad poles 3.4-4.4, round-6 7.4-7.8' ✓",
+    "three directions named editorial / terminal / swiss": "LAYER2-FINDING Method: 'round-6 editorial / terminal / swiss (the three frontend-design redesigns)' ✓",
+    "MIT, public repo, a Claude Code skill": "ui-evolve repo github.com/ziyilam3999/ui-evolve (MIT); the loop ships as a Claude Code skill (SKILL.md) ✓",
+    "validates with objective metrics AND a vision-judge, reverts what isn't better": "ui-evolve loop = objective track (Lighthouse + axe + clip/overflow + motion) + visual track (vision-judge); accept/revert on roundScore ✓"
+  },
+  "sourceFiles": [
+    "../ui-evolve/evals/LAYER2-FINDING.md",
+    "../ui-evolve/evals/fixtures/round6-editorial.judge.json",
+    "../ui-evolve/evals/fixtures/round6-terminal.judge.json",
+    "../ui-evolve/evals/fixtures/round6-swiss.judge.json",
+    "../ui-evolve/evals/fixtures/badpoles.judge.json"
+  ]
+}

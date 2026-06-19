@@ -268,6 +268,25 @@ export const ARCHIVE_POSTS: Record<PostSlug, StaticArchiveMeta> = {
     note:
       "DEMONSTRATION post — REVISED 2026-06-15 (#927-rev) so the copy is COHERENT with the new video storyboard (R1-R5 + #944 VO sync): the ~94s voiced cut IS the hero (video-hook + card-body). X = 4-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C); Threads = single video-led mixed post (hero video + card A). 96%/48% are EXTERNAL industry stats (Sonar State of Code 2026), shown with a source chip — NOT a forge metric. All gate-clean (#810 provenance / #809-#827 length / #797 fidelity / #867 eyeball all PASS).",
   },
+  "ui-evolve": {
+    postNumber: 7,
+    title: "ui-evolve — I caught my AI design tool's judge rewarding emptiness",
+    subject:
+      "a DEMONSTRATION of ui-evolve (a Claude Code skill that validates every UI change with objective metrics AND a vision-judge): I caught its own taste-judge scoring a near-empty page ABOVE a clean one, rebuilt the judge (11 dimensions, 5 structural, scored on a band that peaks in the middle — you can't win by being empty or cluttered), then proved the fix BLIND on 6 real screenshots (old generic site 4.8, three redesigns 7.7, 6/6 correct). MIT, public, early.",
+    category: "demonstration",
+    producedDate: "2026-06-19",
+    // Not yet published — a DRAFT is created via the live publisher; the operator does the final manual
+    // Publish. publishedDate stays null until a post-publish read-back fills it.
+    publishedDate: null,
+    mediaBundleDir: "~/coding_projects/_launch-assets/ui-evolve-20260619",
+    publishManifestRef: "content-pipeline/publish/manifests/ui-evolve.publish-manifest.json",
+    copyArchiveBasename: "ui-evolve-content-copy.json",
+    copySourceBasename: "ui-evolve-content.json",
+    numbers:
+      "OLD 6-dim judge (0-100): near-empty 87.1 > clean 83.1 (the inversion). NEW 11-dim judge (0-10, 5 structural): generic 4.8 → three redesigns 7.7 each; blind 6/6 correct; structural separation bad 3.4-4.4 vs round-6 7.4-7.8. MIT, public.",
+    note:
+      "DEMONSTRATION post — the ~110s voiced+subtitled cut IS the hero. X = 6-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C; tweet 5 before/after hero still; tweet 6 CTA trio still) so every worded tweet carries media (#792). Threads = single video-led mixed post (hero video + card C). TWO SCALES guarded: 83.1/87.1 = OLD 6-dim 0-100; 4.8/7.7 = NEW 11-dim 0-10 — never conflated. Before/after screenshots are the operator's OWN already-public résumé (design-led, no employer-brand token, name as-is per clearance). Custom Playwright+ffmpeg toolchain (off the Remotion harness) → routed through #810 provenance / #809 length / #797 fidelity / #867 eyeball gates explicitly.",
+  },
 };
 
 /**
