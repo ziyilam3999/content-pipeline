@@ -100,10 +100,10 @@ const IMAGE_DIR = path.join(ROOT, "out", "review", "ui-evolve", "image");
 // HERO video aspect — config-driven (#794), NOT a magic hard-code. The lead video of every
 // phone-first platform (X hook tweet, Threads hero post) is the full-bleed phone cut.
 const HERO_ASPECT_TAG = CONFIG.publish.heroVideoAspect.replace(":", "x") as AspectTag; // "9x16"
-const UI_HERO = path.join(VIDEO_DIR, "ui-evolve-hero-9x16-voiced-subtitled.mp4"); // 9:16 hero — leads X + Threads
+const UI_HERO = path.join(VIDEO_DIR, "ui-evolve-hero-9x16-voiced-subtitled-safe.mp4"); // 9:16 safe-band hero — leads X + Threads
 const CARD = (letter: "A" | "B" | "C") => path.join(IMAGE_DIR, `card-ui-evolve-${letter}.png`);
-const BEFORE_AFTER_HERO = path.join(IMAGE_DIR, "before-after-hero-editorial-9x16.png"); // tweet 5 still
-const REDESIGN_TRIO = path.join(IMAGE_DIR, "redesign-trio-hero-1x1.png"); // tweet 6 (CTA) still
+const BEFORE_AFTER_HERO = path.join(IMAGE_DIR, "before-after-hero-origin-terminal-9x16.png"); // tweet 5 — flat origin → dark terminal (max contrast)
+const REDESIGN_TRIO = path.join(IMAGE_DIR, "redesign-trio-mobile-1x1.png"); // tweet 6 (CTA) — 3 MOBILE views
 
 const SOCIAL_SET_ID = process.env.TYPEFULLY_SOCIAL_SET_ID ?? "312308";
 const DRAFT_TITLE = "ui-evolve — I caught my AI design tool's judge rewarding emptiness";

@@ -97,7 +97,7 @@ Last updated: 2026-06-19
 ## Post #7 — ui-evolve — I caught my AI design tool's judge rewarding emptiness  (DEMONSTRATION)
 - **Subject:** a DEMONSTRATION of ui-evolve (a Claude Code skill that validates every UI change with objective metrics AND a vision-judge): I caught its own taste-judge scoring a near-empty page ABOVE a clean one, rebuilt the judge (11 dimensions, 5 structural, scored on a band that peaks in the middle — you can't win by being empty or cluttered), then proved the fix BLIND on 6 real screenshots (old generic site 4.8, three redesigns 7.7, 6/6 correct). MIT, public, early.
 - **Produced:** 2026-06-19
-- **Published:** _(pending publish)_
+- **Published:** 2026-06-19 (LIVE).
 - **Live URLs:** _(pending publish)_
 - **Copy:** `ui-evolve-content-copy.json` (this dir)
 - **Media bundle:** `~/coding_projects/_launch-assets/ui-evolve-20260619/`

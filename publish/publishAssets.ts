@@ -139,12 +139,16 @@ export const POST_ASSETS: Record<PostSlug, PostAssetSpec> = {
     slug: "ui-evolve",
     defaultBundleDir: path.join(LAUNCH_ASSETS_ROOT, "ui-evolve-20260619"),
     assets: [
-      { role: "hero-video", basename: "ui-evolve-hero-9x16-voiced-subtitled.mp4" }, // full-bleed 9:16 voiced+subtitled hero
+      // #1030 fixes: (1) hero is the SAFE-BAND cut (content inset ~7% so the platform's vertical-video
+      // display crop can't clip the CTA URL / headlines); (2) tweet-5 before/after is the high-CONTRAST
+      // origin→terminal (flat white → dark terminal — the editorial one read "too similar" at feed scale);
+      // (3) tweet-6 trio is the MOBILE 3-up (legible at thumbnail; the desktop trio was too small).
+      { role: "hero-video", basename: "ui-evolve-hero-9x16-voiced-subtitled-safe.mp4" }, // 9:16 voiced+subtitled, safe-band inset
       { role: "card", basename: "card-ui-evolve-A.png" }, // tweet 2 — the judge rewarded emptiness (87.1 > 83.1)
       { role: "card", basename: "card-ui-evolve-B.png" }, // tweet 3 — a band you can't game (11 dims, 5 structural)
       { role: "card", basename: "card-ui-evolve-C.png" }, // tweet 4 — proven blind 6/6 (generic 4.8 → 7.7)
-      { role: "card", basename: "before-after-hero-editorial-9x16.png" }, // tweet 5 — same résumé, before 4.8 → after 7.7
-      { role: "card", basename: "redesign-trio-hero-1x1.png" }, // tweet 6 (CTA) — three directions, all 7.7
+      { role: "card", basename: "before-after-hero-origin-terminal-9x16.png" }, // tweet 5 — flat original → dark terminal (max contrast)
+      { role: "card", basename: "redesign-trio-mobile-1x1.png" }, // tweet 6 (CTA) — three MOBILE views, all 7.7
     ],
   },
 };
