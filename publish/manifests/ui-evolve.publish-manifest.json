@@ -1,12 +1,12 @@
 {
   "postSlug": "ui-evolve",
-  "frozenAt": "2026-06-19T00:08:43.675Z",
+  "frozenAt": "2026-06-19T01:16:41.797Z",
   "sourceDir": "~/coding_projects/_launch-assets/ui-evolve-20260619",
   "assets": {
-    "ui-evolve-hero-9x16-voiced-subtitled.mp4": {
+    "ui-evolve-hero-9x16-voiced-subtitled-safe.mp4": {
       "role": "hero-video",
-      "sha256": "ce030c279cce44b5a8d9af441436b8507f8e505dd1211cd762f0ba98d7aaa310",
-      "bytes": 61414751
+      "sha256": "d3c7ea611665b0a13504940629d5573adefdd02db339d0a60bf46357e8b3851e",
+      "bytes": 48758703
     },
     "card-ui-evolve-A.png": {
       "role": "card",
@@ -23,15 +23,15 @@
       "sha256": "e6e2866baff85f7a48503a708a379ebab302b2b3e8267842b4feae18416636c8",
       "bytes": 871471
     },
-    "before-after-hero-editorial-9x16.png": {
+    "before-after-hero-origin-terminal-9x16.png": {
       "role": "card",
-      "sha256": "23a25ea882854c64cc75458973eb730231515cf053a3e1ebc7aff339913d96ed",
-      "bytes": 888304
+      "sha256": "6f94c233bce71dad4c643ce48f50b68ba895d2f98da104bfb78a4c66c062e31f",
+      "bytes": 396464
     },
-    "redesign-trio-hero-1x1.png": {
+    "redesign-trio-mobile-1x1.png": {
       "role": "card",
-      "sha256": "7b2434fa76db18d2edbb924f5cb0e7a224eae272b18bf891cdb8c3a3a0daf66b",
-      "bytes": 300759
+      "sha256": "b7007e61f3eaa7924d624814cb4da56fa541853878074d48a224a6af47e85c1c",
+      "bytes": 609906
     }
   }
 }
