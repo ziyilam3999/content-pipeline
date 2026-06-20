@@ -101,3 +101,61 @@ describe("assertVoicedDemoHasCaptions (parity invariant)", () => {
     expect(() => assertVoicedDemoHasCaptions(cues, { durationSec: 10 })).toThrow(/expected 0/);
   });
 });
+
+import { captionsAreEvenSplit, assertCaptionsTrackRealVoice } from "../demoCaptions";
+
+describe("#1046 even-split caption-fallback guard (real-VO desync)", () => {
+  // The exact desync the operator caught: 40 cues evenly spaced 2.63s over a padded spine.
+  const evenCues = Array.from({ length: 40 }, (_, i) => ({ startSec: i * 2.63, endSec: (i + 1) * 2.63 }));
+  // Real per-character sync → uneven cue durations.
+  const realCues = [
+    { startSec: 0, endSec: 1.2 }, { startSec: 1.2, endSec: 3.9 }, { startSec: 3.9, endSec: 4.6 },
+    { startSec: 4.6, endSec: 7.8 }, { startSec: 7.8, endSec: 8.3 }, { startSec: 8.3, endSec: 11.0 },
+  ];
+
+  it("flags the near-uniform even-split cues", () => {
+    expect(captionsAreEvenSplit(evenCues)).toBe(true);
+    expect(captionsAreEvenSplit(realCues)).toBe(false);
+  });
+
+  it("REGRESSION: throws when a real VO produced even-split cues", () => {
+    expect(() => assertCaptionsTrackRealVoice(evenCues, true)).toThrow(/EVEN-SPLIT/);
+  });
+
+  it("passes when a real VO produced uneven (synced) cues", () => {
+    expect(() => assertCaptionsTrackRealVoice(realCues, true)).not.toThrow();
+  });
+
+  it("does not gate the free mock/say paths (realVoice=false even-split is expected)", () => {
+    expect(() => assertCaptionsTrackRealVoice(evenCues, false)).not.toThrow();
+  });
+});
+
+import { buildDemoCaptionCues as buildCuesGate } from "../demoCaptions";
+
+describe("#1046 narrator↔subtitle desync gate (real VO must really sync, not even-split)", () => {
+  const script = "Your AI agent plans, codes, and reviews its own work, live on the board.";
+
+  it("THROWS when a real alignment is supplied but its last char misses the clip end (the kanban desync)", () => {
+    // Real char-times that end at ~70% of the clip (padded/short VO) — they do NOT line up, so the
+    // builder would silently even-split. The gate must fail loudly instead.
+    const durationSec = 20;
+    const misaligned = Array.from({ length: script.length }, (_, i) =>
+      Number((((i + 1) / script.length) * 14).toFixed(4)), // last char ≈14s, clip is 20s → >1% off
+    );
+    expect(() => buildCuesGate(script, { durationSec, charEndTimesSec: misaligned })).toThrow(/desync/i);
+  });
+
+  it("does NOT throw when NO alignment is supplied (legit even-split fallback)", () => {
+    expect(() => buildCuesGate(script, { durationSec: 20 })).not.toThrow();
+  });
+
+  it("does NOT throw when the real alignment lines up (last char at the clip end)", () => {
+    const durationSec = 20;
+    const aligned = Array.from({ length: script.length }, (_, i) =>
+      Number((((i + 1) / script.length) * durationSec).toFixed(4)),
+    );
+    aligned[script.length - 1] = durationSec;
+    expect(() => buildCuesGate(script, { durationSec, charEndTimesSec: aligned })).not.toThrow();
+  });
+});

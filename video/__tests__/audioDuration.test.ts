@@ -9,7 +9,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-import { audioDurationSec, assertAudioMatchesSync, AUDIO_SYNC_TOLERANCE_SEC } from "../audioDuration";
+import { audioDurationSec, assertAudioMatchesSync, AUDIO_SYNC_TOLERANCE_SEC, assertAudibleUnlessSilent, AUDIBLE_FLOOR_DB } from "../audioDuration";
 import { makeSilentWav } from "../../adapters/video";
 
 function writeTmpWav(durationSec: number): string {
@@ -53,5 +53,31 @@ describe("#774 assertAudioMatchesSync — provenance guard", () => {
   test("no-op when there is no alignment", () => {
     const p = writeTmpWav(10);
     expect(() => assertAudioMatchesSync(p, [])).not.toThrow();
+  });
+});
+
+describe("assertAudibleUnlessSilent (#1046 silent-render-mislabeled-voiced guard)", () => {
+  const SILENCE_DB = -91; // digital-silence noise floor (what the old free mock produced)
+  const AUDIBLE_DB = -20; // a real say/Adam VO sits well above the floor
+
+  it("REGRESSION: throws when an audible voiceMode renders digital silence", () => {
+    for (const mode of ["paid", "reuse", "say"]) {
+      expect(() => assertAudibleUnlessSilent(SILENCE_DB, mode)).toThrow(/digital silence/);
+    }
+  });
+
+  it("passes when an audible voiceMode is actually audible", () => {
+    for (const mode of ["paid", "reuse", "say"]) {
+      expect(() => assertAudibleUnlessSilent(AUDIBLE_DB, mode)).not.toThrow();
+    }
+  });
+
+  it("allows the explicit 'silent' alignment-only fallback to be silent", () => {
+    expect(() => assertAudibleUnlessSilent(SILENCE_DB, "silent")).not.toThrow();
+  });
+
+  it("the audible floor is set above pure digital silence", () => {
+    expect(AUDIBLE_FLOOR_DB).toBeGreaterThan(SILENCE_DB);
+    expect(AUDIBLE_FLOOR_DB).toBeLessThan(AUDIBLE_DB);
   });
 });

@@ -56,6 +56,9 @@
     "capture:fable": "tsx tools/captureFable.ts",
     "capture:forge": "tsx tools/captureForge.ts",
     "voice:forge": "tsx tools/voiceForge.ts",
+    "capture:kanban-assets": "tsx tools/captureKanbanAssets.ts",
+    "capture:kanban": "tsx tools/captureKanban.ts",
+    "voice:kanban": "tsx tools/voiceKanban.ts",
     "publish:freeze-manifest": "tsx tools/freeze-publish-manifest.ts",
     "archive:backfill": "tsx tools/backfill-posts-archive.ts",
     "e2e:lfah": "tsx smoke/e2e-lfah.ts"

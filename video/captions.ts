@@ -191,6 +191,21 @@ export function buildCaptions(
   return captions;
 }
 
+/**
+ * Did REAL per-character voice sync hold for this clip, or would the builder silently fall back to
+ * an even-split estimate? True only when a supplied `charEndTimesSec` lines up with the script
+ * (length matches, ascending, in-range, span==word count, and the LAST char lands at ≈clip.durationSec
+ * within 1%). False when NO alignment was supplied (legit even-split) OR a supplied alignment is rejected
+ * (the silent-desync trap #1046). Demo voicers gate on this so a REAL VO can never ship even-split captions.
+ */
+export function captionsHaveRealSync(
+  script: string,
+  clip: VoiceClipLike,
+  opts?: { maxWords?: number },
+): boolean {
+  return realChunkEndTimes(script, splitCaptionText(script, opts?.maxWords), clip) !== null;
+}
+
 // ── assertCaptionsCoverClip ──────────────────────────────────────────────
 
 const EPSILON = 1e-6;
