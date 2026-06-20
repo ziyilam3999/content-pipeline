@@ -139,3 +139,25 @@ export function assertAudioMatchesSync(
     );
   }
 }
+
+/** Digital silence sits at the codec noise floor (~ -91 dB). A render whose VO
+ *  was meant to be AUDIBLE must clear this floor by a wide margin. */
+export const AUDIBLE_FLOOR_DB = -80;
+
+/**
+ * Guard against a SILENT render mislabeled as "voiced" (#1046 root cause: the
+ * free mock emitted a silent WAV, the pipeline only checked an audio STREAM
+ * EXISTS — not that it was audible — so a -91 dB file shipped as "voiced").
+ *
+ * @param meanVolumeDb  the muxed output's mean volume in dB (ffmpeg volumedetect)
+ * @param voiceMode     "paid" | "reuse" | "say" must be audible; "silent" may be silent
+ */
+export function assertAudibleUnlessSilent(meanVolumeDb: number, voiceMode: string): void {
+  if (voiceMode !== "silent" && meanVolumeDb <= AUDIBLE_FLOOR_DB) {
+    throw new Error(
+      `voice audibility: voiceMode='${voiceMode}' but the rendered audio is digital silence ` +
+        `(mean ${meanVolumeDb.toFixed(1)} dB ≤ ${AUDIBLE_FLOOR_DB} dB). A 'voiced' render must be ` +
+        `audible — the VO was dropped or the caller emitted silence. Only voiceMode='silent' may be silent.`,
+    );
+  }
+}

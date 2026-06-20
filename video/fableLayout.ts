@@ -352,6 +352,81 @@ export function assertFableBeatsSafeAndFilled(layouts: ReadonlyArray<FableBeatLa
   }
 }
 
+// ── #1071 FRAME-ECONOMY gate (operator feedback 2026-06-20 — "the product is too small") ───────────
+//
+// The recurring defect this prevents: a board/device-subject beat whose framed surface fills only a
+// SLIVER of the frame, marooned in big empty matte bands. The #1046 v3 beat-7 captured the board in a
+// LANDSCAPE (all-4-columns) viewport and scaled that wide strip into the 9:16 spine — the device ended up
+// ~⅓ of the title-safe HEIGHT with large cream bands top+bottom (the operator's "product too small").
+// assert4SideSafeArea only checks the device does not CROSS the safe edge (a ceiling); it is BLIND to a
+// device that is far too SMALL inside the safe box. assertBeatFill is for full-bleed beats and is waived
+// for framed-object beats (fill:false), so it never fires on these. So neither existing guard catches a
+// shrunken board subject — this gate adds the missing FLOOR.
+
+/**
+ * A device/board-subject beat's framed surface must fill at least this fraction of the SAFE-AREA HEIGHT.
+ * Principled floor (NOT tuned-to-pass): a portrait board beat must occupy a clear MAJORITY (≥60%) of the
+ * title-safe height — below this the board reads as a thin strip in empty cream. The shipped portrait
+ * board device (WIDE_BOARD_DEVICE: 1120px of the 1728px safe height = 0.648) clears it; the rejected v3
+ * landscape beat-7 (~0.35) fails it. The ceiling of the band is the 4-side title-safe box itself
+ * (assert4SideSafeArea — nothing may cross the safe edge), so MIN..safe is a BAND.
+ */
+export const MIN_SUBJECT_FILL_HEIGHT_FRACTION = 0.6;
+
+/**
+ * The beat kinds whose SUBJECT is the framed device/board surface (the board still, its pan-zoom, or a
+ * captured board clip). Only these are economy-checked. Title / terminal / chat beats carry no device
+ * subject and are exempt — their content box is text/centered, not a product surface that can read "small".
+ */
+export const DEVICE_SUBJECT_KINDS: ReadonlySet<string> = new Set([
+  "viewer-video",
+  "viewer-panzoom",
+  "viewer-card",
+]);
+
+/** True iff a beat's kind makes its subject the framed device/board surface (frame-economy applies). */
+export function isDeviceSubjectBeat(kind: string): boolean {
+  return DEVICE_SUBJECT_KINDS.has(kind);
+}
+
+/**
+ * #1071 FRAME-ECONOMY invariant — every device/board-subject beat's framed surface must sit inside a BAND:
+ *   • FLOOR — it fills ≥ `minFillHeightFraction` of the SAFE-AREA HEIGHT (not a thin strip in empty cream).
+ *   • CEILING — it stays inside the 4-side title-safe box (assert4SideSafeArea — nothing crops the frame).
+ * Title / terminal / chat beats carry no device subject → skipped. This is the mechanical prevention for
+ * the operator's "the product is too small" feedback: a landscape board clip scaled into 9:16 fills only
+ * ~⅓ of the height and reads as a strip. Pass a synthetic layout list to exercise the failing end.
+ */
+export function assertFrameEconomy(
+  layouts: ReadonlyArray<FableBeatLayout>,
+  opts?: { minFillHeightFraction?: number; width?: number; height?: number; margin?: number },
+): void {
+  const width = opts?.width ?? CAP_W;
+  const height = opts?.height ?? CAP_H;
+  const margin = opts?.margin ?? FILL_SAFE_MARGIN;
+  const minFill = opts?.minFillHeightFraction ?? MIN_SUBJECT_FILL_HEIGHT_FRACTION;
+  if (!(minFill > 0 && minFill < 1)) throw new Error(`assertFrameEconomy: minFillHeightFraction must be in (0,1) (got ${minFill})`);
+  const safe = safeAreaBox(width, height, margin);
+  const safeH = safe.bottom - safe.top;
+  const EPS = 1e-4;
+  for (const l of layouts) {
+    if (!isDeviceSubjectBeat(l.kind)) continue; // only device/board-subject beats are economy-checked
+    const label = `beat ${l.beat} (${l.kind})`;
+    // CEILING — the framed surface must not cross the 4-side title-safe edge (nothing crops).
+    assert4SideSafeArea({ content: l.content, width, height, margin, label });
+    // FLOOR — the framed surface must fill a clear majority of the safe-area HEIGHT (not a thin strip).
+    const subjectH = Math.max(0, l.content.bottom - l.content.top);
+    const fillH = subjectH / safeH;
+    if (fillH < minFill - EPS) {
+      throw new Error(
+        `#1071 frame-economy violated for "${label}": the board subject fills only ${(fillH * 100).toFixed(1)}% ` +
+          `of the title-safe height (< ${(minFill * 100).toFixed(0)}% required). The product reads as a thin strip ` +
+          `in empty cream bands — frame the board PORTRAIT so it fills the frame, not a landscape strip scaled into 9:16.`,
+      );
+    }
+  }
+}
+
 export interface OverlapHit {
   aspect: string;
   deviceBottom: number;
