@@ -82,6 +82,36 @@ export function buildDemoCaptionCues(script: string, clip: VoiceClipLike): DemoC
   return track.captions.map((c) => ({ text: c.text, startSec: c.startSec, endSec: c.endSec }));
 }
 
+/** Near-uniform cue durations are the fingerprint of the EVEN-SPLIT fallback — real
+ *  per-character voice sync always yields uneven cues (words take different times). */
+export function captionsAreEvenSplit(cues: ReadonlyArray<{ startSec: number; endSec: number }>): boolean {
+  if (cues.length < 4) return false;
+  const durs = cues.map((c) => c.endSec - c.startSec);
+  const mean = durs.reduce((a, b) => a + b, 0) / durs.length;
+  if (mean <= 0) return false;
+  const variance = durs.reduce((a, d) => a + (d - mean) ** 2, 0) / durs.length;
+  return Math.sqrt(variance) / mean < 0.03; // coefficient of variation < 3% → suspiciously uniform
+}
+
+/**
+ * #1046 BAKE — catch a SILENT caption desync: when a REAL (timestamped) VO is used, the cues
+ * MUST follow the voice and so be uneven. Near-uniform cues mean buildCaptionTrack fell back to
+ * even-split (the char-times "didn't line up" — e.g. a spine padded to a guessed length, last
+ * char ≠ duration), so the subtitles ignore the voice. Fail loudly instead of shipping the drift.
+ */
+export function assertCaptionsTrackRealVoice(
+  cues: ReadonlyArray<{ startSec: number; endSec: number }>,
+  realVoice: boolean,
+): void {
+  if (realVoice && captionsAreEvenSplit(cues)) {
+    throw new Error(
+      "captions: a real (timestamped) VO was used but the cues are near-uniform — buildCaptionTrack fell " +
+        "back to EVEN-SPLIT, so subtitles ignore the voice (desync). VO-LOCK the spine to the real VO so its " +
+        "per-character timestamps span the timeline (last char == clip duration); do not pad a guessed spine.",
+    );
+  }
+}
+
 /**
  * #775 PARITY INVARIANT — a voiced demo MUST carry a non-empty caption track that SPANS the
  * audio. Throws otherwise. This is the mechanical backstop for the silent-drop regression:

@@ -101,3 +101,32 @@ describe("assertVoicedDemoHasCaptions (parity invariant)", () => {
     expect(() => assertVoicedDemoHasCaptions(cues, { durationSec: 10 })).toThrow(/expected 0/);
   });
 });
+
+import { captionsAreEvenSplit, assertCaptionsTrackRealVoice } from "../demoCaptions";
+
+describe("#1046 even-split caption-fallback guard (real-VO desync)", () => {
+  // The exact desync the operator caught: 40 cues evenly spaced 2.63s over a padded spine.
+  const evenCues = Array.from({ length: 40 }, (_, i) => ({ startSec: i * 2.63, endSec: (i + 1) * 2.63 }));
+  // Real per-character sync → uneven cue durations.
+  const realCues = [
+    { startSec: 0, endSec: 1.2 }, { startSec: 1.2, endSec: 3.9 }, { startSec: 3.9, endSec: 4.6 },
+    { startSec: 4.6, endSec: 7.8 }, { startSec: 7.8, endSec: 8.3 }, { startSec: 8.3, endSec: 11.0 },
+  ];
+
+  it("flags the near-uniform even-split cues", () => {
+    expect(captionsAreEvenSplit(evenCues)).toBe(true);
+    expect(captionsAreEvenSplit(realCues)).toBe(false);
+  });
+
+  it("REGRESSION: throws when a real VO produced even-split cues", () => {
+    expect(() => assertCaptionsTrackRealVoice(evenCues, true)).toThrow(/EVEN-SPLIT/);
+  });
+
+  it("passes when a real VO produced uneven (synced) cues", () => {
+    expect(() => assertCaptionsTrackRealVoice(realCues, true)).not.toThrow();
+  });
+
+  it("does not gate the free mock/say paths (realVoice=false even-split is expected)", () => {
+    expect(() => assertCaptionsTrackRealVoice(evenCues, false)).not.toThrow();
+  });
+});

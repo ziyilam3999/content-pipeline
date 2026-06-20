@@ -34,7 +34,7 @@ import {
   kanbanSpec,
 } from "../video/kanbanStoryboard";
 import { narrationSceneEndTimes } from "../video/demoTimeline";
-import { buildDemoCaptionCues } from "../video/demoCaptions";
+import { buildDemoCaptionCues, assertCaptionsTrackRealVoice } from "../video/demoCaptions";
 import { assertAudioMatchesSync, audioDurationSec, assertAudibleUnlessSilent } from "../video/audioDuration";
 import { FABLE_ASPECTS, CAP_BAND_H, assertNoCaptionMediaOverlap, assertFableBeatsSafeAndFilled } from "../video/fableLayout";
 import { assertDemoCategoryRecipe } from "../video/demoCategoryRecipe";
@@ -465,6 +465,8 @@ async function main(): Promise<void> {
   // 3 — synced captions (real-voice timing on the SYNCED timeline), rendered as transparent alpha PNGs.
   const cues = buildDemoCaptionCues(script, { durationSec: syncedDurationSec, charEndTimesSec: syncedCharEndTimesSec });
   console.log(`  captions: ${cues.length} cues (first="${kanbanCaptionDisplayText(cues[0].text)}" … last="${kanbanCaptionDisplayText(cues[cues.length - 1].text)}")`);
+  // #1046 BAKE: a real VO must drive UNEVEN cues; near-uniform = silent even-split fallback (desync).
+  assertCaptionsTrackRealVoice(cues, voiceMode === "paid" || voiceMode === "reuse");
 
   // 3b — CUE-SYNC the free `say` VO (#1046): rebuild the audio so each subtitle's words
   // play during EXACTLY that subtitle's window (the segment-fit VO ran ahead of the
