@@ -80,3 +80,35 @@ describe("planVoFit", () => {
     ).toThrow(/length mismatch/);
   });
 });
+
+describe("planVoFit maxStretch (keep-length: slow speech to fill, #1046)", () => {
+  // One narrated beat: raw segment 2s, beat target 4s, 3 chars.
+  const base = {
+    rawSegEndsSec: [2],
+    charEndTimesSec: [0.7, 1.4, 2.0],
+    charRanges: [{ start: 0, end: 3 }],
+    beats: [{ n: 1, narrated: true, transition: false }],
+    targetBeatSec: { 1: 4 },
+    transitionSec: 0,
+  };
+
+  it("maxStretch=1 (default) pads: scale 1, last char stays at the natural 2.0s", () => {
+    const p = planVoFit(base);
+    expect(p.segments[0].scale).toBe(1);
+    expect(p.segments[0].playSec).toBe(2);
+    expect(p.newCharEndTimesSec[2]).toBeCloseTo(2.0, 2);
+  });
+
+  it("maxStretch=1.4 slows the speech to fill more of the beat (scale<1, last char later)", () => {
+    const p = planVoFit({ ...base, maxStretch: 1.4 });
+    expect(p.segments[0].playSec).toBeCloseTo(2.8, 2); // 2 * 1.4
+    expect(p.segments[0].scale).toBeCloseTo(0.714, 2); // 2 / 2.8 (<1 = slowed)
+    expect(p.newCharEndTimesSec[2]).toBeCloseTo(2.8, 1); // last word now lands at 2.8s
+  });
+
+  it("a large maxStretch fills the beat exactly (last char == beat end → caption real-sync)", () => {
+    const p = planVoFit({ ...base, maxStretch: 5 });
+    expect(p.segments[0].playSec).toBe(4); // capped by the 4s beat
+    expect(p.newCharEndTimesSec[2]).toBeCloseTo(4.0, 2); // last char == duration
+  });
+});

@@ -130,3 +130,32 @@ describe("#1046 even-split caption-fallback guard (real-VO desync)", () => {
     expect(() => assertCaptionsTrackRealVoice(evenCues, false)).not.toThrow();
   });
 });
+
+import { buildDemoCaptionCues as buildCuesGate } from "../demoCaptions";
+
+describe("#1046 narrator↔subtitle desync gate (real VO must really sync, not even-split)", () => {
+  const script = "Your AI agent plans, codes, and reviews its own work, live on the board.";
+
+  it("THROWS when a real alignment is supplied but its last char misses the clip end (the kanban desync)", () => {
+    // Real char-times that end at ~70% of the clip (padded/short VO) — they do NOT line up, so the
+    // builder would silently even-split. The gate must fail loudly instead.
+    const durationSec = 20;
+    const misaligned = Array.from({ length: script.length }, (_, i) =>
+      Number((((i + 1) / script.length) * 14).toFixed(4)), // last char ≈14s, clip is 20s → >1% off
+    );
+    expect(() => buildCuesGate(script, { durationSec, charEndTimesSec: misaligned })).toThrow(/desync/i);
+  });
+
+  it("does NOT throw when NO alignment is supplied (legit even-split fallback)", () => {
+    expect(() => buildCuesGate(script, { durationSec: 20 })).not.toThrow();
+  });
+
+  it("does NOT throw when the real alignment lines up (last char at the clip end)", () => {
+    const durationSec = 20;
+    const aligned = Array.from({ length: script.length }, (_, i) =>
+      Number((((i + 1) / script.length) * durationSec).toFixed(4)),
+    );
+    aligned[script.length - 1] = durationSec;
+    expect(() => buildCuesGate(script, { durationSec, charEndTimesSec: aligned })).not.toThrow();
+  });
+});

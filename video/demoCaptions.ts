@@ -18,7 +18,7 @@
  * to even-split so the track still covers the clip — the parity invariant still holds.
  */
 
-import { buildCaptionTrack, type VoiceClipLike } from "./captions";
+import { buildCaptionTrack, captionsHaveRealSync, type VoiceClipLike } from "./captions";
 import { type DemoLayout } from "./demoLayout";
 
 /**
@@ -78,6 +78,20 @@ export function captionBandTopY(reservedLayout: DemoLayout, height: number): num
  * lines up; even-split fallback otherwise) and projects to the cue shape the composition draws.
  */
 export function buildDemoCaptionCues(script: string, clip: VoiceClipLike): DemoCaptionCue[] {
+  // #1046 NARRATOR↔SUBTITLE DESYNC GATE (protects EVERY demo — fable / forge / kanban / future).
+  // If a REAL per-character VO alignment was supplied but it does NOT line up with the clip, the
+  // builder would SILENTLY fall back to an even-split estimate that ignores the voice — the exact
+  // desync the operator caught on the kanban demo. A real alignment that misses real-sync is a build
+  // defect, not a graceful degrade: fail loudly. (No alignment supplied → legit even-split, allowed.)
+  if (clip.charEndTimesSec && clip.charEndTimesSec.length > 0 && !captionsHaveRealSync(script, clip)) {
+    throw new Error(
+      "demo captions desync (#1046): a real per-character VO alignment was supplied but it does not line " +
+        "up with the clip (its last char-time misses clip.durationSec by >1%, or span/word counts diverge), " +
+        "so captions would SILENTLY fall back to even-split and ignore the narrator. Fix the VO timeline so " +
+        "its last spoken word lands at the clip end (VO-lock the spine to the voice, or fit/stretch the VO to " +
+        "the spine) — do not ship even-split subtitles over a real voice.",
+    );
+  }
   const track = buildCaptionTrack(script, clip);
   return track.captions.map((c) => ({ text: c.text, startSec: c.startSec, endSec: c.endSec }));
 }

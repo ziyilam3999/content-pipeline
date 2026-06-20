@@ -260,7 +260,8 @@ function assembleFittedVo(rawAudioPath: string, plan: VoFitPlan, work: string): 
     const slice = path.join(tmp, `seg_${String(seg.segIdx).padStart(2, "0")}.wav`);
     const dur = Math.max(seg.rawEndSec - seg.rawStartSec, 0.05);
     const stages: string[] = [];
-    if (seg.scale > 1.0001) { let r = seg.scale; while (r > 2) { stages.push("atempo=2.0"); r /= 2; } stages.push(`atempo=${r.toFixed(4)}`); }
+    // scale>1 → speed up (compress); scale<1 → slow down (stretch to fill the beat). atempo floor 0.5.
+    if (Math.abs(seg.scale - 1) > 0.0001) { let r = Math.max(0.5, seg.scale); while (r > 2) { stages.push("atempo=2.0"); r /= 2; } stages.push(`atempo=${r.toFixed(4)}`); }
     const chain = stages.length ? `[0:a]${stages.join(",")},${fmt},apad[o]` : `[0:a]${fmt},apad[o]`;
     ff(["-y", "-ss", seg.rawStartSec.toFixed(3), "-t", dur.toFixed(3), "-i", rawAudioPath, "-filter_complex", chain, "-map", "[o]", "-t", seg.targetSec.toFixed(3), "-c:a", "pcm_s16le", slice], `fit seg ${seg.segIdx}`);
     parts.push({ at: seg.newStartSec, file: slice });
@@ -431,7 +432,10 @@ async function main(): Promise<void> {
 
   if (useFit) {
     const beats: BeatSlot[] = KANBAN_BEATS.map((b) => ({ n: b.n, narrated: b.kind !== "transition", transition: b.kind === "transition" }));
-    const plan = planVoFit({ rawSegEndsSec: rawSceneEndTimesSec, charEndTimesSec, charRanges: narrationCharRanges(), beats, targetBeatSec: KANBAN_VO_SEG_SEC, transitionSec: KANBAN_TRANSITION_SEC });
+    // KANBAN_VO_FILL=stretch → slow Adam up to 1.4× to FILL the (longer, dwell-heavy) beats, so his
+    // last word lands near the end (captions stay synced) and there is less dead-air; default = pad.
+    const maxStretch = process.env.KANBAN_VO_FILL === "stretch" ? Number(process.env.KANBAN_VO_MAX_STRETCH || "1.4") : 1.0;
+    const plan = planVoFit({ rawSegEndsSec: rawSceneEndTimesSec, charEndTimesSec, charRanges: narrationCharRanges(), beats, targetBeatSec: KANBAN_VO_SEG_SEC, transitionSec: KANBAN_TRANSITION_SEC, maxStretch });
     syncedAudioPath = assembleFittedVo(audioPath, plan, work);
     syncedCharEndTimesSec = plan.newCharEndTimesSec;
     syncedDurationSec = plan.totalSec;

@@ -51,8 +51,14 @@ export function planVoFit(params: {
   beats: BeatSlot[];
   targetBeatSec: Record<number, number>;
   transitionSec: number;
+  /** Max slow-down factor for a short segment to FILL its beat before silence is padded.
+   *  1.0 = pad-only (speak at natural speed, trailing silence). >1 = stretch the speech up to
+   *  this factor (e.g. 1.4 = up to 40% slower) so the voice fills the beat and the last word
+   *  lands near the beat end — keeping captions synced on a longer, dwell-heavy timeline. */
+  maxStretch?: number;
 }): VoFitPlan {
   const { rawSegEndsSec, charEndTimesSec, charRanges, beats, targetBeatSec, transitionSec } = params;
+  const maxStretch = Math.max(1.0, params.maxStretch ?? 1.0);
 
   const narratedCount = beats.filter((b) => b.narrated).length;
   if (rawSegEndsSec.length !== narratedCount || charRanges.length !== narratedCount) {
@@ -85,8 +91,11 @@ export function planVoFit(params: {
     if (target === undefined) {
       throw new Error(`voiceFit: targetBeatSec missing duration for narrated beat n=${beat.n}`);
     }
-    const playSec = Math.min(rawDur, target);
-    const scale = rawDur / playSec; // 1 when padded (rawDur<=target), >1 when compressed
+    // Fill policy: a segment LONGER than its beat is compressed (scale>1). A SHORTER segment
+    // stretches (slows) up to maxStretch to fill the beat, then pads the remainder with silence.
+    // maxStretch=1 → pure pad (natural speed + trailing silence); >1 → slower speech, less dead-air.
+    const playSec = rawDur >= target ? target : Math.min(target, rawDur * maxStretch);
+    const scale = rawDur / playSec; // >1 compressed, =1 natural, <1 stretched (slowed)
     segments.push({
       segIdx,
       beatN: beat.n,
