@@ -38,6 +38,7 @@ import { buildDemoCaptionCues, assertCaptionsTrackRealVoice } from "../video/dem
 import { assertAudioMatchesSync, audioDurationSec, assertAudibleUnlessSilent } from "../video/audioDuration";
 import { FABLE_ASPECTS, CAP_BAND_H, assertNoCaptionMediaOverlap, assertFableBeatsSafeAndFilled } from "../video/fableLayout";
 import { assertDemoCategoryRecipe } from "../video/demoCategoryRecipe";
+import { assertNoLongSilenceGap } from "../video/silenceGap";
 import { type VoiceCaller, type VoiceClip, type SpeechRequest } from "../audio/voiceover";
 import { planVoFit, type BeatSlot, type VoFitPlan } from "../video/voiceFit";
 
@@ -523,6 +524,16 @@ async function main(): Promise<void> {
     console.log(`  ${a.key} → ${rel(out)} (${pr.width}x${pr.height}, ${pr.durationSec.toFixed(2)}s, audio=${pr.hasAudio}, ${(bytes / 1048576).toFixed(2)}MB)`);
     if (pr.width !== a.width || pr.height !== a.height) throw new Error(`voiceKanban: ${a.key} rendered at ${pr.width}x${pr.height}, expected ${a.width}x${a.height}.`);
     if (!pr.hasAudio) throw new Error(`voiceKanban: ${a.key} has NO audio stream — the VO was dropped.`);
+  }
+
+  // #1063 DEAD-AIR GATE (the bake for the 0:36 pause): the shipped 9:16 hero must carry NO long internal
+  // silence. The transition is an intentional ~1s silent beat, so the 1.5s threshold tolerates it; a gap
+  // beyond that means a beat over-budgets its VO again (the exact defect the operator caught). Both-ends
+  // mechanical — see video/silenceGap.ts + its test.
+  const hero916 = rendered.find((r) => r.aspect === "9:16");
+  if (hero916) {
+    assertNoLongSilenceGap(hero916.file, 1.5, { durationSec: hero916.durationSec });
+    console.log(`  #1063 dead-air gate: PASS — no internal silence gap >1.5s in ${rel(hero916.file)}`);
   }
 
   // 4b — AUDIBILITY gate (#1046 root-cause bake): a "voiced" render MUST be audible.

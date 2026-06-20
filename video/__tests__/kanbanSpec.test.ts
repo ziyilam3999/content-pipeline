@@ -66,11 +66,11 @@ describe("#1046 kanban demo-category recipe (R1–R13)", () => {
     for (const n of [5, 7, 8]) expect(KANBAN_BEATS.find((b) => b.n === n)!.isHeroOutput).toBe(false);
   });
 
-  test("runtime is in the 84–94s VO-locked band and terminal share is ≤30%", () => {
+  test("runtime is in the 74–84s band (#1063 dead-air re-cut) and terminal share is ≤30%", () => {
     const total = kanbanSpec.beats.reduce((s, b) => s + b.durationSec, 0);
-    expect(total).toBe(90);
-    expect(total).toBeGreaterThanOrEqual(84);
-    expect(total).toBeLessThanOrEqual(94);
+    expect(total).toBe(80);
+    expect(total).toBeGreaterThanOrEqual(74);
+    expect(total).toBeLessThanOrEqual(84);
     const terminal = kanbanSpec.beats.filter((b) => b.isTerminal).reduce((s, b) => s + b.durationSec, 0);
     expect(terminal / total).toBeLessThanOrEqual(0.3);
   });
@@ -80,7 +80,7 @@ describe("#1046 kanban demo-category recipe (R1–R13)", () => {
     expect(c.present).toBe(true);
     expect(c.syncBoundToRealAudio).toBe(true);
     expect(c.audio.real).toBe(true);
-    expect(c.audio.durationSec).toBe(90);
+    expect(c.audio.durationSec).toBe(80);
     expect(Math.abs(c.lastCueEndSec - c.audio.durationSec)).toBeLessThanOrEqual(0.5);
   });
 });
@@ -143,10 +143,10 @@ describe("#1046 kanban spine↔VO sync SSOT", () => {
     }
   });
 
-  test("KANBAN_RUNTIME_SEC == the spoken total + the transition silence (90s, VO-locked)", () => {
+  test("KANBAN_RUNTIME_SEC == the spoken total + the transition silence (80s, #1063 re-cut)", () => {
     const spoken = Object.values(KANBAN_VO_SEG_SEC).reduce((s, v) => s + v, 0);
     expect(KANBAN_RUNTIME_SEC).toBe(spoken + KANBAN_TRANSITION_SEC);
-    expect(KANBAN_RUNTIME_SEC).toBe(90);
+    expect(KANBAN_RUNTIME_SEC).toBe(80);
   });
 });
 
