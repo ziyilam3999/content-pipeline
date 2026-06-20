@@ -125,35 +125,25 @@ interface KanbanCard {
 }
 
 /**
- * The SOURCE-OF-TRUTH body cards (X tweets 2-5). Each headline + sub mirrors its tweet; qualitative, no
- * invented metrics, MIT-honest, real repo URL. The hero VIDEO is tweet 1 (the Threads lead).
+ * The SOURCE-OF-TRUTH X body card(s). #1063 re-cut: the operator rejected the prior FOUR single-point
+ * cards ("each card only carries one point… combine them") — they were thin AND duplicated the Threads
+ * over-art. Combined into ONE dense body card carrying all three feature points; the CTA renders once via
+ * the template footer (product.repoUrl). The X thread is now tweet 1 = hero VIDEO, tweet 2 = this one
+ * combined card. (Memory: feedback_match_card_count_to_content_density_dont_fragment_single_points.)
  */
 export const KANBAN_CARDS: KanbanCard[] = [
   {
     id: "A",
     tweet: 2,
-    title: "Plan → Code → Review",
-    lines: [{ prefix: "the 3-role agent loop,", value: "as Kanban columns" }],
-  },
-  {
-    id: "B",
-    tweet: 3,
-    title: "🟢 WORKING",
-    lines: [{ prefix: "see which ticket your agent", value: "is focused on, live" }],
-  },
-  {
-    id: "C",
-    tweet: 4,
-    title: "The deep timeline",
-    lines: [{ prefix: "every step + the agent's own", value: "review verdict, replayed" }],
-  },
-  {
-    id: "D",
-    tweet: 5,
-    title: "Open-source · MIT",
-    // URL omitted from the CTA on purpose — the card template already renders product.repoUrl as the
-    // footer, so putting it here too prints the URL twice (the over-art dup #1063 eyeball caught).
-    lines: [{ prefix: "point it at your own", value: "agent's work" }],
+    title: "Watch your AI agent work — live",
+    // "Open-source · MIT" tagline only — the repo URL renders once via the template footer (no dup, the
+    // #1063 eyeball lesson).
+    cta: "Open-source · MIT",
+    lines: [
+      { prefix: "Plan → Code → Review:", value: "the 3-role loop as columns" },
+      { prefix: "🟢 WORKING shows", value: "the ticket in focus, live" },
+      { prefix: "tap a ticket for the deep timeline:", value: "every step + the agent's verdict" },
+    ],
   },
 ];
 

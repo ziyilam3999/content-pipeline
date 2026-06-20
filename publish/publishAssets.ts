@@ -153,21 +153,19 @@ export const POST_ASSETS: Record<PostSlug, PostAssetSpec> = {
     ],
   },
   // agent-kanban-demo — the "watch your AI agent work live on a board" DEMONSTRATION post. The voiced
-  // 9:16 kanban demo cut IS the hero (X tweet 1 + the Threads lead). The X thread is 5 tweets so EVERY
-  // worded tweet carries its own media (#792 gate): tweet 1 = hero video; tweets 2-5 = the four body
-  // cards A/B/C/D. Threads = a single mixed-media carousel: media[0] = the 9:16 hero video (leads),
-  // media[1] = the 4:5 card-over-art infographic. The hero is the full-bleed 9:16 voiced cut
-  // (`kanban-demo-9x16.mp4`); the cards (1:1) + the 4:5 over-art live under out/review/kanban/image/.
-  // The hero's mobile proxy / 1x1 / 4x5 siblings are NOT uploaded.
+  // 9:16 kanban demo cut IS the hero (X tweet 1 + the Threads lead). #1063 re-cut: the X thread is now 2
+  // tweets (operator rejected the 4 thin single-point cards — combined into ONE dense body card): tweet
+  // 1 = hero video; tweet 2 = the single combined card (all three feature points; CTA in its footer).
+  // Threads = a single mixed-media carousel: media[0] = the 9:16 hero video (leads), media[1] = the 4:5
+  // card-over-art infographic. The hero is the full-bleed 9:16 voiced cut (`kanban-demo-9x16.mp4`); the
+  // combined card (1:1) + the 4:5 over-art live under out/review/kanban/image/. The hero's mobile proxy
+  // / 1x1 / 4x5 siblings are NOT uploaded.
   "agent-kanban-demo": {
     slug: "agent-kanban-demo",
     defaultBundleDir: path.join(LAUNCH_ASSETS_ROOT, "agent-kanban-demo-20260620"),
     assets: [
       { role: "hero-video", basename: "kanban-demo-9x16.mp4" }, // full-bleed 9:16 voiced demo hero — leads X + Threads
-      { role: "card", basename: "card-kanban-A.png" }, // tweet 2 — Plan → Code → Review
-      { role: "card", basename: "card-kanban-B.png" }, // tweet 3 — the green ● WORKING heartbeat
-      { role: "card", basename: "card-kanban-C.png" }, // tweet 4 — the deep timeline
-      { role: "card", basename: "card-kanban-D.png" }, // tweet 5 (CTA) — open-source · MIT
+      { role: "card", basename: "card-kanban-A.png" }, // tweet 2 — ONE combined card (3 feature points + CTA)
       { role: "card", basename: "card-kanban-overart-4x5.png" }, // Threads infographic (4 points + CTA url)
     ],
   },
