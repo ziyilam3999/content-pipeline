@@ -145,6 +145,10 @@ export interface KanbanBeat {
   clipSource?: string;
   /** The elaboration ring drawn over the narrated element (beats 6/8 — drawn at the settled `focusEnd`). */
   highlight?: KanbanHighlight;
+  /** Ken-Burns push-in over a CLIP beat (beat 7): hold wide while the card crosses, then zoom toward
+   *  (cx,cy) [clip-normalized] filling `zoom` fraction of the width — enlarges the small "● WORKING"
+   *  breathing indicator on the landed card. holdFrac = fraction of the beat held wide before the push. */
+  clipPanZoom?: { cx: number; cy: number; zoom: number; holdFrac: number };
 }
 
 // ── VO-driven beat lengths — the spine↔voice sync SSOT (forge's #944 pattern) ───────────────────────
@@ -152,16 +156,20 @@ export interface KanbanBeat {
 // measured per-segment lengths before any paid synth, so captions never drift). Each narrated beat's
 // clipSec MUST equal KANBAN_VO_SEG_SEC[n] (jest-gated in kanbanSpec.test.ts); the silent transition beat
 // renders KANBAN_TRANSITION_SEC of silence, which voiceKanban splices into the VO at the tool→board seam.
+// VO-LOCKED to the measured paid Adam read (#1046, operator picked the ~90s cut over the slower 104s):
+// each narrated beat ≈ Adam's actual segment length (still beats), clamped to the dynamic clip length
+// where the animation is longer (beat 5 picker 14s, beat 7 card-move 16s). The LAST beat (4s ≈ Adam-exact)
+// keeps the VO's last word at ≈clip end so captions REAL-sync (no even-split). Spine 87s + 3s transition = 90s.
 export const KANBAN_VO_SEG_SEC: Readonly<Record<number, number>> = {
   1: 7,
-  2: 11,
-  3: 13,
+  2: 7,
+  3: 10,
   5: 14,
-  6: 10,
-  7: 15,
-  8: 18,
-  9: 7,
-  10: 6,
+  6: 6,
+  7: 16,
+  8: 15,
+  9: 8,
+  10: 4,
 };
 /** The silent tool→board transition beat length (seconds) — also the silence voiceKanban splices at the seam. */
 export const KANBAN_TRANSITION_SEC = 3;
@@ -181,13 +189,13 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   },
   // 2 — CHAT. The HUMAN's interface: plain English to Claude Code; the agent picks up the task.
   {
-    n: 2, kind: "chat", stepLabel: "you → Claude Code · plain English", clipSec: 11, commands: [],
+    n: 2, kind: "chat", stepLabel: "you → Claude Code · plain English", clipSec: 7, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_CHAT,
     chatRequest: "Plan and ship the board update — and show me every step.",
   },
   // 3 — TOOL. The agent's real pipeline (planner → plan-review → executor → exec-review) on the dark tool world.
   {
-    n: 3, kind: "tool", stepLabel: "the agent's interface, not yours", clipSec: 13,
+    n: 3, kind: "tool", stepLabel: "the agent's interface, not yours", clipSec: 10,
     commands: ["claude  plan and ship the board update", "show the run on agent-kanban"],
     isTerminal: true, isHeroOutput: false, backgroundColor: BG_TOOL,
   },
@@ -204,7 +212,7 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   },
   // 6 — BOARD: idle/active badge (STILL pan/zoom → ring the LIVE/IDLE badge after the camera settles).
   {
-    n: 6, kind: "output", stepLabel: "active or idle, at a glance", clipSec: 10, commands: [],
+    n: 6, kind: "output", stepLabel: "active or idle, at a glance", clipSec: 6, commands: [],
     isTerminal: false, isHeroOutput: true, backgroundColor: BG_OUTPUT_A,
     hero: {
       source: "assets/kanban-demo/board-overview.png",
@@ -229,15 +237,18 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   // two-column (To Do + In Progress) capture so the card visibly crosses while the board fills the frame. The
   // VO narrates the full to-do→done journey, so one clear cross-column move is the right single illustration.
   {
-    n: 7, kind: "output", stepLabel: "lift · land · then working, live", clipSec: 15, commands: [],
+    n: 7, kind: "output", stepLabel: "lift · land · then working, live", clipSec: 16, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     clipSource: "out/capture/kanban/clip-card-move.mp4",
+    // Push in on the landed WORKING card (top of In Progress) so the tiny "● WORKING" breathing
+    // heartbeat reads clearly (operator: too small at full-board framing). Holds wide for the cross.
+    clipPanZoom: { cx: 0.73, cy: 0.26, zoom: 0.55, holdFrac: 0.55 },
   },
   // 8 — BOARD: deep timeline drawer (DYNAMIC capture — board → tap #1053 → drawer SLIDES OPEN → settle on the
   // pipeline header + verdict pills + ring). #1046 v3 fix-3: the v2 cut to a PRE-OPEN drawer (a still) so the
   // drawer "appeared from nowhere"; this captures the real tap→open MOTION, then rings the settled pills.
   {
-    n: 8, kind: "output", stepLabel: "the agent's own reviews", clipSec: 18, commands: [],
+    n: 8, kind: "output", stepLabel: "the agent's own reviews", clipSec: 15, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     clipSource: "out/capture/kanban/clip-drawer-open.mp4",
     // The pipeline header + verdict-pills UNION, measured at capture time on the SETTLED drawer (the
@@ -248,14 +259,14 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   },
   // 9 — PAYOFF.
   {
-    n: 9, kind: "payoff", stepLabel: "", clipSec: 7, commands: [],
+    n: 9, kind: "payoff", stepLabel: "", clipSec: 8, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_TOOL,
     headline: "You ask. The agent works.",
     sub: "You watch every move — and every verdict. Not a black box.",
   },
   // 10 — CTA.
   {
-    n: 10, kind: "cta", stepLabel: "", clipSec: 6, commands: [],
+    n: 10, kind: "cta", stepLabel: "", clipSec: 4, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_TOOL,
     headline: "agent-kanban",
     sub: "open-source · MIT · see your agent work",
@@ -283,11 +294,11 @@ export const KANBAN_VO_LINES: ReadonlyArray<string> = [
 
 // ── The DemoVideoSpec instance (fed to assertDemoCategoryRecipe — the build's test oracle) ─────────--
 
-const RUNTIME_BAND = { min: 98, max: 112 } as const; // 4 elaborated feature beats, operator-requested (~104s)
+const RUNTIME_BAND = { min: 84, max: 94 } as const; // VO-LOCKED to the measured ~78.6s Adam read → ~90s spine (#1046)
 const MAX_TERMINAL_FRACTION = 0.3;
 
 export const KANBAN_VO_BUNDLE = "out/review/kanban/kanban-vo-sync.json";
-export const KANBAN_RUNTIME_SEC = KANBAN_BEATS.reduce((s, b) => s + b.clipSec, 0); // 104
+export const KANBAN_RUNTIME_SEC = KANBAN_BEATS.reduce((s, b) => s + b.clipSec, 0); // 90 (VO-locked)
 
 function kanbanCaptions(): DemoCaptions {
   return {

@@ -262,8 +262,21 @@ function buildKanbanClipFrameHtml(opts: {
   posFrac?: { x: number; y: number };
   highlight?: { sx: number; sy: number; sw: number; sh: number; label: string; labelBelow?: boolean };
   ringDelaySec?: number;
+  /** Optional Ken-Burns push-in over the CLIP toward (cx,cy) [clip-normalized 0..1], ending zoomed to
+   *  `zoom` fraction of the width; holds wide for the first `holdFrac` of the beat, then eases in. Used on
+   *  beat 7 to enlarge the tiny "● WORKING" breathing indicator after the card lands (device==clip aspect,
+   *  no cover-crop, so transform-origin % maps straight to clip coords). */
+  clipPanZoom?: { cx: number; cy: number; zoom: number; holdFrac: number };
+  durationSec?: number;
 }): string {
   const { videoUrl, label, device, clipW, clipH, highlight } = opts;
+  const pz = opts.clipPanZoom;
+  const pzVideoCss = pz
+    ? `transform-origin:${(pz.cx * 100).toFixed(1)}% ${(pz.cy * 100).toFixed(1)}%;animation:clippz ${(opts.durationSec ?? 12).toFixed(2)}s ease-in-out forwards`
+    : "";
+  const pzKeyframes = pz
+    ? `@keyframes clippz{0%,${(pz.holdFrac * 100).toFixed(0)}%{transform:scale(1)}100%{transform:scale(${(1 / pz.zoom).toFixed(3)})}}`
+    : "";
   const objectPosition = opts.objectPosition ?? "center";
   const posFrac = opts.posFrac ?? { x: 0.5, y: 0.5 };
   const dW = device.right - device.left;
@@ -304,7 +317,8 @@ html,body{width:${CAP_W}px;height:${CAP_H}px;overflow:hidden;position:relative;
 #device{position:absolute;left:${device.left.toFixed(1)}px;top:${device.top.toFixed(1)}px;
   width:${dW.toFixed(1)}px;height:${dH.toFixed(1)}px;border-radius:30px;overflow:hidden;
   border:${DEVICE_BORDER}px solid #0e1424;box-shadow:0 40px 110px rgba(60,40,10,.32);background:${KANBAN_BOARD_BG}}
-#device video{width:100%;height:100%;object-fit:cover;object-position:${objectPosition};display:block}
+#device video{width:100%;height:100%;object-fit:cover;object-position:${objectPosition};display:block;${pzVideoCss}}
+${pzKeyframes}
 #ring{position:absolute;z-index:3;border:5px solid #5eead4;border-radius:18px;opacity:0;
   box-shadow:0 0 0 4px rgba(94,234,212,.22),0 0 34px 8px rgba(94,234,212,.40);animation:ringin .5s ease-out forwards}
 #ringlabel{position:absolute;z-index:4;left:50%;transform:translateX(-50%);max-width:760px;text-align:center;
@@ -509,6 +523,7 @@ async function recordViewerVideoBeat(beat: KanbanBeat, videoUrl: string, recDir:
     videoUrl, label: beat.stepLabel, device: framing.device,
     objectPosition: framing.objectPosition, posFrac: framing.posFrac,
     clipW: framing.clipW, clipH: framing.clipH, highlight: beat.highlight,
+    clipPanZoom: beat.clipPanZoom, durationSec: beat.clipSec,
   }), { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => { const v = (globalThis as any).document.getElementById("v"); return v && v.currentTime > 0.1; }, { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout((beat.clipSec + 0.8) * 1000);
