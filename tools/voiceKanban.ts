@@ -39,6 +39,7 @@ import { assertAudioMatchesSync, audioDurationSec, assertAudibleUnlessSilent } f
 import { FABLE_ASPECTS, CAP_BAND_H, assertNoCaptionMediaOverlap, assertFableBeatsSafeAndFilled } from "../video/fableLayout";
 import { assertDemoCategoryRecipe } from "../video/demoCategoryRecipe";
 import { type VoiceCaller, type VoiceClip, type SpeechRequest } from "../audio/voiceover";
+import { planVoFit, type BeatSlot, type VoFitPlan } from "../video/voiceFit";
 
 // ── Geometry + binaries ────────────────────────────────────────────────────
 const FPS = 30;
@@ -200,6 +201,80 @@ function sayVoiceCaller(): VoiceCaller {
   };
 }
 
+/** A `silenceSec`-long stereo 44.1k s16 WAV (gap filler for the cue-sync timeline). */
+function silenceWav(silenceSec: number, tmpDir: string, idx: number): string {
+  const out = path.join(tmpDir, `gap_${String(idx).padStart(3, "0")}.wav`);
+  ff(["-y", "-f", "lavfi", "-t", Math.max(silenceSec, 0.001).toFixed(3), "-i", "anullsrc=r=44100:cl=stereo", "-c:a", "pcm_s16le", out], `silence gap ${idx}`);
+  return out;
+}
+
+/**
+ * CUE-SYNCED audible `say` track (#1046 free-preview sync fix). The default `say`
+ * caller fits each whole NARRATION SEGMENT to its beat, so a fast read finishes
+ * early then goes silent while the captions (timed on an even-rate estimate) keep
+ * crawling — the voice runs AHEAD of the subtitles. This rebuilds the VO from the
+ * actual CAPTION CUES: each subtitle's text is synthesized and fit to EXACTLY its
+ * on-screen window [startSec,endSec], with silence in the gaps, so the spoken line
+ * and its subtitle start + end together. Total = `totalSec` (the synced timeline).
+ */
+function buildCueSyncedSayWav(cues: ReadonlyArray<{ text: string; startSec: number; endSec: number }>, totalSec: number, outWav: string): void {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "kanban-cuesay-"));
+  const ordered = [...cues].sort((a, b) => a.startSec - b.startSec);
+  const parts: string[] = [];
+  let cursor = 0;
+  let gapIdx = 0;
+  for (let i = 0; i < ordered.length; i++) {
+    const cue = ordered[i];
+    const start = Math.max(cue.startSec, cursor);
+    const end = Math.max(cue.endSec, start + 0.05);
+    if (start - cursor > 0.005) parts.push(silenceWav(start - cursor, tmpDir, gapIdx++));
+    parts.push(fitSegmentWav(cue.text, end - start, tmpDir, i)); // reuse the beat-fit: atempo if long, pad if short
+    cursor = end;
+  }
+  if (totalSec - cursor > 0.005) parts.push(silenceWav(totalSec - cursor, tmpDir, gapIdx++));
+  const list = path.join(tmpDir, "list.txt");
+  fs.writeFileSync(list, parts.map((w) => `file '${w.replace(/'/g, "'\\''")}'`).join("\n"));
+  ff(["-y", "-f", "concat", "-safe", "0", "-i", list, "-t", totalSec.toFixed(3), "-c:a", "pcm_s16le", outWav], "concat cue-synced say");
+}
+
+/** Char-index ranges per narrated segment (separator space after a non-last segment belongs to it). */
+function narrationCharRanges(): { start: number; end: number }[] {
+  const r: { start: number; end: number }[] = [];
+  let idx = 0;
+  for (let k = 0; k < KANBAN_NARRATION.length; k++) {
+    const len = KANBAN_NARRATION[k].text.length;
+    r.push({ start: idx, end: idx + len });
+    idx += len + 1; // +1 for the single-space separator (non-last)
+  }
+  return r;
+}
+
+/** Assemble the fitted VO (44.1k s16 stereo) from a VoFitPlan over the raw VO audio:
+ *  each segment is sliced, compressed (atempo) if the plan scaled it, padded with
+ *  trailing silence to its beat, and the transition silences are dropped in place. */
+function assembleFittedVo(rawAudioPath: string, plan: VoFitPlan, work: string): string {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "kanban-fitvo-"));
+  const fmt = "aformat=sample_fmts=s16:sample_rates=44100:channel_layouts=stereo";
+  const parts: { at: number; file: string }[] = [];
+  for (const seg of plan.segments) {
+    const slice = path.join(tmp, `seg_${String(seg.segIdx).padStart(2, "0")}.wav`);
+    const dur = Math.max(seg.rawEndSec - seg.rawStartSec, 0.05);
+    const stages: string[] = [];
+    if (seg.scale > 1.0001) { let r = seg.scale; while (r > 2) { stages.push("atempo=2.0"); r /= 2; } stages.push(`atempo=${r.toFixed(4)}`); }
+    const chain = stages.length ? `[0:a]${stages.join(",")},${fmt},apad[o]` : `[0:a]${fmt},apad[o]`;
+    ff(["-y", "-ss", seg.rawStartSec.toFixed(3), "-t", dur.toFixed(3), "-i", rawAudioPath, "-filter_complex", chain, "-map", "[o]", "-t", seg.targetSec.toFixed(3), "-c:a", "pcm_s16le", slice], `fit seg ${seg.segIdx}`);
+    parts.push({ at: seg.newStartSec, file: slice });
+  }
+  let g = 0;
+  for (const tr of plan.transitions) parts.push({ at: tr.atSec, file: silenceWav(tr.durSec, tmp, 800 + g++) });
+  parts.sort((a, b) => a.at - b.at);
+  const list = path.join(tmp, "list.txt");
+  fs.writeFileSync(list, parts.map((p) => `file '${p.file.replace(/'/g, "'\\''")}'`).join("\n"));
+  const out = path.join(work, "kanban-vo-fitted.wav");
+  ff(["-y", "-f", "concat", "-safe", "0", "-i", list, "-t", plan.totalSec.toFixed(3), "-c:a", "pcm_s16le", out], "concat fitted vo");
+  return out;
+}
+
 // ── spine↔VO transition-gap math (inlined forge #944 seam logic) ────────────────────────────────────
 const DRIFT_TOL_SEC = 0.5;
 
@@ -325,6 +400,12 @@ async function main(): Promise<void> {
     durationSec = voice.durationSec;
     voiceProvider = voice.usedProvider;
     providerLabel = voice.usedProvider;
+    if (PAID && charEndTimesSec && charEndTimesSec.length) {
+      // Persist the PAID VO bundle IMMEDIATELY (#1046): a later gate failure must never waste the
+      // (billed) synth. With mp3 + this stub present, canReuse re-renders for FREE on the next run.
+      fs.writeFileSync(existingBundle, JSON.stringify({ script, charEndTimesSec, durationSec, voiceProvider }, null, 2) + "\n", "utf8");
+      console.log(`  persisted paid VO bundle → ${rel(existingBundle)} (reusable; re-runs won't re-synthesize)`);
+    }
   }
   if (!charEndTimesSec || charEndTimesSec.length === 0) throw new Error("voiceKanban: no per-character alignment returned — cannot sync.");
   console.log(`  VO duration = ${durationSec.toFixed(2)}s (Adam, ${providerLabel}) — RAW spoken length`);
@@ -334,19 +415,48 @@ async function main(): Promise<void> {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "kanban-voice-"));
   const rawSceneEndTimesSec = narrationSceneEndTimes(KANBAN_NARRATION, charEndTimesSec, durationSec);
   if (!rawSceneEndTimesSec) throw new Error("voiceKanban: narrationSceneEndTimes(raw) returned null — the alignment did not line up with the script.");
-  assertVoMatchesSpine(rawSceneEndTimesSec);
+  // A REAL synth (Adam) often reads FASTER than the spine, so its segments are shorter than the
+  // beats → the rigid seam-splice would drift. FIT the VO onto the beat timeline instead: each
+  // segment plays at its beat start, padded (or compressed) to the beat, transition silence in
+  // place, and the caption char-times shifted onto the fitted timeline. The mock/say paths already
+  // match the spine by construction, so they keep the proven seam-splice.
+  const driftMax = Math.max(...KANBAN_NARRATION.map((seg, i) => Math.abs((rawSceneEndTimesSec[i] - (i ? rawSceneEndTimesSec[i - 1] : 0)) - KANBAN_VO_SEG_SEC[seg.beat])));
+  const useFit = (voiceMode === "paid" || voiceMode === "reuse") && driftMax > DRIFT_TOL_SEC;
 
-  const seamSegIdx = seamSegmentIndex();
-  const seamCharIdx = seamCharIndex(seamSegIdx);
-  const seamTimeSec = rawSceneEndTimesSec[seamSegIdx - 1];
-  const syncedCharEndTimesSec = charEndTimesSec.map((t, i) => (i >= seamCharIdx ? t + KANBAN_TRANSITION_SEC : t));
-  const syncedDurationSec = durationSec + KANBAN_TRANSITION_SEC;
-  const syncedAudioPath = path.join(work, "kanban-vo-synced.wav");
-  insertTransitionSilence(audioPath, seamTimeSec, KANBAN_TRANSITION_SEC, syncedAudioPath);
-  console.log(`  sync: spine↔VO drift gate PASS; spliced ${KANBAN_TRANSITION_SEC}s transition silence at ${seamTimeSec.toFixed(2)}s → synced VO ${syncedDurationSec.toFixed(2)}s (spine target ${KANBAN_RUNTIME_SEC.toFixed(2)}s)`);
+  let syncedCharEndTimesSec: number[];
+  let syncedDurationSec: number;
+  let syncedAudioPath: string;
+  let sceneEndTimesSec: number[];
+  let seamTimeSec = 0; // tool→board seam (transition) position on the synced timeline, for the bundle
 
-  const sceneEndTimesSec = narrationSceneEndTimes(KANBAN_NARRATION, syncedCharEndTimesSec, syncedDurationSec);
-  if (!sceneEndTimesSec) throw new Error("voiceKanban: narrationSceneEndTimes(synced) returned null — the synced alignment did not line up.");
+  if (useFit) {
+    const beats: BeatSlot[] = KANBAN_BEATS.map((b) => ({ n: b.n, narrated: b.kind !== "transition", transition: b.kind === "transition" }));
+    const plan = planVoFit({ rawSegEndsSec: rawSceneEndTimesSec, charEndTimesSec, charRanges: narrationCharRanges(), beats, targetBeatSec: KANBAN_VO_SEG_SEC, transitionSec: KANBAN_TRANSITION_SEC });
+    syncedAudioPath = assembleFittedVo(audioPath, plan, work);
+    syncedCharEndTimesSec = plan.newCharEndTimesSec;
+    syncedDurationSec = plan.totalSec;
+    // Scene (beat) boundaries come straight from the plan — each narrated beat ENDS at its
+    // slot end (newStart+target), even though the spoken words may finish earlier (trailing
+    // silence). narrationSceneEndTimes can't be used here: it (rightly, for the seam path)
+    // demands the last char land at the audio end, which a fitted timeline deliberately breaks.
+    sceneEndTimesSec = plan.segments.map((s) => Number((s.newStartSec + s.targetSec).toFixed(4)));
+    seamTimeSec = plan.transitions[0]?.atSec ?? 0;
+    const pads = plan.segments.filter((s) => s.scale <= 1.0001).length;
+    console.log(`  VO-FIT: real VO ${durationSec.toFixed(2)}s → fitted to the ${syncedDurationSec.toFixed(2)}s spine (driftMax ${driftMax.toFixed(2)}s; ${pads}/${plan.segments.length} segments padded, rest compressed); captions shifted onto the fitted timeline.`);
+  } else {
+    assertVoMatchesSpine(rawSceneEndTimesSec);
+    const seamSegIdx = seamSegmentIndex();
+    const seamCharIdx = seamCharIndex(seamSegIdx);
+    const seamTimeSec = rawSceneEndTimesSec[seamSegIdx - 1];
+    syncedCharEndTimesSec = charEndTimesSec.map((t, i) => (i >= seamCharIdx ? t + KANBAN_TRANSITION_SEC : t));
+    syncedDurationSec = durationSec + KANBAN_TRANSITION_SEC;
+    syncedAudioPath = path.join(work, "kanban-vo-synced.wav");
+    insertTransitionSilence(audioPath, seamTimeSec, KANBAN_TRANSITION_SEC, syncedAudioPath);
+    const se = narrationSceneEndTimes(KANBAN_NARRATION, syncedCharEndTimesSec, syncedDurationSec);
+    if (!se) throw new Error("voiceKanban: narrationSceneEndTimes(synced) returned null — the synced alignment did not line up.");
+    sceneEndTimesSec = se;
+    console.log(`  sync: spine↔VO drift gate PASS; spliced ${KANBAN_TRANSITION_SEC}s transition silence at ${seamTimeSec.toFixed(2)}s → synced VO ${syncedDurationSec.toFixed(2)}s (spine target ${KANBAN_RUNTIME_SEC.toFixed(2)}s)`);
+  }
   assertAudioMatchesSync(syncedAudioPath, sceneEndTimesSec);
   const audioDur = audioDurationSec(syncedAudioPath);
   console.log(`  per-segment end-times (s): ${sceneEndTimesSec.map((s) => s.toFixed(2)).join(", ")}`);
@@ -355,6 +465,19 @@ async function main(): Promise<void> {
   // 3 — synced captions (real-voice timing on the SYNCED timeline), rendered as transparent alpha PNGs.
   const cues = buildDemoCaptionCues(script, { durationSec: syncedDurationSec, charEndTimesSec: syncedCharEndTimesSec });
   console.log(`  captions: ${cues.length} cues (first="${kanbanCaptionDisplayText(cues[0].text)}" … last="${kanbanCaptionDisplayText(cues[cues.length - 1].text)}")`);
+
+  // 3b — CUE-SYNC the free `say` VO (#1046): rebuild the audio so each subtitle's words
+  // play during EXACTLY that subtitle's window (the segment-fit VO ran ahead of the
+  // captions). Only the free `say` path needs this; paid Adam already carries real
+  // per-word timestamps, and the silent fallback has nothing to sync.
+  if (voiceMode === "say") {
+    const cueSynced = path.join(work, "kanban-vo-cuesynced.wav");
+    buildCueSyncedSayWav(cues, syncedDurationSec, cueSynced);
+    syncedAudioPath = cueSynced;
+    assertAudioMatchesSync(syncedAudioPath, sceneEndTimesSec);
+    console.log(`  say cue-sync: rebuilt VO from ${cues.length} caption cues (each line fit to its subtitle window) → captions now track the spoken words (${audioDurationSec(syncedAudioPath)?.toFixed(2) ?? "?"}s).`);
+  }
+
   const pngDir = fs.mkdtempSync(path.join(work, "caps-"));
   const { chromium } = await import("playwright");
   const capPngs = await renderCaptionPngs(cues, pngDir, chromium);
