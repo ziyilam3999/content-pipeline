@@ -20,8 +20,8 @@ import * as fs from "fs";
 import * as path from "path";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const SCAN_DIRS = ["tools", "lib", "video", "publish", "adapters", "smoke", "config", "app"];
-const SKIP = /(^|[/\\])(node_modules|\.next|out|dist)([/\\]|$)/;
+// Scan the WHOLE repo — no hardcoded dir list to omit a caller (e.g. pipeline/, remotion/) — minus build/vendor noise.
+const SKIP = /(^|[/\\])(node_modules|\.next|out|dist|coverage|\.git|\.claude)([/\\]|$)/;
 const ALLOW = [
   /adapters[/\\]typefully\.ts$/, // defines createDraft + uploadMedia
   /(^|[/\\])smoke[/\\]/, // the sanctioned publish/verify flow home (smoke/publish-typefully-*, verify-published, ...)
@@ -34,7 +34,9 @@ function walk(dir: string, acc: string[]): void {
   if (!fs.existsSync(dir)) return;
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
-    if (SKIP.test(p)) continue;
+    // Test SKIP against the path RELATIVE to the repo root — else the repo's OWN location
+    // (e.g. a worktree under .claude/) would match SKIP and silently skip the whole tree (false pass).
+    if (SKIP.test(path.relative(REPO_ROOT, p))) continue;
     if (e.isDirectory()) walk(p, acc);
     else if (e.name.endsWith(".ts") || e.name.endsWith(".tsx")) acc.push(p);
   }
@@ -43,7 +45,7 @@ function walk(dir: string, acc: string[]): void {
 describe("#1063 hand-rolled-publish guard", () => {
   it("createDraft/uploadMedia are referenced ONLY from the adapter, the smoke runbooks, and tests", () => {
     const files: string[] = [];
-    for (const d of SCAN_DIRS) walk(path.join(REPO_ROOT, d), files);
+    walk(REPO_ROOT, files);
     const offenders: string[] = [];
     for (const f of files) {
       const rel = path.relative(REPO_ROOT, f);
