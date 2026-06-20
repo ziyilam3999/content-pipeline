@@ -287,6 +287,25 @@ export const ARCHIVE_POSTS: Record<PostSlug, StaticArchiveMeta> = {
     note:
       "DEMONSTRATION post — the ~110s voiced+subtitled cut IS the hero. X = 6-tweet thread (tweet 1 hero video; tweets 2-4 body cards A/B/C; tweet 5 before/after hero still; tweet 6 CTA trio still) so every worded tweet carries media (#792). Threads = single video-led mixed post (hero video + card C). TWO SCALES guarded: 83.1/87.1 = OLD 6-dim 0-100; 4.8/7.7 = NEW 11-dim 0-10 — never conflated. Before/after screenshots are the operator's OWN already-public résumé (design-led, no employer-brand token, name as-is per clearance). Custom Playwright+ffmpeg toolchain (off the Remotion harness) → routed through #810 provenance / #809 length / #797 fidelity / #867 eyeball gates explicitly.",
   },
+  "agent-kanban-demo": {
+    postNumber: 8,
+    title: "agent-kanban — watch your AI agent work, live on a board",
+    subject:
+      "a DEMONSTRATION of agent-kanban (a real-time Kanban board for AI-agent work): your agent plans, codes, and reviews its own work and you watch it move across Plan → Code → Review columns; a green ● WORKING heartbeat shows which ticket is in focus right now; tap any ticket for the deep timeline (every step the agent took + its own review verdict, replayed); idle-vs-active reads at a glance. Open-source, MIT.",
+    category: "demonstration",
+    producedDate: "2026-06-20",
+    // Not yet published — a DRAFT is created via the live publisher; the operator does the final manual
+    // Publish. publishedDate stays null until a post-publish read-back fills it.
+    publishedDate: null,
+    mediaBundleDir: "~/coding_projects/_launch-assets/agent-kanban-demo-20260620",
+    publishManifestRef: "content-pipeline/publish/manifests/agent-kanban-demo.publish-manifest.json",
+    copyArchiveBasename: "agent-kanban-demo-copy.json",
+    copySourceBasename: "agent-kanban-demo-content.json",
+    numbers:
+      "3-role loop as Kanban columns (Plan → Code → Review); green ● WORKING heartbeat shows the in-focus ticket; deep timeline = every step + the agent's own review verdict; idle-vs-active at a glance; MIT, public. No efficacy metrics claimed — structural/feature description only.",
+    note:
+      "DEMONSTRATION post — the voiced 9:16 kanban demo cut IS the hero (video-hook + card-body). X = 5-tweet thread (tweet 1 hero video; tweets 2-5 branded body cards A/B/C/D) so every worded tweet carries media (#792). Threads = single video-led mixed post (hero video + 4:5 card-over-art infographic). Body cards render over the pipeline's deterministic DARK brand radial-gradient (SAFE, $0 — no nano-banana art gen; the :paid card variant would add nano-banana art like prior posts). All gate-clean (#810 provenance / #809-#827 length / #797 fidelity all PASS). DRY-RUN only — no live publish.",
+  },
 };
 
 /**
@@ -303,7 +322,8 @@ export function buildArchiveRecord(
   const primaryRoot =
     opts.primaryRoot ??
     process.env.CONTENT_PIPELINE_PRIMARY ??
-    "/Users/ansonlam/coding_projects/content-pipeline";
+    // No hardcoded user/home path in a PUBLIC repo — derive from $HOME (override via CONTENT_PIPELINE_PRIMARY).
+    path.join(os.homedir(), "coding_projects", "content-pipeline");
   const { copySourceBasename, ...rest } = meta;
   return {
     slug,
