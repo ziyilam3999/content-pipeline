@@ -1,3 +1,9 @@
+## [0.30.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.29.1...v0.30.0) (2026-06-20)
+
+### Features
+
+* **demo:** agent-kanban demo video + general caption-desync gate (shared buildDemoCaptionCues) + clip Ken-Burns pan-zoom + audibility gate ([#135](https://github.com/ziyilam3999/content-pipeline/pull/135))
+
 ## [0.29.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.29.0...v0.29.1) (2026-06-19)
 
 ### Bug Fixes
