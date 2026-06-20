@@ -1,0 +1,37 @@
+{
+  "postSlug": "agent-kanban-demo",
+  "frozenAt": "2026-06-20T14:58:26.927Z",
+  "sourceDir": "~/coding_projects/_launch-assets/agent-kanban-demo-20260620",
+  "assets": {
+    "kanban-demo-9x16.mp4": {
+      "role": "hero-video",
+      "sha256": "3e614d4b647f70af79d8dface518a4d9a5e3e4cd6f81c006b4bbb534dc684651",
+      "bytes": 9562525
+    },
+    "card-kanban-A.png": {
+      "role": "card",
+      "sha256": "5cfc19a1991d3554c76010d8d579f3d411c5eb5216aac68a51047a5e7b98c28d",
+      "bytes": 801057
+    },
+    "card-kanban-B.png": {
+      "role": "card",
+      "sha256": "270cb1338c215e4587ef5bfd40731904c9e8c35edf8558501103d5d250459176",
+      "bytes": 801209
+    },
+    "card-kanban-C.png": {
+      "role": "card",
+      "sha256": "ea855bf7c5b7b2f1dcc390cab4d7a24b51ab94421744737b2cb2cef312dc8dec",
+      "bytes": 801207
+    },
+    "card-kanban-D.png": {
+      "role": "card",
+      "sha256": "d57a4027da5680f52a69c5f5784f736b748f4229d92c89e91fc1464b02ea3c26",
+      "bytes": 799780
+    },
+    "card-kanban-overart-4x5.png": {
+      "role": "card",
+      "sha256": "1007d2e3d3e48dc5db6539b76e272a6bc5557ab5e21b5326fe1beebfb5af5fb4",
+      "bytes": 820698
+    }
+  }
+}
