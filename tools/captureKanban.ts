@@ -495,8 +495,9 @@ async function recordKanbanPanZoomBeat(beat: KanbanBeat, recordSec: number, recD
 }
 
 /** The inset device rect + cover alignment + clip dims for a DYNAMIC board beat (#1046 v3 fix-2 framing):
- *  • beat 5 (session picker) — the 90%-wide WIDE_BOARD_DEVICE, COVER-cropped object-position TOP so the
- *    picker/dropdown (board top) survive and the sparse lower board is cropped → fills the frame width.
+ *  • beat 5 (session picker) — PORTRAIT device sized to the 900-wide clip aspect (exact, CONTAIN, no crop);
+ *    the two-column clip aspect ≈ the device box so it fills the frame with NO L/R cut (#1091 crop-fix —
+ *    the old WIDE_BOARD_DEVICE cover sliced the right column). Mirrors beat 7's exact-aspect framing.
  *  • beat 7 (To Do→In Progress card move) — PORTRAIT device sized to the clip aspect (exact, no crop); the
  *    portrait two-column clip aspect ≈ the device-box aspect so it fills nearly the full WIDE_BOARD_DEVICE
  *    (board fills the frame, #1071 frame-economy — NOT the v3 landscape thin strip).
@@ -504,7 +505,7 @@ async function recordKanbanPanZoomBeat(beat: KanbanBeat, recordSec: number, recD
  *    timeline (pipeline header + verdict pills, which sit in the LOWER drawer) stays fully on screen + big;
  *    only the ticket title/board above is cropped. The ring's cover transform uses the same bottom alignment. */
 function kanbanDynamicFraming(beatN: number): { device: Rect; objectPosition: string; posFrac: { x: number; y: number }; clipW: number; clipH: number } {
-  if (beatN === 5) return { device: WIDE_BOARD_DEVICE, objectPosition: "top", posFrac: { x: 0.5, y: 0 }, clipW: KANBAN_PICKER_CLIP.w, clipH: KANBAN_PICKER_CLIP.h };
+  if (beatN === 5) return { device: kanbanClipDeviceRect(KANBAN_PICKER_CLIP.w, KANBAN_PICKER_CLIP.h), objectPosition: "center", posFrac: { x: 0.5, y: 0.5 }, clipW: KANBAN_PICKER_CLIP.w, clipH: KANBAN_PICKER_CLIP.h };
   if (beatN === 7) return { device: kanbanClipDeviceRect(KANBAN_CARD_CLIP.w, KANBAN_CARD_CLIP.h), objectPosition: "center", posFrac: { x: 0.5, y: 0.5 }, clipW: KANBAN_CARD_CLIP.w, clipH: KANBAN_CARD_CLIP.h };
   return { device: WIDE_BOARD_DEVICE, objectPosition: "center bottom", posFrac: { x: 0.5, y: 1 }, clipW: KANBAN_DRAWER_CLIP.w, clipH: KANBAN_DRAWER_CLIP.h };
 }

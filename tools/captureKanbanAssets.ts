@@ -41,15 +41,20 @@ const REPO_ROOT = fs.realpathSync(process.cwd());
 const ASSET_DIR = path.join(REPO_ROOT, "assets", "kanban-demo");
 const CLIP_DIR = path.join(REPO_ROOT, "out", "capture", "kanban");
 
-const VW = 390;
-const VH = 844;
+// #1091 crop-fix: 900-wide so the overview still (beat 6) shows the SAME clean TWO-column layout as the
+// picker (beat 5) and card-move (beat 7) clips — a 390-wide mobile capture sliced the right column at the
+// frame edge (the L/R-crop defect). VH is taller than the device aspect so beat 6's vertical pan-to-the-badge
+// has room to move (cover keeps the full 900 width on screen → no L/R cut).
+const VW = 900;
+const VH = 1300;
 const DSF = 3;
 // Dynamic-clip recording geometry. recordVideo `size` MUST equal the viewport CSS size — if `size` is larger
 // than the viewport, Playwright paints the page into the TOP-LEFT and leaves the rest GRAY (the #1046 defect).
 // dsf 2 renders the page sharp, downsampled to `size`.
 //
-// PICKER clip (beat 5): PORTRAIT (≈ 9:16), width < 640 so the board keeps its MOBILE layout — the picker
-// button + dropdown menu sit at the TOP and must NOT be cropped when framed inset (defect-1 fix).
+// PICKER clip (beat 5): 900-wide so the board shows TWO FULL columns (To Do + In Progress) with right margin
+// — a 390-wide mobile capture sliced the right column at the frame edge (#1091 L/R-crop fix). The picker
+// button + dropdown menu sit at the TOP-left and stay uncropped; the clip frames CONTAIN (no cover crop).
 const PICKER_W = KANBAN_PICKER_CLIP.w;
 const PICKER_H = KANBAN_PICKER_CLIP.h;
 // CARD-MOVE clip (beat 7): DESKTOP width (≥ 1024 → the board's 4-up grid, all four columns side by side) and
@@ -62,6 +67,15 @@ const CARD_H = KANBAN_CARD_CLIP.h;
 // MEASURE the settled pipeline+verdict-pills union box (normalized over this clip) for the elaboration ring.
 const DRAWER_W = KANBAN_DRAWER_CLIP.w;
 const DRAWER_H = KANBAN_DRAWER_CLIP.h;
+
+// #1091 crop-fix: force the board to exactly TWO full columns (To Do + In Progress) at 50%-each so the
+// captured board NEVER slices a partial column at the frame edge. The board's natural column width (~585px)
+// fits only ~1.5 columns in a 900-wide capture → the right column gets cut (the L/R-crop defect). Applied to
+// the overview still (beat 6) + picker clip (beat 5) + card-move clip (beat 7) so all three establishing
+// board shots share ONE clean 2-column layout. Capture-time FRAMING only — the ticket DATA is 100% live.
+const TWO_COL_CSS =
+  ".ak-strip{overflow-x:hidden !important;scroll-snap-type:none !important}" +
+  ".ak-col{flex:0 0 calc(50% - 8px) !important;scroll-snap-align:none !important}";
 
 function sha256(buf: Buffer): string {
   return crypto.createHash("sha256").update(buf).digest("hex");
@@ -138,6 +152,8 @@ async function main(): Promise<void> {
     await page.goto(BOARD_URL, { waitUntil: "networkidle" });
     await page.waitForTimeout(1500);
     await hideDevChrome(page);
+    await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {}); // #1091: 2 full columns, no L/R slice
+    await page.waitForTimeout(400); // let the flex re-layout settle before measuring the ring + screenshot
     const liveRect = await rectOf(page, ".ak-live");
     const out = path.join(ASSET_DIR, "board-overview.png");
     await page.screenshot({ path: out, clip: OVERVIEW_CLIP });
@@ -222,6 +238,8 @@ async function main(): Promise<void> {
     await page.goto(BOARD_URL, { waitUntil: "networkidle" });
     await page.waitForTimeout(2800); // establish on the LIVE/ACTIVE (full) board first (clip plays ONCE)
     await hideDevChrome(page);
+    await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {}); // #1091: 2 full columns, no L/R slice
+    await page.waitForTimeout(400); // let the flex re-layout settle
     await page.click(".ak-picker__btn"); // the dropdown VISIBLY opens (the feature) — DO NOT switch sessions
     await page.waitForTimeout(900);
     const menu = await page.evaluate(() => {
@@ -252,9 +270,7 @@ async function main(): Promise<void> {
   // Two-column override: below the 1024px desktop breakpoint each .ak-col is `flex:0 0 88vw` (≈1 col on
   // screen). We override to 50%-each so the first TWO columns (To Do, In Progress) fit with no scroll — a
   // capture-time FRAMING tweak (like hideDevChrome), the ticket DATA is 100% the real live board.
-  const TWO_COL_CSS =
-    ".ak-strip{overflow-x:hidden !important;scroll-snap-type:none !important}" +
-    ".ak-col{flex:0 0 calc(50% - 8px) !important;scroll-snap-align:none !important}";
+  // (TWO_COL_CSS is hoisted to module scope so the overview + picker captures share the same 2-col override.)
   const originalBytes = fs.readFileSync(BOARD_JSON);
   const originalSha = sha256(originalBytes);
   const backup = path.join(recRoot, "board.json.bak");

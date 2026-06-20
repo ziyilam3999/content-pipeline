@@ -39,7 +39,7 @@ export const CAP_H = 1920;
  * cover-fits the full-width board device with effectively no crop. Imported by `captureKanbanAssets` (the
  * capture viewport) AND used here to size each clip's inset device frame.
  */
-export const KANBAN_PICKER_CLIP = { w: 390, h: 844 } as const; // MOBILE 390-wide (matches the beat-6 overview still's viewport) so beats 5+6 show the SAME responsive layout — coherent establishing shots (#1082)
+export const KANBAN_PICKER_CLIP = { w: 900, h: 1040 } as const; // #1091 crop-fix: 900-wide (= CARD clip) so the board shows TWO FULL columns (To Do + In Progress) with right margin — a 390-wide mobile capture sliced the right column at the frame edge. Beats 5/6/7 now share the SAME 900-wide 2-col layout (coherent, #1082) and frame CONTAIN (no L/R cut, #1063).
 export const KANBAN_CARD_CLIP = { w: 900, h: 1040 } as const; // portrait — To Do + In Progress side by side (card crosses, board fills)
 export const KANBAN_DRAWER_CLIP = { w: 600, h: 1066 } as const; // portrait — board → tap #1053 → drawer opens (beat 8)
 
@@ -222,9 +222,9 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
     isTerminal: false, isHeroOutput: true, backgroundColor: BG_OUTPUT_A,
     hero: {
       source: "assets/kanban-demo/board-overview.png",
-      sha256: "b41bcda90638aac49b500e728bd58e394170d3118d41a0652ff5af1ec394ae6b",
-      bytes: 246903,
-      srcW: 1170, srcH: 2532, holdSec: 2.0,
+      sha256: "f3bf17af9ba9e54398dcd4cb71ae9eb776650d2d29487cef2a69132c0adf2a11",
+      bytes: 688267,
+      srcW: 2700, srcH: 3900, holdSec: 2.0, // #1091 crop-fix: 900×1300 capture (DSF 3) w/ 2-col override → two FULL columns, no L/R slice
       // The board still is framed INSET in the portrait device (outputDeviceSpineRect) on the cream world — a
       // MODEST vertical pan UP that SETTLES on the header + the LIVE/IDLE badge (cy 0.04, device top). Pure
       // column-locked vertical pan (cx 0.5 both ends); the inset device gives the badge + ring clear margin
@@ -232,11 +232,10 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
       focusStart: { cx: 0.5, cy: 0.4, zoom: 1.0 },
       focusEnd: { cx: 0.5, cy: 0.04, zoom: 1.0 },
     },
-    // .ak-live badge LIVE-MEASURED via getBoundingClientRect at the REAL still dims (390×844 CSS → 1170×2532 px),
-    // normalized over the TRUE 844-tall image. The pre-fix coords (sy 0.0103, sh 0.0231) were normalized over a
-    // PHANTOM 1180-tall clip that Playwright had silently clamped to the 844 viewport — so the ring landed ~40%
-    // too HIGH (1180/844 = 1.398× off on the y-axis). srcH is now the true 2532 (see assertHeroStillDimsMatchPng).
-    highlight: { sx: 0.795, sy: 0.0144, sw: 0.1691, sh: 0.0322, label: "live or idle", labelBelow: true },
+    // .ak-live badge LIVE-MEASURED via getBoundingClientRect at the REAL still dims (900×1300 CSS → 2700×3900 px
+    // at DSF 3), normalized over the captured image AFTER the 2-col override re-layout. srcW/srcH match the saved
+    // PNG exactly (see assertHeroStillDimsMatchPng / captureKanban hero-bytes assert) — re-measured for #1091.
+    highlight: { sx: 0.9112, sy: 0.0093, sw: 0.0733, sh: 0.0209, label: "live or idle", labelBelow: true },
   },
   // 7 — BOARD: a task moving live (DYNAMIC capture — a card crossing To Do → In Progress, PORTRAIT). #1071
   // frame-economy fix: the v3 capture was landscape all-4-columns → a thin strip in cream; this is a portrait
@@ -335,9 +334,10 @@ export const KANBAN_BEAT_LAYOUTS: ReadonlyArray<FableBeatLayout> = [
   { beat: 2, kind: "terminal", content: { left: 90, top: 110, right: CAP_W - 90, bottom: CAP_H - 110 }, fill: true },
   // beat 3 — the agent's pipeline terminal.
   { beat: 3, kind: "terminal", content: { left: 108, top: 120, right: CAP_W - 108, bottom: CAP_H - 120 }, fill: true },
-  // beat 5 — session-picker clip, framed COVER in the 90%-wide board device (#1046 v3 fix-2): the picker +
-  // dropdown live at the TOP, so cover top-aligns and crops only the sparse lower board → fills the frame width.
-  { beat: 5, kind: "viewer-video", content: { ...WIDE_BOARD_DEVICE }, fill: false },
+  // beat 5 — session-picker clip, sized exact-aspect/CONTAIN into the board device (#1091 crop-fix): the
+  // 900-wide clip shows two FULL columns and its aspect ≈ the device box, so it maps 1:1 with NO L/R cut
+  // (the old WIDE_BOARD_DEVICE cover sliced the sides). Mirrors beat 7's exact-aspect framing.
+  { beat: 5, kind: "viewer-video", content: kanbanClipDeviceRect(KANBAN_PICKER_CLIP.w, KANBAN_PICKER_CLIP.h), fill: false },
   // beat 7 — the PORTRAIT To-Do→In-Progress card-move clip, sized exact-aspect into the board device (#1071
   // frame-economy fix): the clip aspect ≈ the device box aspect so it fills nearly the full WIDE_BOARD_DEVICE
   // (board fills the frame, no thin-strip cream bands), with the card visibly crossing the two columns.
