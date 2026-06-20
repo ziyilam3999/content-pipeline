@@ -34,7 +34,8 @@ import { KANBAN_PICKER_CLIP, KANBAN_CARD_CLIP, KANBAN_DRAWER_CLIP } from "../vid
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const BOARD_URL = "http://localhost:3210/";
-const KANBAN_REPO = "/Users/ansonlam/coding_projects/agent-kanban";
+// agent-kanban repo location: override with KANBAN_REPO, else default under the user's home (no hardcoded user/home path in a PUBLIC repo).
+const KANBAN_REPO = process.env.KANBAN_REPO || path.join(os.homedir(), "coding_projects", "agent-kanban");
 const BOARD_JSON = path.join(KANBAN_REPO, "data", "board.json");
 const REPO_ROOT = fs.realpathSync(process.cwd());
 const ASSET_DIR = path.join(REPO_ROOT, "assets", "kanban-demo");
