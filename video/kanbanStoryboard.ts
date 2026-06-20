@@ -216,8 +216,8 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
     isTerminal: false, isHeroOutput: true, backgroundColor: BG_OUTPUT_A,
     hero: {
       source: "assets/kanban-demo/board-overview.png",
-      sha256: "a4f184f58144069977eaa96591de74d527d1644d1fdb1ca1bd0197f03df82bd4",
-      bytes: 293104,
+      sha256: "b41bcda90638aac49b500e728bd58e394170d3118d41a0652ff5af1ec394ae6b",
+      bytes: 246903,
       srcW: 1170, srcH: 2532, holdSec: 2.0,
       // The board still is framed INSET in the portrait device (outputDeviceSpineRect) on the cream world — a
       // MODEST vertical pan UP that SETTLES on the header + the LIVE/IDLE badge (cy 0.04, device top). Pure
