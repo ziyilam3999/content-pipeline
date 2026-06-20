@@ -298,7 +298,20 @@ async function main(): Promise<void> {
     console.log(`  art-sha256(agent-kanban-demo)=${kanbanSha}`);
     console.log(`  cross-post uniqueness: PASS — agent-kanban-demo art ≠ any other post's; registered.`);
   } else {
-    console.log("  bg: deterministic DARK brand radial-gradient (SAFE — no paid call, white text legible)");
+    // SAFE: if this post's REAL nano-banana art is already cached on disk (from a prior paid run),
+    // reuse it for FREE (generateArtOnce with paid=false reads the cache) so the combined card renders
+    // over the operator-approved art, not the placeholder. Only switch off the dark gradient on a true
+    // cache HIT — a cache miss returns a 1×1 placeholder, so we keep the legible dark gradient instead.
+    const cachePng = artBasePngPath(outDir, KANBAN_SLUG);
+    const cacheUri = cachePng.replace(/\.png$/i, "") + ".datauri.b64";
+    if (fs.existsSync(cachePng) && fs.existsSync(cacheUri)) {
+      artDataUri = await generateArtOnce(kanbanArtMasterSpec(), false, outDir, KANBAN_ART_OPTS);
+      usedPath = "nano-banana-cached";
+      kanbanSha = sha256File(cachePng);
+      console.log(`  art-cache HIT: REUSE ${cachePng} (free — no paid call); art-sha256=${kanbanSha}`);
+    } else {
+      console.log("  bg: deterministic DARK brand radial-gradient (SAFE — no paid call, white text legible)");
+    }
   }
 
   const written: { name: string; outPath: string; bytes: number }[] = [];
