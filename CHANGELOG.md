@@ -1,3 +1,13 @@
+## [0.31.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.30.0...v0.31.0) (2026-06-20)
+
+### Features
+
+* **post:** agent-kanban-demo X+Threads social post runbook (slug + paid nano-banana card renderer + Typefully publish runbook; live DRAFT) ([#142](https://github.com/ziyilam3999/content-pipeline/pull/142))
+
+### Tests
+
+* **publish:** guard against hand-rolled Typefully publish — createDraft/uploadMedia only from smoke runbooks + adapter ([#141](https://github.com/ziyilam3999/content-pipeline/pull/141))
+
 ## [0.30.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.29.1...v0.30.0) (2026-06-20)
 
 ### Features
