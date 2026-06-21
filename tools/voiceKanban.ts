@@ -286,6 +286,11 @@ function assembleFittedVo(rawAudioPath: string, plan: VoFitPlan, work: string): 
 // ── spine↔VO transition-gap math (inlined forge #944 seam logic) ────────────────────────────────────
 const DRIFT_TOL_SEC = 0.5;
 
+/** Number of transition beats in the spine (v2 feature-tour = 0; the old tool-demo = 1). */
+function transitionBeatCount(): number {
+  return KANBAN_BEATS.filter((b) => b.kind === "transition").length;
+}
+/** The narrated-segment index of the tool→board seam. v2 has NO transition → caller skips the splice. */
 function seamSegmentIndex(): number {
   const transitions = KANBAN_BEATS.filter((b) => b.kind === "transition");
   if (transitions.length !== 1) throw new Error(`voiceKanban: expected exactly 1 transition beat, found ${transitions.length}.`);
@@ -465,6 +470,18 @@ async function main(): Promise<void> {
     seamTimeSec = plan.transitions[0]?.atSec ?? 0;
     const pads = plan.segments.filter((s) => s.scale <= 1.0001).length;
     console.log(`  VO-FIT: real VO ${durationSec.toFixed(2)}s → fitted to the ${syncedDurationSec.toFixed(2)}s spine (driftMax ${driftMax.toFixed(2)}s; ${pads}/${plan.segments.length} segments padded, rest compressed); captions shifted onto the fitted timeline.`);
+  } else if (transitionBeatCount() === 0) {
+    // #1120 v2 feature-tour: NO transition beat → NO tool→board seam → no silence to splice. The free
+    // mock/say VO already matches the spine by construction (assertVoMatchesSpine), so the synced timeline
+    // IS the raw timeline (KANBAN_TRANSITION_SEC === 0). seamTimeSec stays 0 (no seam) for the bundle.
+    assertVoMatchesSpine(rawSceneEndTimesSec);
+    syncedCharEndTimesSec = charEndTimesSec;
+    syncedDurationSec = durationSec;
+    syncedAudioPath = audioPath;
+    const se = narrationSceneEndTimes(KANBAN_NARRATION, syncedCharEndTimesSec, syncedDurationSec);
+    if (!se) throw new Error("voiceKanban: narrationSceneEndTimes(synced) returned null — the synced alignment did not line up.");
+    sceneEndTimesSec = se;
+    console.log(`  sync: spine↔VO drift gate PASS; no transition beat (feature-tour) → synced VO ${syncedDurationSec.toFixed(2)}s (spine target ${KANBAN_RUNTIME_SEC.toFixed(2)}s)`);
   } else {
     assertVoMatchesSpine(rawSceneEndTimesSec);
     const seamSegIdx = seamSegmentIndex();

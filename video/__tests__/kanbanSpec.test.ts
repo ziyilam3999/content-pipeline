@@ -1,22 +1,28 @@
 /**
- * #1046 agent-kanban demo — the build's test ORACLE.
+ * #1120 agent-kanban demo (v2 "feature tour") — the build's test ORACLE.
  *
- *  (1) RECIPE: the net-new kanban `DemoVideoSpec` passes the whole #870 demonstration-category recipe
- *      (R1–R13) cleanly — the same fail-closed contract that gates the #824 fableSpec + #871 forgeSpec.
- *  (2) SAFE-AREA: every kanban beat layout is 4-side title-safe + the full-bleed beats FILL.
- *  (3) PROVENANCE: each hero (still) beat's declared `provenance.sha256` + `bytes` byte-for-byte match the
- *      committed real board PNG it displays.
- *  (4) SHAPE: the proven demonstration shape (10 beats, hook first, captured-footage spine, chat + tool +
- *      transition, terminal ≤30%, 2 hero outputs with real provenance, runtime in the 98–112s band).
+ *  (1) RECIPE: the v2 kanban `DemoVideoSpec` passes the #870 demonstration-category recipe under the
+ *      FEATURE-TOUR shape (R1/R2/R4/R6–R13); R3/R5 (chat/tool/transition) are carved out for this shape ONLY.
+ *      BOTH-ENDS: toggling kanban back to the strict "tool-demo" shape FAILS on R3 (proves the carve-out is
+ *      per-spec opt-in, not a gate weakening) — fableSpec/forgeSpec (strict) stay green in their own tests.
+ *  (2) SAFE-AREA + FRAME-ECONOMY: every kanban beat layout is 4-side title-safe; the board-subject beats fill
+ *      the frame.
+ *  (3) PROVENANCE: the ONE committed hero still (beat 6) byte-for-byte matches its declared sha256 + bytes, and
+ *      the declared srcW/srcH equal the committed PNG's IHDR pixel dimensions (the bbox-truthful-dims gate).
+ *  (4) SHAPE: 10 beats, hook first, captured-footage spine, exactly 1 hero output (beat 6), beats 4/7/8 dynamic
+ *      non-hero, runtime in the 74–84s band, terminal share 0%.
+ *  (5) GLYPH (Rule-19 pixels): the ◆ REVIEW · PASS verdict text is actually DRAWN on the committed PNG's In
+ *      Review region (a dependency-free pixel decode), not merely declared — discriminated against the gray
+ *      subject line directly below it.
  *
- * Pure data-structure + filesystem hashing — NO Playwright / ffmpeg / network / paid call.
+ * Pure data-structure + filesystem + a stdlib (zlib) PNG decode — NO Playwright / ffmpeg / network / paid call.
  */
 
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 
-import { assertDemoCategoryRecipe, assertPhoneFullScreenAspectDiscipline } from "../demoCategoryRecipe";
+import { assertDemoCategoryRecipe, assertPhoneFullScreenAspectDiscipline, type DemoVideoSpec } from "../demoCategoryRecipe";
 import {
   assertFableBeatsSafeAndFilled,
   assertFrameEconomy,
@@ -36,43 +42,51 @@ import {
   KANBAN_TRANSITION_SEC,
   KANBAN_RUNTIME_SEC,
 } from "../kanbanStoryboard";
+import { decodePng, countMatching, isVerdictGreen } from "../pngProbe";
 
 const REPO_ROOT = process.cwd();
 
-describe("#1046 kanban demo-category recipe (R1–R13)", () => {
-  test("kanbanSpec PASSES the whole demonstration recipe cleanly", () => {
+describe("#1120 kanban demo-category recipe (feature-tour shape)", () => {
+  test("kanbanSpec PASSES the recipe under the feature-tour shape", () => {
+    expect(kanbanSpec.shape).toBe("feature-tour");
     expect(() => assertDemoCategoryRecipe(kanbanSpec)).not.toThrow();
+  });
+
+  test("BOTH-ENDS carve-out: forcing the strict tool-demo shape FAILS on R3 (no chat/tool beat)", () => {
+    const strict: DemoVideoSpec = { ...kanbanSpec, shape: "tool-demo" };
+    expect(() => assertDemoCategoryRecipe(strict)).toThrow(/demo-recipe R3/);
   });
 
   test("every kanban beat layout is 4-side title-safe + the full-bleed beats FILL", () => {
     expect(() => assertFableBeatsSafeAndFilled(KANBAN_BEAT_LAYOUTS)).not.toThrow();
   });
 
-  test("kanbanSpec has the proven demonstration shape", () => {
+  test("kanbanSpec has the v2 feature-tour shape (10 beats, hook first, 1 hero = beat 6)", () => {
     expect(kanbanSpec.beats.length).toBe(10);
     expect(kanbanSpec.beats[0].kind).toBe("hook");
     expect(kanbanSpec.beats.some((b) => b.vehicle === "captured-footage")).toBe(true);
-    expect(kanbanSpec.beats.some((b) => b.kind === "chat")).toBe(true);
-    expect(kanbanSpec.beats.some((b) => b.kind === "transition")).toBe(true);
-    const tool = kanbanSpec.beats.find((b) => b.kind === "tool")!;
-    expect(tool.isTerminal).toBe(true);
-    expect(/the agent's interface|not yours/i.test(tool.label)).toBe(true);
-    // exactly ONE hero (still) output (beat 6), with real provenance; beats 5/7/8 are NON-hero dynamic
-    // clips (beat 8 is now the real tap→drawer-open MOTION capture, not a pre-open still — #1046 v3 fix-3).
+    // NO chat / tool / transition beat in the v2 spine.
+    expect(kanbanSpec.beats.some((b) => b.kind === "chat")).toBe(false);
+    expect(kanbanSpec.beats.some((b) => b.kind === "transition")).toBe(false);
+    expect(kanbanSpec.beats.some((b) => b.kind === "tool")).toBe(false);
+    // Exactly ONE hero (committed still) output = beat 6; beats 4/7/8 are NON-hero dynamic clips.
     const heroes = kanbanSpec.beats.filter((b) => b.isHeroOutput);
-    expect(heroes.length).toBe(1);
     expect(heroes.map((b) => b.n)).toEqual([6]);
     for (const h of heroes) expect(h.provenance?.real).toBe(true);
-    for (const n of [5, 7, 8]) expect(KANBAN_BEATS.find((b) => b.n === n)!.isHeroOutput).toBe(false);
+    for (const n of [4, 7, 8]) expect(KANBAN_BEATS.find((b) => b.n === n)!.isHeroOutput).toBe(false);
+    // Beats 2/3/5 are gitignored stills (no provenance churn); only beat 6 carries `hero`.
+    expect(KANBAN_BEATS.filter((b) => b.hero).map((b) => b.n)).toEqual([6]);
+    for (const n of [2, 3, 5]) expect(KANBAN_BEATS.find((b) => b.n === n)!.still).toBeDefined();
+    for (const n of [4, 7, 8]) expect(KANBAN_BEATS.find((b) => b.n === n)!.clipSource).toBeDefined();
   });
 
-  test("runtime is in the 74–84s band (#1063 dead-air re-cut) and terminal share is ≤30%", () => {
+  test("runtime is in the 74–84s band and terminal share is 0% (no tool beat)", () => {
     const total = kanbanSpec.beats.reduce((s, b) => s + b.durationSec, 0);
-    expect(total).toBe(76); // #1091 paid-Adam re-trim: beats 2/3/7 shortened to Adam's measured length (80→76)
+    expect(total).toBe(77);
     expect(total).toBeGreaterThanOrEqual(74);
     expect(total).toBeLessThanOrEqual(84);
     const terminal = kanbanSpec.beats.filter((b) => b.isTerminal).reduce((s, b) => s + b.durationSec, 0);
-    expect(terminal / total).toBeLessThanOrEqual(0.3);
+    expect(terminal).toBe(0);
   });
 
   test("captions carry the R12 fallback shape (durationSec == runtime, lastCue bound)", () => {
@@ -80,16 +94,13 @@ describe("#1046 kanban demo-category recipe (R1–R13)", () => {
     expect(c.present).toBe(true);
     expect(c.syncBoundToRealAudio).toBe(true);
     expect(c.audio.real).toBe(true);
-    expect(c.audio.durationSec).toBe(76);
+    expect(c.audio.durationSec).toBe(77);
     expect(Math.abs(c.lastCueEndSec - c.audio.durationSec)).toBeLessThanOrEqual(0.5);
   });
 });
 
-// ── #1071 frame-economy gate (board subjects fill the frame — no thin strip in empty cream) ───────────
-// The mechanical prevention for the operator's "the product is too small" feedback: a board/device-subject
-// beat whose framed surface fills only a sliver of the title-safe height reads as a strip marooned in cream.
-describe("#1071 kanban frame-economy gate", () => {
-  // The safe-area height the gate measures the subject's fill against (the FALLBACK assert4SideSafeArea max).
+// ── frame-economy gate (board subjects fill the frame — no thin strip in empty cream) ─────────────────
+describe("#1120 kanban frame-economy gate", () => {
   const safe = safeAreaBox();
   const SAFE_H = safe.bottom - safe.top;
 
@@ -97,65 +108,55 @@ describe("#1071 kanban frame-economy gate", () => {
     expect(() => assertFrameEconomy(KANBAN_BEAT_LAYOUTS)).not.toThrow();
   });
 
-  test("only the board-subject beats (viewer-*) are economy-checked; title/terminal are exempt", () => {
+  test("the board-subject beats (viewer-*) are economy-checked; title beats are exempt", () => {
     const subjects = KANBAN_BEAT_LAYOUTS.filter((l) => isDeviceSubjectBeat(l.kind)).map((l) => l.beat);
-    expect(subjects.sort((a, b) => a - b)).toEqual([5, 6, 7, 8]); // the four board beats
+    expect(subjects.sort((a, b) => a - b)).toEqual([2, 3, 4, 5, 6, 7, 8]);
     expect(isDeviceSubjectBeat("title")).toBe(false);
-    expect(isDeviceSubjectBeat("terminal")).toBe(false);
   });
 
-  // BOTH-ENDS PROOF (#1071): the OLD v3 LANDSCAPE beat-7 geometry must FAIL the gate, and the NEW PORTRAIT
-  // beat-7 geometry must PASS — the gate is the mechanical line between the rejected and the fixed framing.
-  test("BOTH-ENDS: OLD landscape beat-7 (~⅓ fill) FAILS, NEW portrait beat-7 (≥60% fill) PASSES", () => {
-    // OLD: the v3 all-4-columns LANDSCAPE clip was 1280×800; kanbanClipDeviceRect fits that 1.6 aspect into
-    // the board box → a short, wide device that fills only ~⅓ of the title-safe height (the thin strip).
+  // BOTH-ENDS (#1071 carried in): the OLD landscape geometry FAILS the gate, the NEW portrait clip PASSES.
+  test("BOTH-ENDS: OLD landscape (~⅓ fill) FAILS, NEW portrait clip (≥60% fill) PASSES", () => {
     const oldLandscape = kanbanClipDeviceRect(1280, 800);
     const oldFill = (oldLandscape.bottom - oldLandscape.top) / SAFE_H;
-    expect(oldFill).toBeLessThan(0.4); // ≈ 0.35 — a sliver
     expect(oldFill).toBeLessThan(MIN_SUBJECT_FILL_HEIGHT_FRACTION);
     const oldLayout: FableBeatLayout = { beat: 7, kind: "viewer-video", content: oldLandscape, fill: false };
     expect(() => assertFrameEconomy([oldLayout])).toThrow(/#1071 frame-economy/);
 
-    // NEW: the portrait To Do→In Progress clip (KANBAN_CARD_CLIP) has an aspect ≈ the board box → it fills
-    // nearly the full WIDE_BOARD_DEVICE height → a clear majority of the title-safe height.
     const newPortrait = kanbanClipDeviceRect(KANBAN_CARD_CLIP.w, KANBAN_CARD_CLIP.h);
     const newFill = (newPortrait.bottom - newPortrait.top) / SAFE_H;
     expect(newFill).toBeGreaterThanOrEqual(MIN_SUBJECT_FILL_HEIGHT_FRACTION);
     const newLayout: FableBeatLayout = { beat: 7, kind: "viewer-video", content: newPortrait, fill: false };
     expect(() => assertFrameEconomy([newLayout])).not.toThrow();
-
-    // Surface the numbers (the both-ends proof the brief asks for).
     // eslint-disable-next-line no-console
-    console.log(`[#1071 both-ends] OLD landscape beat-7 fill=${(oldFill * 100).toFixed(1)}% (FAILS) → NEW portrait beat-7 fill=${(newFill * 100).toFixed(1)}% (PASSES); floor=${(MIN_SUBJECT_FILL_HEIGHT_FRACTION * 100).toFixed(0)}%`);
+    console.log(`[frame-economy both-ends] OLD landscape fill=${(oldFill * 100).toFixed(1)}% (FAILS) → NEW portrait fill=${(newFill * 100).toFixed(1)}% (PASSES); floor=${(MIN_SUBJECT_FILL_HEIGHT_FRACTION * 100).toFixed(0)}%`);
   });
 });
 
-// ── spine↔VO sync SSOT consistency (the committed end of the drift gate) ──────────────────────────────
-describe("#1046 kanban spine↔VO sync SSOT", () => {
-  test("every narrated beat's clipSec equals its VO-segment length (KANBAN_VO_SEG_SEC); transition == KANBAN_TRANSITION_SEC", () => {
+// ── spine↔VO sync SSOT consistency ────────────────────────────────────────────────────────────────────
+describe("#1120 kanban spine↔VO sync SSOT", () => {
+  test("every beat is narrated (no transition) and its clipSec equals KANBAN_VO_SEG_SEC[n]", () => {
+    expect(KANBAN_TRANSITION_SEC).toBe(0);
+    expect(KANBAN_BEATS.some((b) => b.kind === "transition")).toBe(false);
     for (const b of KANBAN_BEATS) {
-      if (b.kind === "transition") {
-        expect(b.clipSec).toBe(KANBAN_TRANSITION_SEC);
-      } else {
-        expect(KANBAN_VO_SEG_SEC[b.n]).toBeDefined();
-        expect(b.clipSec).toBe(KANBAN_VO_SEG_SEC[b.n]);
-      }
+      expect(KANBAN_VO_SEG_SEC[b.n]).toBeDefined();
+      expect(b.clipSec).toBe(KANBAN_VO_SEG_SEC[b.n]);
     }
   });
 
-  test("KANBAN_RUNTIME_SEC == the spoken total + the transition silence (76s, #1063 re-cut + #1091 paid-Adam re-trim)", () => {
+  test("KANBAN_RUNTIME_SEC == the spoken total (77s; no transition silence)", () => {
     const spoken = Object.values(KANBAN_VO_SEG_SEC).reduce((s, v) => s + v, 0);
     expect(KANBAN_RUNTIME_SEC).toBe(spoken + KANBAN_TRANSITION_SEC);
-    expect(KANBAN_RUNTIME_SEC).toBe(76); // #1091 paid-Adam re-trim (was 80)
+    expect(KANBAN_RUNTIME_SEC).toBe(77);
   });
 });
 
-// ── hero-beat data provenance (sha256 + bytes match the committed board PNGs) ─────────────────────────
-describe("#1046 kanban hero-beat data provenance", () => {
+// ── hero-beat data provenance (sha256 + bytes + IHDR dims match the committed board PNG) ───────────────
+describe("#1120 kanban hero-beat data provenance", () => {
   const heroes = KANBAN_BEATS.filter((b) => b.hero);
 
-  test("there is 1 hero beat with declared provenance (beat 6 board still)", () => {
+  test("there is exactly 1 hero beat with declared provenance (beat 6 committed still)", () => {
     expect(heroes.length).toBe(1);
+    expect(heroes[0].n).toBe(6);
   });
 
   test.each(heroes.map((b) => [b.n, b.hero!.source, b.hero!.sha256, b.hero!.bytes] as const))(
@@ -169,15 +170,10 @@ describe("#1046 kanban hero-beat data provenance", () => {
     },
   );
 
-  // DRIFT GATE (#1046): the declared srcW/srcH MUST equal the committed PNG's actual pixel dimensions. The
-  // beat-6 ring landed ~40% too high because srcH was 3540 while the PNG was really 2532 (a screenshot clip
-  // taller than the viewport got silently clamped). The ring math normalizes the badge box against srcH, so a
-  // wrong srcH = a mislocated ring. Reading the real dimensions from the PNG IHDR fails this exact regression.
   test.each(heroes.map((b) => [b.n, b.hero!.source, b.hero!.srcW, b.hero!.srcH] as const))(
-    "beat %i — %s declared srcW/srcH match the committed PNG pixel dimensions",
+    "beat %i — %s declared srcW/srcH match the committed PNG IHDR pixel dimensions",
     (_n, source, srcW, srcH) => {
       const buf = fs.readFileSync(path.join(REPO_ROOT, source));
-      // PNG: 8-byte signature, then IHDR — width = BE uint32 @16, height = BE uint32 @20.
       expect(buf.subarray(12, 16).toString("ascii")).toBe("IHDR");
       expect(buf.readUInt32BE(16)).toBe(srcW);
       expect(buf.readUInt32BE(20)).toBe(srcH);
@@ -186,9 +182,7 @@ describe("#1046 kanban hero-beat data provenance", () => {
 });
 
 // ── hero camera-framing guard (column-locked vertical pan — no horizontal side-crop) ──────────────────
-// The two STILL board beats pan/zoom over a high-res board screenshot. To avoid the recurring side-crop
-// defect, every hero pan must be COLUMN-LOCKED: |cx_start − cx_end| ≤ 0.06 (pure vertical pan, cx centered).
-describe("#1046 kanban hero camera-framing guard (column-locked vertical pan)", () => {
+describe("#1120 kanban hero camera-framing guard (column-locked vertical pan)", () => {
   const heroBeats = KANBAN_BEATS.filter((b) => b.hero);
   test.each(heroBeats.map((b) => [b.n, b.hero!.focusStart, b.hero!.focusEnd] as const))(
     "beat %i is a column-locked vertical pan (no cross-column horizontal sweep)",
@@ -198,8 +192,29 @@ describe("#1046 kanban hero camera-framing guard (column-locked vertical pan)", 
   );
 });
 
+// ── AC #2 — the ◆ REVIEW · PASS GLYPH is on the committed pixels (Rule-19 pixel probe) ─────────────────
+describe("#1120 kanban face-verdict glyph on the committed still", () => {
+  const beat6 = KANBAN_BEATS.find((b) => b.n === 6)!;
+
+  test("the In Review verdict region carries verdict-green text; the subject line below it does NOT", () => {
+    const buf = fs.readFileSync(path.join(REPO_ROOT, beat6.hero!.source));
+    const img = decodePng(buf);
+    const hl = beat6.highlight!;
+    // The verdict ring region (the ◆ REVIEW · PASS `.ak-phase` line), padded slightly for sub-pixel.
+    const verdictRegion = { sx: hl.sx - 0.005, sy: hl.sy - 0.004, sw: hl.sw + 0.01, sh: hl.sh + 0.008 };
+    // A control: the card SUBJECT line directly BELOW the verdict (gray text, not verdict-green).
+    const controlRegion = { sx: hl.sx, sy: hl.sy + hl.sh + 0.006, sw: hl.sw, sh: hl.sh };
+    const verdictGreen = countMatching(img, verdictRegion, isVerdictGreen);
+    const controlGreen = countMatching(img, controlRegion, isVerdictGreen);
+    // eslint-disable-next-line no-console
+    console.log(`[glyph-probe] verdict region verdict-green px=${verdictGreen}, control (subject below) px=${controlGreen}`);
+    expect(verdictGreen).toBeGreaterThan(60);
+    expect(controlGreen).toBeLessThan(verdictGreen / 3);
+  });
+});
+
 // ── R13 — phone full-screen aspect discipline (keep 9:16, never taller) ───────────────────────────────
-describe("#1046 R13 phone-full-screen aspect discipline", () => {
+describe("#1120 R13 phone-full-screen aspect discipline", () => {
   test("the kanban demo's publish aspects pass the discipline (9:16 present + nothing taller than 9:16)", () => {
     expect(() => assertPhoneFullScreenAspectDiscipline(kanbanSpec.aspects)).not.toThrow();
     expect(() => assertPhoneFullScreenAspectDiscipline(FABLE_ASPECTS)).not.toThrow();
