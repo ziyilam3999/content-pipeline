@@ -30,6 +30,7 @@ import { spawnSync } from "child_process";
 
 import { resolveVendoredFfmpeg } from "../video/renderProbe";
 import { KANBAN_PICKER_CLIP, KANBAN_CARD_CLIP, KANBAN_DRAWER_CLIP } from "../video/kanbanStoryboard";
+import { requireApprovedStoryboard } from "../video/storyboardGate";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -131,6 +132,8 @@ async function rectOf(page: any, sel: string): Promise<{ x: number; y: number; w
 }
 
 async function main(): Promise<void> {
+  // #1120 Leg 0 — refuse to capture until an approved storyboard exists for this post (design-first).
+  requireApprovedStoryboard("agent-kanban-demo");
   fs.mkdirSync(ASSET_DIR, { recursive: true });
   fs.mkdirSync(CLIP_DIR, { recursive: true });
   // `--clips-only` re-captures ONLY the two dynamic mp4s and leaves the committed stills untouched (the stills

@@ -4,3 +4,10 @@
 # inflate the byte count, breaking the provenance assertion. Treat as binary
 # (no EOL conversion) so the working tree matches the committed bytes everywhere.
 assets/forge-demo/*.html -text
+
+# Storyboard docs (#1120) feed the approved-storyboard gate, which pins
+# docSha = sha256(line-ending-normalized doc). Belt-and-suspenders: keep the
+# storyboard text files LF on checkout EVERYWHERE so a Windows CRLF checkout
+# can't drift the working-tree bytes (the gate already normalizes EOLs before
+# hashing, so this is defense-in-depth, not the sole guard).
+storyboards/** text eol=lf

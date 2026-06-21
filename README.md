@@ -112,6 +112,30 @@ must **never** inherit the previous post's art. This is realized three ways:
   throws if that exact art hash is already registered to a DIFFERENT post — so a silent cross-post
   reuse can never ship. The #790 auto-fit/overflow gate stays intact on top of this.
 
+## Making a post — the legs (Leg 0 first)
+
+The module table above is the code layout. Making an actual post runs as an ordered set of **legs** — and
+the FIRST leg is not capture, it is **design + operator sign-off**. Think of it like a film: a good
+director writes the shot list and the producer says "yes, film that" BEFORE anyone rolls camera. Skipping
+that wastes a paid voiceover on a bad cut.
+
+- **Leg 0 — storyboard design → operator sign-off (FIRST, before any capture).** Copy the template,
+  design the shot list, get the operator's YES, then record it:
+  ```
+  cp storyboards/_TEMPLATE.md storyboards/<slug>.md   # design it: spine, beats table, capture-assets, AC anchor
+  npm run storyboard:approve -- <slug>                # the operator sign-off (writes storyboards/<slug>.approved.json)
+  ```
+  No capture / voice / stage runs for `<slug>` until this is on file. The approval is **pinned to the
+  storyboard's exact bytes** (sha256) — edit the storyboard after the YES and the approval auto-expires, so
+  you must re-approve (same tamper-evident trick as the eyeball-ack gate). The gate
+  (`video/storyboardGate.ts`) is fail-closed: it BLOCKS the capture/voice/stage entrypoints unless an
+  approved storyboard exists. (Honest split: existence + the sha-pinned marker = mechanical; whether the
+  operator *really* reviewed = irreducible judgment the gate does not pretend to verify.)
+- **Leg 1 — capture** (the silent spine + raw board assets: `npm run capture:kanban` / `capture:kanban-assets`).
+- **Leg 2 — voice / edit** (the paid voiceover leg, itself gated by the eyeball-ack + paid-preview gates: `npm run voice:kanban`).
+- **Leg 3 — stage** (one-shot capture→render→stage into the durable bundle: `npm run stage -- <slug>`).
+- **Leg 4 — publish** (DRY-RUN by default; nothing goes out until the operator gates the draft).
+
 ## How it's built
 
 Each stage was built test-first: a test describing what the stage must do was

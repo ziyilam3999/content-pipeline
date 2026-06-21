@@ -42,6 +42,7 @@ import { assertNoLongSilenceGap, detectSilenceGaps, worstInternalGap } from "../
 import { type VoiceCaller, type VoiceClip, type SpeechRequest } from "../audio/voiceover";
 import { planVoFit, type BeatSlot, type VoFitPlan } from "../video/voiceFit";
 import { assertPreviewApprovedForLock, readPreviewRecord, writePreviewRecord, type VoPreviewRecord } from "../video/voicePreviewGate";
+import { requireApprovedStoryboard } from "../video/storyboardGate";
 
 // ── Geometry + binaries ────────────────────────────────────────────────────
 const FPS = 30;
@@ -346,6 +347,9 @@ async function renderCaptionPngs(cues: ReadonlyArray<{ text: string }>, outDir: 
 
 // ── main ─────────────────────────────────────────────────────────────────────
 async function main(): Promise<void> {
+  // #1120 Leg 0 — refuse the (paid) voice leg until an approved storyboard exists for this post. Earliest
+  // gate: storyboard (Leg 0) → … → #1096a paid-preview. Each guards a different thing; storyboard is first.
+  requireApprovedStoryboard("agent-kanban-demo");
   const repoRoot = fs.realpathSync(process.cwd());
   const reviewDir = path.join(repoRoot, "out", "review", "kanban");
   const audioDir = path.join(repoRoot, "out", "audio");

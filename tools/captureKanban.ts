@@ -58,6 +58,7 @@ import {
   type KanbanBeat,
 } from "../video/kanbanStoryboard";
 import { resolveVendoredFfmpeg, probeRender } from "../video/renderProbe";
+import { requireApprovedStoryboard } from "../video/storyboardGate";
 
 const REPO_ROOT = fs.realpathSync(process.cwd());
 
@@ -652,6 +653,9 @@ async function runCapture(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // #1120 Leg 0 — refuse to capture (even in --dry-run) until an approved storyboard exists for this post.
+  // Placed BEFORE the --dry-run success branch so a missing/stale marker surfaces under --dry-run too.
+  requireApprovedStoryboard("agent-kanban-demo");
   assertKanbanBeatsClean();
   if (process.argv.includes("--dry-run")) {
     const total = KANBAN_BEATS.reduce((s, b) => s + b.clipSec, 0);
