@@ -26,6 +26,7 @@ import * as path from "path";
 import { spawnSync } from "child_process";
 
 import { POST_ASSETS, isPostSlug } from "../publish/publishAssets";
+import { requireApprovedStoryboard } from "../video/storyboardGate";
 
 interface Args {
   slug?: string;
@@ -73,6 +74,10 @@ function main(): void {
     );
     process.exit(2);
   }
+
+  // #1120 Leg 0 — only pipeline-producible posts (a staging recipe) reach here, so legacy bundle-only posts
+  // never hit this gate. Refuse to stage until an approved storyboard exists for this post (design-first).
+  requireApprovedStoryboard(args.slug);
 
   const { renderDir, pipeline, sources } = spec.staging;
   const bundleDir = args.from ?? spec.defaultBundleDir;
