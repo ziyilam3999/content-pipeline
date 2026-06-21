@@ -1,3 +1,9 @@
+## [0.33.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.32.0...v0.33.0) (2026-06-21)
+
+### Features
+
+* **demo:** #1095/#1096 demo-pipeline bakes — fit-beats-to-measured-VO (no pad / no stretch at source) + paid-preview-before-lock gate + stage:<slug> one-shot (#146)
+
 ## [0.32.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.31.0...v0.32.0) (2026-06-21)
 
 ### Features
