@@ -167,8 +167,7 @@ export function tagsTotalChars(tags: string[]): number {
  *   — Links —
  *   GitHub: …
  *   X: …
- *   Threads: {TODO placeholder}
- *   LinkedIn: {TODO placeholder}
+ *   Threads: …          (LinkedIn intentionally omitted — held per operator)
  *
  *   #Shorts #opensource #devtools
  */

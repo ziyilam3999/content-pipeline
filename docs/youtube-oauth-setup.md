@@ -4,7 +4,7 @@ You do this **once, at your desk**. It produces three secrets that the publish p
 from the macOS Keychain (env vars override). The secrets **never go through chat and never get
 committed** — you type them straight into the Keychain.
 
-Target channel: **@ansonlam9488**. Format: **Shorts** (9:16, ≤3 min — YouTube auto-classifies; no flag).
+Target channel: **@AnsonAndAI**. Format: **Shorts** (9:16, ≤3 min — YouTube auto-classifies; no flag).
 
 ---
 
@@ -33,7 +33,7 @@ need. **Advanced features are NOT required.**
 2. User type: **External** → Create.
 3. App name (e.g. `content-pipeline`), your support email, developer email. Save & continue.
 4. **Scopes** → Add → search and add **`.../auth/youtube.upload`** → Update → Save & continue.
-5. **Test users** → add your own Google account (the one that owns @ansonlam9488). Save.
+5. **Test users** → add your own Google account (the one that owns @AnsonAndAI). Save.
 
 ## Step 3 — PUBLISH the app to Production (the 7-day-token fix)
 
@@ -64,7 +64,7 @@ npm run youtube:auth
    nothing is saved to shell history).
 2. It binds a temporary `http://127.0.0.1:<port>` loopback (Desktop OAuth clients accept any loopback
    port — no pre-registration), prints + opens the consent URL.
-3. Sign in as the **@ansonlam9488 owner account**, click through the unverified-app warning
+3. Sign in as the **@AnsonAndAI owner account**, click through the unverified-app warning
    (**Advanced → Go to {app}**), and approve.
 4. It captures the code, exchanges it (with `access_type=offline` + `prompt=consent`, so a
    `refresh_token` is guaranteed), then **offers to store ALL THREE secrets into the Keychain in one
@@ -87,7 +87,7 @@ If you can't run the helper:
    from Step 4.
 3. **Step 1 (left panel):** in the "Input your own scopes" box enter
    `https://www.googleapis.com/auth/youtube.upload` → **Authorize APIs**.
-4. Sign in as the **@ansonlam9488 owner account**, accept (click through the unverified-app warning).
+4. Sign in as the **@AnsonAndAI owner account**, accept (click through the unverified-app warning).
 5. **Step 2:** click **"Exchange authorization code for tokens"**.
 6. Copy the **`refresh_token`** value (a long string starting `1//…`). **This is the secret you store.**
 

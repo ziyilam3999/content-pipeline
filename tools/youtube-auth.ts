@@ -12,7 +12,7 @@
  *      pasted value never hits shell history).
  *   2. Bind an ephemeral 127.0.0.1:<port> loopback server (Desktop clients accept any loopback port).
  *   3. Print + best-effort open the consent URL (scope youtube.upload, access_type=offline,
- *      prompt=consent → guarantees a refresh token). The operator signs in as the @ansonlam9488 owner
+ *      prompt=consent → guarantees a refresh token). The operator signs in as the @AnsonAndAI owner
  *      and clicks through the unverified-app warning.
  *   4. Capture the ?code= on the loopback redirect, close the server, exchange the code for tokens.
  *   5. OFFER to store ALL THREE secrets (YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN)
@@ -64,12 +64,16 @@ function prompt(question: string, hidden = false): Promise<string> {
   });
 }
 
-/** Read a credential env-first → Keychain → interactive prompt (so it never hits shell history). */
-async function readCred(envVar: string, label: string): Promise<string> {
+/**
+ * Read a credential env-first → Keychain → interactive prompt (so it never hits shell history).
+ * `hidden` masks the interactive paste — pass `false` for PUBLIC values (e.g. the OAuth Client ID)
+ * so a paste error is visible; keep it `true` (default) for SECRETS (the Client secret).
+ */
+async function readCred(envVar: string, label: string, hidden = true): Promise<string> {
   try {
     return readSecret(envVar);
   } catch {
-    return prompt(`Paste your ${label} (${envVar}): `, true);
+    return prompt(`Paste your ${label} (${envVar}): `, hidden);
   }
 }
 
@@ -112,9 +116,9 @@ function startLoopbackServer(): Promise<{
           return;
         }
         if (code) {
-          res.writeHead(200, { "content-type": "text/html" });
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
           res.end(
-            "<html><body><h2>Authorized ✓</h2><p>You can close this tab and return to the terminal.</p></body></html>",
+            "<html><head><meta charset=\"utf-8\"></head><body><h2>Authorized ✓</h2><p>You can close this tab and return to the terminal.</p></body></html>",
           );
           resolveCode(code);
           return;
@@ -149,7 +153,11 @@ async function main(): Promise<void> {
       "Desktop OAuth client. See docs/youtube-oauth-setup.md.\n",
   );
 
-  const clientId = await readCred("YOUTUBE_CLIENT_ID", "OAuth Client ID");
+  // The Client ID is PUBLIC — read it UNMASKED and echo it back so a paste error is caught early
+  // (a masked paste once hid a typo → invalid_client dead-end). The Client secret stays MASKED.
+  const clientId = await readCred("YOUTUBE_CLIENT_ID", "OAuth Client ID", false);
+  console.log(`Using Client ID: ${clientId}`);
+  console.log("  ↳ verify this ends with .apps.googleusercontent.com\n");
   const clientSecret = await readCred("YOUTUBE_CLIENT_SECRET", "OAuth Client secret");
 
   const { port, waitForCode, close } = await startLoopbackServer();
@@ -157,7 +165,7 @@ async function main(): Promise<void> {
   const authUrl = buildAuthUrl({ clientId, redirectUri });
 
   console.log(`\nLoopback listening on ${redirectUri}\n`);
-  console.log("Open this URL, sign in as the @ansonlam9488 owner, and click through the");
+  console.log("Open this URL, sign in as the @AnsonAndAI owner, and click through the");
   console.log("'unverified app' warning (Advanced → Go to …), then approve:\n");
   console.log(`  ${authUrl}\n`);
   tryOpenBrowser(authUrl);
