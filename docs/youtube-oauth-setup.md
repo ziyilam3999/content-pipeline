@@ -67,13 +67,16 @@ npm run youtube:auth
 3. Sign in as the **@ansonlam9488 owner account**, click through the unverified-app warning
    (**Advanced → Go to {app}**), and approve.
 4. It captures the code, exchanges it (with `access_type=offline` + `prompt=consent`, so a
-   `refresh_token` is guaranteed), then **offers to store the refresh token into the Keychain** as
-   `YOUTUBE_REFRESH_TOKEN` (or prints it ONCE for you to store manually — never to a file/commit).
+   `refresh_token` is guaranteed), then **offers to store ALL THREE secrets into the Keychain in one
+   go** — `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, and `YOUTUBE_REFRESH_TOKEN` (or, if you decline,
+   it prints the refresh token ONCE for you to store manually — never to a file/commit). It prints only
+   the **service names**, never any secret value.
 
 > If it reports **no refresh_token** (only an access token), Google already consented once. Revoke at
 > <https://myaccount.google.com/permissions> and re-run `npm run youtube:auth`.
 
-If you let the helper store the refresh token, you only need Step 6 for the **Client ID + secret**.
+If you answer **`y`**, all three Keychain entries are created in that single run and you can **skip Step
+6 entirely**. (If you answer `N`, store them yourself via Step 6.)
 
 ### Fallback — OAuth Playground (no code)
 
@@ -92,7 +95,11 @@ If you can't run the helper:
 > <https://myaccount.google.com/permissions> and redo — Google only returns the refresh token on the
 > first consent.
 
-## Step 6 — Store the secrets in the macOS Keychain
+## Step 6 — Store the secrets in the macOS Keychain (only if you didn't use the helper's `y`)
+
+> **Skip this whole step if you answered `y` in Step 5** — the helper already stored all three
+> (`YOUTUBE_CLIENT_ID` + `YOUTUBE_CLIENT_SECRET` + `YOUTUBE_REFRESH_TOKEN`) in that single run. This step
+> is the manual fallback (you ran the OAuth Playground, or answered `N`).
 
 The code reads each secret env-first, then a single Keychain lookup keyed on **the env-var name as the
 service** (`-s`). Run these three commands; each `-w` with **no value prompts you interactively** so the

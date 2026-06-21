@@ -15,12 +15,15 @@
  *      prompt=consent → guarantees a refresh token). The operator signs in as the @ansonlam9488 owner
  *      and clicks through the unverified-app warning.
  *   4. Capture the ?code= on the loopback redirect, close the server, exchange the code for tokens.
- *   5. OFFER to store the refresh token into the macOS Keychain (security … -w, interactive — never
- *      echoed) OR print it ONCE for manual storage.
+ *   5. OFFER to store ALL THREE secrets (YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN)
+ *      into the macOS Keychain in one go (security add-generic-password -U …) so the upload adapter finds
+ *      a COMPLETE set after a single login — OR print the refresh token ONCE for manual storage.
  *
- * SECRET DISCIPLINE: the refresh token is never written to a file, never committed, and never logged
- * except the single deliberate one-time print the operator explicitly opts into. The client secret is
- * read at runtime only.
+ * SECRET DISCIPLINE: no secret is ever written to a file, committed, or logged — only the SERVICE NAMES
+ * are printed on store. The one exception is the single deliberate one-time refresh-token print the
+ * operator explicitly opts into (the [N] branch). Each value passed to `security` rides the `-w` argv
+ * slot (no shell → no history; briefly visible to a local `ps` during the sub-second call — accepted for
+ * a one-time local operator run). Client id/secret are read at runtime only.
  */
 
 import { execFileSync } from "child_process";
@@ -184,24 +187,54 @@ async function main(): Promise<void> {
 
   console.log("\n✓ Refresh token minted. It is long-lived (app is in production).\n");
   const store = (
-    await prompt("Store it into the macOS Keychain now as YOUTUBE_REFRESH_TOKEN? [y/N]: ")
+    await prompt(
+      "Store all three secrets (CLIENT_ID + CLIENT_SECRET + REFRESH_TOKEN) into the macOS Keychain now? [y/N]: ",
+    )
   )
     .toLowerCase()
     .startsWith("y");
 
   if (store) {
-    // Interactive `-w` (no value on the command line) so the secret is never echoed / never in history.
-    // We pass it via stdin to `security` so it also stays out of the process arg list.
+    // Store all THREE secrets in one run so the upload adapter (which reads CLIENT_ID, CLIENT_SECRET,
+    // and REFRESH_TOKEN env-first→Keychain) finds a complete set after a single login.
+    //
+    // SECRET-PASSING NOTE: each value is passed to `security` as an execFileSync arg (the `-w <value>`
+    // argv slot), NOT via stdin. Because execFileSync runs `security` directly (NO shell), the value
+    // never touches shell history; it is briefly visible to a local `ps` during the sub-second call —
+    // an accepted tradeoff for a one-time local operator run. `-U` updates in place (idempotent if a
+    // secret was already stored), so re-running with 'y' is safe. Values are NEVER printed — only names.
+    const user = process.env.USER ?? "";
     try {
+      // YOUTUBE_CLIENT_ID
       execFileSync(
         "security",
-        ["add-generic-password", "-U", "-a", process.env.USER ?? "", "-s", "YOUTUBE_REFRESH_TOKEN", "-w", tokens.refresh_token],
+        ["add-generic-password", "-U", "-a", user, "-s", "YOUTUBE_CLIENT_ID", "-w", clientId],
         { stdio: ["ignore", "ignore", "inherit"] },
       );
-      console.log("✓ Stored in Keychain as service 'YOUTUBE_REFRESH_TOKEN'. Nothing was printed.");
+      console.log("✓ Stored in Keychain as service 'YOUTUBE_CLIENT_ID'. (value not printed)");
+      // YOUTUBE_CLIENT_SECRET
+      execFileSync(
+        "security",
+        ["add-generic-password", "-U", "-a", user, "-s", "YOUTUBE_CLIENT_SECRET", "-w", clientSecret],
+        { stdio: ["ignore", "ignore", "inherit"] },
+      );
+      console.log("✓ Stored in Keychain as service 'YOUTUBE_CLIENT_SECRET'. (value not printed)");
+      // YOUTUBE_REFRESH_TOKEN
+      execFileSync(
+        "security",
+        ["add-generic-password", "-U", "-a", user, "-s", "YOUTUBE_REFRESH_TOKEN", "-w", tokens.refresh_token],
+        { stdio: ["ignore", "ignore", "inherit"] },
+      );
+      console.log("✓ Stored in Keychain as service 'YOUTUBE_REFRESH_TOKEN'. (value not printed)");
+      console.log("\n✓ All three Keychain entries are in place. Nothing was printed.");
     } catch (e) {
       console.error("Keychain store failed:", e instanceof Error ? e.message : String(e));
-      console.error("Store it manually: security add-generic-password -U -a \"$USER\" -s YOUTUBE_REFRESH_TOKEN -w");
+      console.error(
+        "Store the rest manually (each -w with no value prompts you):\n" +
+          "  security add-generic-password -U -a \"$USER\" -s YOUTUBE_CLIENT_ID     -w\n" +
+          "  security add-generic-password -U -a \"$USER\" -s YOUTUBE_CLIENT_SECRET -w\n" +
+          "  security add-generic-password -U -a \"$USER\" -s YOUTUBE_REFRESH_TOKEN -w",
+      );
       process.exit(1);
     }
   } else {
@@ -211,11 +244,21 @@ async function main(): Promise<void> {
     );
     console.log(tokens.refresh_token);
     console.log(
-      "\nStore with:  security add-generic-password -U -a \"$USER\" -s YOUTUBE_REFRESH_TOKEN -w",
+      "\nStore the refresh token with (then clear scrollback):\n" +
+        "  security add-generic-password -U -a \"$USER\" -s YOUTUBE_REFRESH_TOKEN -w",
+    );
+    console.log(
+      "\nYou ALSO still need the Client ID + secret in the Keychain for uploads — either re-run this\n" +
+        "helper and answer 'y', or store them manually:\n" +
+        "  security add-generic-password -U -a \"$USER\" -s YOUTUBE_CLIENT_ID     -w\n" +
+        "  security add-generic-password -U -a \"$USER\" -s YOUTUBE_CLIENT_SECRET -w",
     );
   }
 
-  console.log("\nDone. Confirm all three Keychain entries exist, then tell the orchestrator 'OAuth done, go'.");
+  console.log(
+    "\nDone. A single 'y' run stores all three (CLIENT_ID + CLIENT_SECRET + REFRESH_TOKEN); confirm\n" +
+      "they exist, then tell the orchestrator 'OAuth done, go'.",
+  );
 }
 
 main().catch((err) => {
