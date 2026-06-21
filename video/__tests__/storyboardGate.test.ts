@@ -79,6 +79,27 @@ describe("#1120 requireApprovedStoryboard — fail-closed both-ends", () => {
     expect(() => requireApprovedStoryboard(slug, { storyboardRoot })).not.toThrow();
   });
 
+  // ── Line-ending insensitivity (#1120 — the windows-CI fix) ─────────────────
+  // A marker computed on the LF doc must STILL pass when the doc is checked out with CRLF endings
+  // (Windows git autocrlf). Without the EOL-normalized hash these would be two different shas → the
+  // gate would falsely BLOCK its own approved doc on Windows. Proves CRLF and LF hash identically.
+  test("approve on LF, doc later checked out as CRLF → STILL PASSES (windows parity)", () => {
+    writeDoc(DOC_A); // LF content
+    recordStoryboardApproval(slug, { storyboardRoot }); // marker pins the LF-normalized sha
+    expect(() => requireApprovedStoryboard(slug, { storyboardRoot })).not.toThrow();
+    // simulate a Windows CRLF checkout of the SAME logical doc (every \n → \r\n)
+    writeDoc(DOC_A.replace(/\n/g, "\r\n"));
+    expect(() => requireApprovedStoryboard(slug, { storyboardRoot })).not.toThrow();
+  });
+
+  test("sha256Doc is byte-identical for LF and CRLF representations of the same doc", () => {
+    writeDoc(DOC_A);
+    const lfSha = sha256Doc(slug, { storyboardRoot });
+    writeDoc(DOC_A.replace(/\n/g, "\r\n"));
+    const crlfSha = sha256Doc(slug, { storyboardRoot });
+    expect(crlfSha).toBe(lfSha);
+  });
+
   // ── A hand-tampered marker for a DIFFERENT sha still BLOCKS ─────────────────
   test("marker pins a wrong/forged docSha → still BLOCKS", () => {
     writeDoc(DOC_A);

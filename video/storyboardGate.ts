@@ -58,13 +58,30 @@ export function approvalMarkerPath(slug: string, opts?: StoryboardOpts): string 
   return path.join(storyboardRoot(opts), `${slug}.approved.json`);
 }
 
-/** sha256 of the storyboard doc's exact bytes as lower-case hex. Throws if the doc is missing. */
+/**
+ * Normalize a text doc's line endings BEFORE hashing so the sha is line-ending-INSENSITIVE.
+ * git may check the storyboard out with CRLF on Windows and LF on ubuntu/macOS; without this the
+ * SAME doc would hash to two different shas across platforms → the committed (LF-computed) marker
+ * would read STALE on a Windows CRLF checkout → the gate would falsely BLOCK on its own approved doc.
+ * Collapse `\r\n` → `\n` and any lone `\r` → `` so CRLF and LF checkouts produce an IDENTICAL sha.
+ */
+export function normalizeDocBytes(raw: string): string {
+  return raw.replace(/\r\n/g, "\n").replace(/\r/g, "");
+}
+
+/**
+ * sha256 of the storyboard doc, line-ending-NORMALIZED, as lower-case hex. Throws if the doc is missing.
+ * Reads as utf8 + normalizes EOLs (see `normalizeDocBytes`) so CRLF/LF checkouts hash identically — the
+ * single doc-sha call site, used both to write the approval marker and to validate it, so they can never
+ * diverge on byte representation.
+ */
 export function sha256Doc(slug: string, opts?: StoryboardOpts): string {
   const p = storyboardDocPath(slug, opts);
   if (!fs.existsSync(p)) {
     throw new Error(`storyboardGate: storyboard doc does not exist: ${p}`);
   }
-  return crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
+  const normalized = normalizeDocBytes(fs.readFileSync(p, "utf8"));
+  return crypto.createHash("sha256").update(normalized).digest("hex");
 }
 
 /** The on-disk approval record (the operator sign-off). */
