@@ -1,3 +1,9 @@
+## [0.32.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.31.0...v0.32.0) (2026-06-21)
+
+### Features
+
+* **video:** dead-air silence-gap gate + agent-kanban demo re-cut — dead-air trimmed to the real paid Adam VO, L/R board crop fixed (2 full columns), 4 thin X cards combined into 1 ([#144](https://github.com/ziyilam3999/content-pipeline/pull/144))
+
 ## [0.31.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.30.0...v0.31.0) (2026-06-20)
 
 ### Features
