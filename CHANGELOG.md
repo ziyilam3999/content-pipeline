@@ -1,3 +1,9 @@
+## [0.34.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.33.0...v0.34.0) (2026-06-21)
+
+### Features
+
+* **pipeline:** #1120 Leg-0 storyboard-design gate — require an approved storyboard before capture/voice/stage (sha-pinned sign-off marker, line-ending-normalized, fail-closed) + template + approve CLI (#148)
+
 ## [0.33.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.32.0...v0.33.0) (2026-06-21)
 
 ### Features
