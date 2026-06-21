@@ -163,16 +163,24 @@ export interface KanbanBeat {
 // #1063 re-cut (dead-air fix): the two DYNAMIC clip beats were over-budgeted to the ANIMATION length
 // (beat5 picker 14s, beat7 card-move 16s) but Adam SPEAKS only ~8.3s / ~11.9s (measured by silencedetect
 // on the shipped cut) → 5.76s + 4.1s of padded TRAILING SILENCE ("the narrator paused too long at 0:36").
-// Re-locked to ≈Adam's measured spoken length + a ≤1.5s breath: beat5 9s, beat7 13s. The picker switch +
-// card cross still play clearly in 9s / 13s. Transition cut 3s→1s (the 3s silent dark→cream beat read as a
-// mid-video dead gap with beat3's tail). New spine 79s + 1s transition = 80s (was 90s) — ~13.6s dead air gone.
+// Re-locked to ≈Adam's measured spoken length + a ≤1.5s breath. Transition cut 3s→1s (the 3s silent
+// dark→cream beat read as a mid-video dead gap with beat3's tail).
+// #1091 PAID re-trim (silence gate on the REAL Adam render, not the free `say` proxy): rendering the actual
+// paid Adam VO + running the dead-air gate exposed 3 beats whose silent TAIL exceeded 1.5s for Adam's pace
+// (the free `say` voice was slower and masked them) — beat2 chat (Adam 5.48s in 7s → 1.57s tail), beat3
+// terminal (9.03s + the 1s transition → 2.03s combined gap), beat7 card-move (11.0s in 13s → 2.03s tail).
+// Re-locked beat2 7→6, beat3 10→8, beat7 13→12 (≈Adam's measured length + ≤1.0s breath) → 76s spine (was 80s).
+// beat3 went to 8 (not 9): the 1s SILENT transition ALWAYS follows beat 3, so beat3-tail + 1s-transition COMBINE
+// into one gap — at beat3=9 that was 0.7s+1.0s=1.78s (still >1.5). beat3=8 makes Adam FILL the beat (tail≈0) so
+// the only remaining silence there is the deliberate 1.0s transition. Lesson: render the PAID voice + run the
+// gate; the free `say` proxy's segment lengths are NOT representative, and a tail adjacent to a silent beat adds.
 export const KANBAN_VO_SEG_SEC: Readonly<Record<number, number>> = {
   1: 7,
-  2: 7,
-  3: 10,
+  2: 6,
+  3: 8,
   5: 9,
   6: 6,
-  7: 13,
+  7: 12,
   8: 15,
   9: 8,
   10: 4,
@@ -183,7 +191,7 @@ export const KANBAN_TRANSITION_SEC = 1;
 // ── The 10-beat storyboard (operator-approved 2026-06-20, ~104s) ────────────────────────────────────
 // 1 hook · 2 chat · 3 tool(terminal) · 4 transition(silent) · 5 board:session-picker(dynamic) ·
 // 6 board:idle/active badge(still) · 7 board:task-moving(dynamic) · 8 board:deep drawer(still) · 9 payoff · 10 cta.
-// Terminal = beat 3 = 13s ≈ 12.5% (≤30%). Each narrated beat's clipSec = KANBAN_VO_SEG_SEC[n].
+// Terminal = beat 3 = 8s ≈ 10.5% (≤30%). Each narrated beat's clipSec = KANBAN_VO_SEG_SEC[n].
 
 export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   // 1 — HOOK.
@@ -195,13 +203,13 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   },
   // 2 — CHAT. The HUMAN's interface: plain English to Claude Code; the agent picks up the task.
   {
-    n: 2, kind: "chat", stepLabel: "you → Claude Code · plain English", clipSec: 7, commands: [],
+    n: 2, kind: "chat", stepLabel: "you → Claude Code · plain English", clipSec: 6, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_CHAT,
     chatRequest: "Plan and ship the board update — and show me every step.",
   },
   // 3 — TOOL. The agent's real pipeline (planner → plan-review → executor → exec-review) on the dark tool world.
   {
-    n: 3, kind: "tool", stepLabel: "the agent's interface, not yours", clipSec: 10,
+    n: 3, kind: "tool", stepLabel: "the agent's interface, not yours", clipSec: 8,
     commands: ["claude  plan and ship the board update", "show the run on agent-kanban"],
     isTerminal: true, isHeroOutput: false, backgroundColor: BG_TOOL,
   },
@@ -242,7 +250,7 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   // two-column (To Do + In Progress) capture so the card visibly crosses while the board fills the frame. The
   // VO narrates the full to-do→done journey, so one clear cross-column move is the right single illustration.
   {
-    n: 7, kind: "output", stepLabel: "lift · land · then working, live", clipSec: 13, commands: [],
+    n: 7, kind: "output", stepLabel: "lift · land · then working, live", clipSec: 12, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     clipSource: "out/capture/kanban/clip-card-move.mp4",
     // Push in on the landed WORKING card (top of In Progress) so the tiny "● WORKING" breathing
@@ -299,7 +307,7 @@ export const KANBAN_VO_LINES: ReadonlyArray<string> = [
 
 // ── The DemoVideoSpec instance (fed to assertDemoCategoryRecipe — the build's test oracle) ─────────--
 
-const RUNTIME_BAND = { min: 74, max: 84 } as const; // #1063 re-cut: dead-air trimmed (beats 5/7 + transition) → ~80s spine (was ~90s)
+const RUNTIME_BAND = { min: 74, max: 84 } as const; // #1063 re-cut: dead-air trimmed (beats 5/7 + transition) → ~76s spine (was ~90s; #1091 paid-Adam re-trim 80→76)
 const MAX_TERMINAL_FRACTION = 0.3;
 
 export const KANBAN_VO_BUNDLE = "out/review/kanban/kanban-vo-sync.json";

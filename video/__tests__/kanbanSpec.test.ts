@@ -68,7 +68,7 @@ describe("#1046 kanban demo-category recipe (R1–R13)", () => {
 
   test("runtime is in the 74–84s band (#1063 dead-air re-cut) and terminal share is ≤30%", () => {
     const total = kanbanSpec.beats.reduce((s, b) => s + b.durationSec, 0);
-    expect(total).toBe(80);
+    expect(total).toBe(76); // #1091 paid-Adam re-trim: beats 2/3/7 shortened to Adam's measured length (80→76)
     expect(total).toBeGreaterThanOrEqual(74);
     expect(total).toBeLessThanOrEqual(84);
     const terminal = kanbanSpec.beats.filter((b) => b.isTerminal).reduce((s, b) => s + b.durationSec, 0);
@@ -80,7 +80,7 @@ describe("#1046 kanban demo-category recipe (R1–R13)", () => {
     expect(c.present).toBe(true);
     expect(c.syncBoundToRealAudio).toBe(true);
     expect(c.audio.real).toBe(true);
-    expect(c.audio.durationSec).toBe(80);
+    expect(c.audio.durationSec).toBe(76);
     expect(Math.abs(c.lastCueEndSec - c.audio.durationSec)).toBeLessThanOrEqual(0.5);
   });
 });
@@ -143,10 +143,10 @@ describe("#1046 kanban spine↔VO sync SSOT", () => {
     }
   });
 
-  test("KANBAN_RUNTIME_SEC == the spoken total + the transition silence (80s, #1063 re-cut)", () => {
+  test("KANBAN_RUNTIME_SEC == the spoken total + the transition silence (76s, #1063 re-cut + #1091 paid-Adam re-trim)", () => {
     const spoken = Object.values(KANBAN_VO_SEG_SEC).reduce((s, v) => s + v, 0);
     expect(KANBAN_RUNTIME_SEC).toBe(spoken + KANBAN_TRANSITION_SEC);
-    expect(KANBAN_RUNTIME_SEC).toBe(80);
+    expect(KANBAN_RUNTIME_SEC).toBe(76); // #1091 paid-Adam re-trim (was 80)
   });
 });
 
