@@ -63,6 +63,7 @@
     "capture:kanban-assets": "tsx tools/captureKanbanAssets.ts",
     "capture:kanban": "tsx tools/captureKanban.ts",
     "voice:kanban": "tsx tools/voiceKanban.ts",
+    "storyboard:approve": "tsx tools/storyboard-approve.ts",
     "stage": "tsx tools/stagePost.ts",
     "stage:agent-kanban-demo": "tsx tools/stagePost.ts agent-kanban-demo",
     "publish:freeze-manifest": "tsx tools/freeze-publish-manifest.ts",
