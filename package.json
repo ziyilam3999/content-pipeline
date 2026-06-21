@@ -63,6 +63,8 @@
     "capture:kanban-assets": "tsx tools/captureKanbanAssets.ts",
     "capture:kanban": "tsx tools/captureKanban.ts",
     "voice:kanban": "tsx tools/voiceKanban.ts",
+    "stage": "tsx tools/stagePost.ts",
+    "stage:agent-kanban-demo": "tsx tools/stagePost.ts agent-kanban-demo",
     "publish:freeze-manifest": "tsx tools/freeze-publish-manifest.ts",
     "archive:backfill": "tsx tools/backfill-posts-archive.ts",
     "e2e:lfah": "tsx smoke/e2e-lfah.ts"

@@ -3,7 +3,9 @@
  * narrated segment plays at the start of its beat (silence pad for the rest), or is time-compressed
  * if it is longer than its beat; caption char-times are shifted/scaled onto the fitted timeline.
  */
-import { planVoFit, BeatSlot } from "../voiceFit";
+import { planVoFit, fitBeatsToVo, MAX_BREATH_SEC, BeatSlot, BeatToFit } from "../voiceFit";
+
+const MAX_BREATH_SEC_LIMIT = MAX_BREATH_SEC;
 
 describe("planVoFit", () => {
   test("pure PAD: 2 narrated beats + a transition between them", () => {
@@ -110,5 +112,100 @@ describe("planVoFit maxStretch (keep-length: slow speech to fill, #1046)", () =>
     const p = planVoFit({ ...base, maxStretch: 5 });
     expect(p.segments[0].playSec).toBe(4); // capped by the 4s beat
     expect(p.newCharEndTimesSec[2]).toBeCloseTo(4.0, 2); // last char == duration
+  });
+});
+
+describe("fitBeatsToVo (#1095 — derive the beat spine FROM the measured VO)", () => {
+  // A measured-VO fixture standing in for the cheap paid audio-only preview's per-segment spoken
+  // lengths (real Adam pace). The kanban 10-beat shape: narrated 1/2/3/5/6/7/8/9/10, silent
+  // transition beat 4. The three DYNAMIC clip beats (5/7/8) carry an animation minimum.
+  const beats: BeatToFit[] = [
+    { n: 1, narrated: true, transition: false },
+    { n: 2, narrated: true, transition: false },
+    { n: 3, narrated: true, transition: false },
+    { n: 4, narrated: false, transition: true },
+    { n: 5, narrated: true, transition: false, animMinSec: 9 },
+    { n: 6, narrated: true, transition: false },
+    { n: 7, narrated: true, transition: false, animMinSec: 12 },
+    { n: 8, narrated: true, transition: false, animMinSec: 15 },
+    { n: 9, narrated: true, transition: false },
+    { n: 10, narrated: true, transition: false },
+  ];
+  const measuredSpokenSec: Record<number, number> = {
+    1: 6.3, 2: 5.5, 3: 7.9, 5: 8.3, 6: 5.4, 7: 11.0, 8: 14.2, 9: 7.4, 10: 3.6,
+  };
+  const breathSec = 0.7;
+  const transitionSec = 1;
+
+  it("BOTH-ENDS / pads-removed: every narrated beat's trailing silence ≤ the breath, so the fit leaves NO dead-air (worst pad < the 1.5s dead-air gate)", () => {
+    const fit = fitBeatsToVo({ beats, measuredSpokenSec, breathSec, transitionSec });
+    // No narrated beat pads beyond the breath ceiling (the source of the #1063 0:36 dead-air was a
+    // hand-guessed clipSec padding the shortfall — the fit derives the length from the voice instead).
+    expect(fit.maxPadSec).toBeLessThanOrEqual(MAX_BREATH_SEC_LIMIT);
+    expect(fit.maxPadSec).toBeLessThan(1.5); // strictly under the dead-air gate threshold
+    for (const b of fit.beats) {
+      if (b.n === 4) continue; // the silent transition is an intentional 1s beat
+      expect(b.padSec).toBeLessThanOrEqual(MAX_BREATH_SEC_LIMIT + 1e-9);
+    }
+  });
+
+  it("BOTH-ENDS / no-stretch: clipSec ≥ measured for EVERY beat, so the voice never has to be time-compressed (fill ratio ≤ 1.0)", () => {
+    const fit = fitBeatsToVo({ beats, measuredSpokenSec, breathSec, transitionSec });
+    for (const b of fit.beats) {
+      expect(b.clipSec).toBeGreaterThanOrEqual(b.measuredSec); // never shorter than the words → no compression
+      const fillRatio = b.measuredSec === 0 ? 0 : b.measuredSec / b.clipSec;
+      expect(fillRatio).toBeLessThanOrEqual(1.0);
+    }
+  });
+
+  it("exact: an UN-clamped narrated beat's clipSec == measured + breath (no hand constants)", () => {
+    const fit = fitBeatsToVo({ beats, measuredSpokenSec, breathSec, transitionSec });
+    const byN = Object.fromEntries(fit.beats.map((b) => [b.n, b]));
+    expect(byN[1].clipSec).toBe(7.0); // 6.3 + 0.7
+    expect(byN[2].clipSec).toBe(6.2); // 5.5 + 0.7
+    expect(byN[6].clipSec).toBe(6.1); // 5.4 + 0.7
+    expect(byN[1].clampedToAnimMin).toBe(false);
+  });
+
+  it("clamp: a dynamic beat whose animation outlasts the words is clamped UP to the animation minimum", () => {
+    const fit = fitBeatsToVo({ beats, measuredSpokenSec, breathSec, transitionSec });
+    const byN = Object.fromEntries(fit.beats.map((b) => [b.n, b]));
+    // beat 8: 14.2 + 0.7 = 14.9 < animMin 15 → clamped to 15.
+    expect(byN[8].clipSec).toBe(15);
+    expect(byN[8].clampedToAnimMin).toBe(true);
+    // beat 7: 11.0 + 0.7 = 11.7 < animMin 12 → clamped to 12.
+    expect(byN[7].clipSec).toBe(12);
+    expect(byN[7].clampedToAnimMin).toBe(true);
+    // beat 5: 8.3 + 0.7 = 9.0 == animMin 9 → NOT clamped (the breath already reaches the floor).
+    expect(byN[5].clipSec).toBe(9.0);
+    expect(byN[5].clampedToAnimMin).toBe(false);
+  });
+
+  it("the silent transition beat is its fixed length; total sums every beat", () => {
+    const fit = fitBeatsToVo({ beats, measuredSpokenSec, breathSec, transitionSec });
+    const byN = Object.fromEntries(fit.beats.map((b) => [b.n, b]));
+    expect(byN[4].clipSec).toBe(1); // = transitionSec
+    expect(byN[4].measuredSec).toBe(0);
+    // 7.0+6.2+8.6+1+9.0+6.1+12+15+8.1+4.3 = 77.3
+    expect(fit.totalSec).toBe(77.3);
+  });
+
+  it("BOTH-ENDS contrast: the OLD hand-guessed clipSec pads beyond the gate; the fit-derived clipSec does NOT", () => {
+    const fit = fitBeatsToVo({ beats, measuredSpokenSec, breathSec, transitionSec });
+    const beat7 = fit.beats.find((b) => b.n === 7)!;
+    // The #1063 defect: beat 7 was hand-budgeted to the 16s ANIMATION length while Adam spoke ~11.0s
+    // → 5.0s of padded trailing silence (FAILS the 1.5s dead-air gate).
+    const oldHandClipSec = 16;
+    const oldHandPad = oldHandClipSec - measuredSpokenSec[7];
+    expect(oldHandPad).toBeGreaterThan(1.5); // old spine: dead-air
+    // The fit-derived clipSec for the same measured length leaves ≤1.0s (PASSES the gate).
+    expect(beat7.padSec).toBeLessThanOrEqual(1.5);
+  });
+
+  it("refuses a narrated beat with no measured length (forces a real measure, not a guess)", () => {
+    const { 5: _omit, ...partial } = measuredSpokenSec;
+    expect(() => fitBeatsToVo({ beats, measuredSpokenSec: partial, breathSec, transitionSec })).toThrow(
+      /missing\/invalid measured spoken length for narrated beat n=5/,
+    );
   });
 });

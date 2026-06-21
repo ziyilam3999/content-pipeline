@@ -38,9 +38,10 @@ import { buildDemoCaptionCues, assertCaptionsTrackRealVoice } from "../video/dem
 import { assertAudioMatchesSync, audioDurationSec, assertAudibleUnlessSilent } from "../video/audioDuration";
 import { FABLE_ASPECTS, CAP_BAND_H, assertNoCaptionMediaOverlap, assertFableBeatsSafeAndFilled } from "../video/fableLayout";
 import { assertDemoCategoryRecipe } from "../video/demoCategoryRecipe";
-import { assertNoLongSilenceGap } from "../video/silenceGap";
+import { assertNoLongSilenceGap, detectSilenceGaps, worstInternalGap } from "../video/silenceGap";
 import { type VoiceCaller, type VoiceClip, type SpeechRequest } from "../audio/voiceover";
 import { planVoFit, type BeatSlot, type VoFitPlan } from "../video/voiceFit";
+import { assertPreviewApprovedForLock, readPreviewRecord, writePreviewRecord, type VoPreviewRecord } from "../video/voicePreviewGate";
 
 // ── Geometry + binaries ────────────────────────────────────────────────────
 const FPS = 30;
@@ -54,6 +55,10 @@ const ASPECT_FILE: Record<string, string> = {
 };
 
 const PAID = process.env.KANBAN_VOICE_PAID === "1";
+// #1096a — KANBAN_VOICE_PREVIEW=1 runs the CHEAP paid AUDIO-ONLY preview: synth the real voice, dead-air
+// gate it + cache the measured per-segment lengths, then STOP before the expensive video render. The
+// FULL paid render (PAID && !PREVIEW) is REFUSED until such a preview has run + passed (assertPreviewApprovedForLock).
+const PREVIEW = process.env.KANBAN_VOICE_PREVIEW === "1";
 const HOME = os.homedir();
 const SPOKEN_SEC = KANBAN_RUNTIME_SEC - KANBAN_TRANSITION_SEC; // raw spoken total (no transition silence)
 
@@ -362,7 +367,15 @@ async function main(): Promise<void> {
   console.log(`  silent spine: ${rel(spine)} (${spineDur.toFixed(2)}s)`);
 
   const script = kanbanNarrationScript();
-  console.log(scrub(`\n=== #1046 kanban VOICED — ${KANBAN_NARRATION.length} narrated beats, ${script.length} script chars, ${PAID ? "PAID (real Adam synth)" : sayAvailable() ? "FREE AUDIBLE (macOS say, NO paid call)" : "FREE SILENT (alignment-only fallback)"} ===\n`));
+  console.log(scrub(`\n=== #1046 kanban VOICED — ${KANBAN_NARRATION.length} narrated beats, ${script.length} script chars, ${PREVIEW ? "PAID PREVIEW (audio-only, #1096a)" : PAID ? "PAID (real Adam synth)" : sayAvailable() ? "FREE AUDIBLE (macOS say, NO paid call)" : "FREE SILENT (alignment-only fallback)"} ===\n`));
+
+  // #1096a — paid-preview-before-lock GATE. A FULL paid render is REFUSED until a cheap paid audio-only
+  // preview ran + passed the dead-air gate for THIS script (the free `say` proxy pace ≠ paid Adam pace).
+  const previewPath = path.join(reviewDir, "kanban-vo-preview.json");
+  if (PAID && !PREVIEW) {
+    assertPreviewApprovedForLock(readPreviewRecord(previewPath), script);
+    console.log(`  #1096a paid-preview gate: PASS — an approved audio-only preview exists for this script (${rel(previewPath)}).`);
+  }
 
   // 1 — obtain the VO (PAID / REUSE / MOCK), mirroring voiceForge.
   const existingMp3 = path.join(audioDir, "kanban-vo.mp3");
@@ -466,6 +479,39 @@ async function main(): Promise<void> {
   const audioDur = audioDurationSec(syncedAudioPath);
   console.log(`  per-segment end-times (s): ${sceneEndTimesSec.map((s) => s.toFixed(2)).join(", ")}`);
   console.log(`  assertAudioMatchesSync: PASS (synced audio=${audioDur?.toFixed(2) ?? "?"}s ≈ alignment end=${sceneEndTimesSec[sceneEndTimesSec.length - 1].toFixed(2)}s)`);
+
+  // #1096a/#1095 — CHEAP PAID AUDIO-ONLY PREVIEW. Dead-air-check the REAL voice + cache the measured
+  // per-segment spoken lengths (the fitBeatsToVo input), then STOP before the expensive video render.
+  // This is the operator-gated paid MEASURE; running it unlocks the full paid render (the lock gate above).
+  if (PREVIEW) {
+    const gaps = detectSilenceGaps(syncedAudioPath, { durationSec: syncedDurationSec });
+    const worst = worstInternalGap(gaps, { durationSec: syncedDurationSec });
+    const worstGapSec = worst ? worst.durationSec : 0;
+    const deadAirPass = worstGapSec <= 1.5;
+    const measuredSpokenSec: Record<number, number> = {};
+    let prevEnd = 0;
+    for (let i = 0; i < KANBAN_NARRATION.length; i++) {
+      measuredSpokenSec[KANBAN_NARRATION[i].beat] = Number((rawSceneEndTimesSec[i] - prevEnd).toFixed(3));
+      prevEnd = rawSceneEndTimesSec[i];
+    }
+    const rec: VoPreviewRecord = {
+      script,
+      deadAirPass,
+      worstGapSec: Number(worstGapSec.toFixed(3)),
+      measuredSpokenSec,
+      paid: PAID,
+      createdAt: new Date().toISOString(),
+    };
+    writePreviewRecord(previewPath, rec);
+    console.log(`  #1096a/#1095 PAID audio-only PREVIEW: dead-air ${deadAirPass ? "PASS" : "FAIL"} (worst internal gap ${worstGapSec.toFixed(2)}s)`);
+    console.log(`  measured spoken (s): ${KANBAN_NARRATION.map((s) => `b${s.beat}=${measuredSpokenSec[s.beat].toFixed(2)}`).join(", ")} → cached ${rel(previewPath)} (fitBeatsToVo input)`);
+    fs.rmSync(work, { recursive: true, force: true });
+    if (!deadAirPass) {
+      throw new Error(`#1096a preview: dead-air gate FAILED (worst gap ${worstGapSec.toFixed(2)}s > 1.5s). Fit beats to the measured VO (fitBeatsToVo) + re-lock the spine, then re-preview before the full paid render.`);
+    }
+    console.log(`  PREVIEW done — re-run WITHOUT KANBAN_VOICE_PREVIEW (full paid render now unblocked) to produce the cut.`);
+    return;
+  }
 
   // 3 — synced captions (real-voice timing on the SYNCED timeline), rendered as transparent alpha PNGs.
   const cues = buildDemoCaptionCues(script, { durationSec: syncedDurationSec, charEndTimesSec: syncedCharEndTimesSec });

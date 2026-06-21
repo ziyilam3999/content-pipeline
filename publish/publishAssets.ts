@@ -33,6 +33,22 @@ export interface PostAssetRef {
   basename: string;
 }
 
+/**
+ * #1096b — the one-shot `stage:<slug>` recipe for a post: the npm scripts that PRODUCE the renders, the
+ * dir those renders land in, and the map from each published basename to its rendered filename (within
+ * that dir). `tools/stagePost.ts` reads this to run capture→render→stage in ONE command. OPTIONAL — a
+ * post without a staging recipe is simply not one-shot-stageable yet (the stage tool errors clearly).
+ */
+export interface PostStagingSpec {
+  /** Repo-relative dir the renders land in (e.g. "out/review/kanban"). */
+  renderDir: string;
+  /** npm scripts to run (in order) to produce the renders. Any paid step is gated INSIDE its script
+   *  (e.g. voice:kanban's full paid render is gated by the #1096a preview gate) — stage adds no paid call. */
+  pipeline: string[];
+  /** published basename -> rendered file path RELATIVE TO renderDir (the copy+rename source). */
+  sources: Record<string, string>;
+}
+
 export interface PostAssetSpec {
   slug: PostSlug;
   /**
@@ -43,6 +59,8 @@ export interface PostAssetSpec {
    */
   defaultBundleDir: string;
   assets: PostAssetRef[];
+  /** #1096b — the one-shot capture→render→stage recipe (optional; see PostStagingSpec). */
+  staging?: PostStagingSpec;
 }
 
 const LAUNCH_ASSETS_ROOT = path.join(os.homedir(), "coding_projects", "_launch-assets");
@@ -168,6 +186,18 @@ export const POST_ASSETS: Record<PostSlug, PostAssetSpec> = {
       { role: "card", basename: "card-kanban-A.png" }, // tweet 2 — ONE combined card (3 feature points + CTA)
       { role: "card", basename: "card-kanban-overart-4x5.png" }, // Threads infographic (4 points + CTA url)
     ],
+    // #1096b — one-shot stage recipe. capture:kanban (silent spine) → voice:kanban (the voiced hero;
+    // its full PAID render is gated by the #1096a preview gate) → smoke:launch-card-kanban-demo (the two
+    // cards). Then stage copies each render into the durable bundle under its published basename + freezes.
+    staging: {
+      renderDir: "out/review/kanban",
+      pipeline: ["capture:kanban", "voice:kanban", "smoke:launch-card-kanban-demo"],
+      sources: {
+        "kanban-demo-9x16.mp4": "kanban-voiced-9x16.mp4",
+        "card-kanban-A.png": "image/card-kanban-A.png",
+        "card-kanban-overart-4x5.png": "image/card-kanban-overart-4x5.png",
+      },
+    },
   },
 };
 

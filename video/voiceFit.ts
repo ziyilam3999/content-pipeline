@@ -44,6 +44,10 @@ function round4(n: number): number {
   return Math.round(n * 1e4) / 1e4;
 }
 
+function round2(n: number): number {
+  return Math.round(n * 1e2) / 1e2;
+}
+
 export function planVoFit(params: {
   rawSegEndsSec: number[];
   charEndTimesSec: number[];
@@ -127,4 +131,95 @@ export function planVoFit(params: {
   }
 
   return { segments, transitions, newCharEndTimesSec, totalSec: round4(cum) };
+}
+
+// ── #1095 fit-beats-to-VO — derive the BEAT spine FROM the measured voiceover ──────────────────────
+// The SOURCE fix for dead-air + heavy-stretch. `planVoFit` (above) fits a short read onto a FIXED beat
+// spine — it pads the shortfall, which is exactly the trailing silence the operator caught at 0:36 when
+// a hand-guessed clipSec over-budgets the voice. This function inverts the dependency: given each beat's
+// MEASURED spoken length (from a cheap paid audio-only preview, #1096a), it BUILDS the clipSec spine so
+// each narrated beat is exactly its spoken length + a small breath (≤1.0s) — no padding to a hand
+// constant (no dead-air) — clamped UP to a dynamic beat's animation minimum where the visual motion is
+// genuinely longer than the words. Because clipSec ≥ measured for every beat the voice never has to be
+// time-compressed (no stretch). PURE — unit-tested from a fixture of measured durations; no paid call.
+
+export interface BeatToFit {
+  n: number;
+  /** This beat carries a spoken VO segment (its clipSec is driven by the measured spoken length). */
+  narrated: boolean;
+  /** This is the silent transition beat (fixed length = transitionSec; no voice). */
+  transition: boolean;
+  /** Animation-minimum seconds for a DYNAMIC clip beat (the on-screen motion can't be shorter than
+   *  this — e.g. the card-move cross). 0 / undefined = no floor (still / title beats). clipSec is
+   *  clamped UP to this even if the spoken line is shorter. */
+  animMinSec?: number;
+}
+
+export interface FittedBeatLen {
+  n: number;
+  clipSec: number; // the derived beat length
+  measuredSec: number; // measured spoken length (0 for transition / non-narrated)
+  padSec: number; // clipSec - measuredSec — the trailing silence the fit leaves (the dead-air it can cost)
+  clampedToAnimMin: boolean; // true ⇒ animMinSec forced clipSec ABOVE measured+breath (intentional visual dwell)
+}
+
+export interface BeatsToVoFit {
+  beats: FittedBeatLen[];
+  clipSecByBeat: Record<number, number>; // beatN -> derived clipSec (the new KANBAN_VO_SEG_SEC + transition)
+  totalSec: number; // sum of all beat clipSecs (the runtime the spine will render)
+  maxPadSec: number; // worst trailing silence across NARRATED beats — the dead-air the fit leaves
+}
+
+/** The hard ceiling on the breath added after each narrated beat's spoken length (the plan's "≤1.0s"). */
+export const MAX_BREATH_SEC = 1.0;
+
+export function fitBeatsToVo(params: {
+  beats: BeatToFit[];
+  /** narrated beat n -> measured spoken length (seconds), e.g. from the paid audio-only preview. */
+  measuredSpokenSec: Record<number, number>;
+  /** Trailing breath added after each narrated beat's spoken words. Clamped to [0, MAX_BREATH_SEC]. Default 0.7. */
+  breathSec?: number;
+  /** The silent transition beat's fixed length (also the silence voiceKanban splices at the seam). */
+  transitionSec: number;
+}): BeatsToVoFit {
+  const breath = Math.min(MAX_BREATH_SEC, Math.max(0, params.breathSec ?? 0.7));
+  const { beats, measuredSpokenSec, transitionSec } = params;
+
+  const out: FittedBeatLen[] = [];
+  const clipSecByBeat: Record<number, number> = {};
+  let total = 0;
+  let maxPad = 0;
+
+  for (const beat of beats) {
+    if (beat.transition) {
+      const clipSec = round2(transitionSec);
+      out.push({ n: beat.n, clipSec, measuredSec: 0, padSec: 0, clampedToAnimMin: false });
+      clipSecByBeat[beat.n] = clipSec;
+      total += clipSec;
+      continue;
+    }
+    if (!beat.narrated) {
+      // A non-narrated, non-transition beat (rare): no voice, so it can only be its animation floor.
+      const clipSec = round2(beat.animMinSec ?? 0);
+      out.push({ n: beat.n, clipSec, measuredSec: 0, padSec: clipSec, clampedToAnimMin: (beat.animMinSec ?? 0) > 0 });
+      clipSecByBeat[beat.n] = clipSec;
+      total += clipSec;
+      continue;
+    }
+    const measured = measuredSpokenSec[beat.n];
+    if (measured === undefined || !Number.isFinite(measured) || measured < 0) {
+      throw new Error(`fitBeatsToVo: missing/invalid measured spoken length for narrated beat n=${beat.n} (got ${measured}). Run the paid audio-only preview so every narrated beat has a measured length.`);
+    }
+    const base = round2(measured + breath);
+    const floor = round2(beat.animMinSec ?? 0);
+    const clipSec = Math.max(base, floor);
+    const clampedToAnimMin = floor > base + 1e-9;
+    const padSec = round2(clipSec - measured);
+    out.push({ n: beat.n, clipSec, measuredSec: round2(measured), padSec, clampedToAnimMin });
+    clipSecByBeat[beat.n] = clipSec;
+    total += clipSec;
+    if (padSec > maxPad) maxPad = padSec;
+  }
+
+  return { beats: out, clipSecByBeat, totalSec: round2(total), maxPadSec: round2(maxPad) };
 }
