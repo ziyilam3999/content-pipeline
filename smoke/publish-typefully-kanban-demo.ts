@@ -8,14 +8,15 @@
  * ui-evolve post are the COPY, the VIDEO bundle, the CARDS, and the X thread LENGTH:
  *
  *   - ui-evolve     = the band-inversion DEMONSTRATION (6-tweet thread: hook video + 3 cards + 2 stills).
- *   - agent-kanban  = the "watch your agent work live on a board" DEMONSTRATION; a 5-TWEET X thread + a
- *     Threads post, the kanban-demo-9x16 voiced cut as hero, card-kanban-{A,B,C,D}.png body cards.
+ *   - agent-kanban  = the "watch your agent work live on a board" DEMONSTRATION; a 2-TWEET X thread + a
+ *     Threads post, the kanban-demo-9x16 voiced cut as hero, ONE combined card-kanban-A.png body card
+ *     (#1063 re-cut — the four thin single-point cards were combined into one dense card).
  *
  * THE PRINCIPLE (#792, baked in publish/promoMedia.ts): EVERY platform's primary worded post LEADS
  * WITH VIDEO and every worded unit ALSO carries its own infographic/still. agent-kanban realization:
  *   - X (no image+video mixing in one tweet): a video HOOK tweet (kanban-demo-9x16.mp4, the full-bleed
- *     9:16 phone HERO — #794) + 4 still body tweets. 5 tweets total. Modeled as a PromoThread. The four
- *     body cards A/B/C/D are card-over-art.
+ *     9:16 phone HERO — #794) + 1 combined still body tweet. 2 tweets total. Modeled as a PromoThread.
+ *     The single combined body card A is card-over-art.
  *   - Threads (mixed-media carousel): a SINGLE post whose media is ORDERED [kanban hero video
  *     (HERO/lead, full-bleed 9:16), card-kanban-overart-4x5.png (second — the infographic)]. VIDEO
  *     LEADS, CARD PRESENT. Modeled as a PlatformPrimaryPost so the gate can require media[0] to be the
@@ -97,19 +98,19 @@ const OVERART = path.join(IMAGE_DIR, "card-kanban-overart-4x5.png"); // Threads 
 const SOCIAL_SET_ID = process.env.TYPEFULLY_SOCIAL_SET_ID ?? "312308";
 const DRAFT_TITLE = "agent-kanban — watch your AI agent plan, code, and review its own work, live";
 
-const EXPECTED_X_TWEETS = 5;
+const EXPECTED_X_TWEETS = 2;
 
 /**
- * The agent-kanban copy — VERBATIM from the operator-approved set. x_thread is 5 strings (hook + 4
- * body); threads_text is the single Threads post copy. There is no separate copy JSON for this post;
- * the operator-approved copy IS this inline constant (the single source of truth the cards mirror).
+ * The agent-kanban copy — VERBATIM from the operator-approved set. #1063 re-cut: the X thread is now 2
+ * tweets (the operator rejected the 4 thin single-point body cards → one combined card). x_thread[0] =
+ * the hook (video), x_thread[1] = the combined card tweet (all three feature points + CTA url).
+ * threads_text is the single Threads post copy. The operator-approved copy IS this inline constant.
  */
 const X_THREAD: string[] = [
   "Your AI agent plans, codes, and reviews its own work — live on a board. 🧵",
-  "Plan → Code → Review: the 3-role agent loop as Kanban columns. You watch the work move, not a spinner.",
-  "The green ● WORKING heartbeat shows exactly which ticket your agent is focused on right now.",
-  "Tap any ticket for the deep timeline — every step the agent took plus its own review verdict, replayed.",
-  "Open-source, MIT. Point it at your own agent's work: github.com/ziyilam3999/agent-kanban",
+  "Plan → Code → Review, as Kanban columns. The 🟢 WORKING heartbeat shows the ticket in focus, live. " +
+    "Tap any ticket for the deep timeline — every step + the agent's own verdict. " +
+    "Open-source, MIT: github.com/ziyilam3999/agent-kanban",
 ];
 
 const THREADS_TEXT =
@@ -147,7 +148,8 @@ function assertFile(label: string, p: string): number {
 }
 
 /**
- * The per-tweet media plan for the agent-kanban X thread. 5 tweets: hook=video, tweets 2-5 = cards.
+ * The per-tweet media plan for the agent-kanban X thread. #1063 re-cut: 2 tweets — hook=video, tweet
+ * 2 = the ONE combined body card.
  */
 interface MediaSlot {
   label: string;
@@ -158,10 +160,7 @@ interface MediaSlot {
 function xThreadSlots(): MediaSlot[] {
   return [
     { label: "X tweet 1 (HOOK)", path: KANBAN_HERO, kind: "video" },
-    { label: "X tweet 2 (loop)", path: CARD("A"), kind: "card-over-art" },
-    { label: "X tweet 3 (heartbeat)", path: CARD("B"), kind: "card-over-art" },
-    { label: "X tweet 4 (timeline)", path: CARD("C"), kind: "card-over-art" },
-    { label: "X tweet 5 (CTA)", path: CARD("D"), kind: "card-over-art" },
+    { label: "X tweet 2 (combined card)", path: CARD("A"), kind: "card-over-art" },
   ];
 }
 
@@ -282,7 +281,7 @@ async function main() {
 
   // Assert every media file exists + print the per-tweet media map (both modes — what we'd upload).
   if (includeX) {
-    console.log("X thread media map (5 tweets — hook=video, body=cards, every tweet carries media):");
+    console.log("X thread media map (2 tweets — hook=video, combined card, every tweet carries media):");
     for (const slot of slots) {
       const size = assertFile(slot.label, slot.path);
       console.log(

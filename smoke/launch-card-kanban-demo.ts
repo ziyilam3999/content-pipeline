@@ -3,15 +3,12 @@
  *
  * Mirrors smoke/launch-card-post4.ts / smoke/launch-card-ui-evolve.ts 1:1 (read those for the full
  * doctrine). The narrative is the agent-kanban demo: an AI agent that PLANS, CODES, and REVIEWS its
- * own work — shown live on a real-time Kanban board. The cards are the X thread BODY (tweets 2-5) plus
- * one 4:5 card-over-art infographic for the Threads carousel.
+ * own work — shown live on a real-time Kanban board. The cards are the X thread BODY (ONE combined
+ * card after #1063 "combine them") plus one 4:5 card-over-art infographic for the Threads carousel.
  *
- * It produces FOUR X-aspect body cards (1:1, 1080x1080) + ONE 4:5 Threads infographic (1080x1350):
- *   out/review/kanban/image/card-kanban-A.png         (tweet 2 — Plan → Code → Review)
- *   out/review/kanban/image/card-kanban-B.png         (tweet 3 — the green ● WORKING heartbeat)
- *   out/review/kanban/image/card-kanban-C.png         (tweet 4 — the deep timeline)
- *   out/review/kanban/image/card-kanban-D.png         (tweet 5 / CTA — open-source · MIT)
- *   out/review/kanban/image/card-kanban-overart-4x5.png (Threads — all 4 points + the CTA url)
+ * It produces ONE combined X-aspect body card (1:1, 1080x1080) + ONE 4:5 Threads infographic (1080x1350):
+ *   out/review/kanban/image/card-kanban-A.png         (tweet 2 — ONE dense card: 3-role columns + WORKING + deep timeline + CTA)
+ *   out/review/kanban/image/card-kanban-overart-4x5.png (Threads — 4 points + the CTA url)
  *
  * NO FORK OF THE CARD COMPOSITION: it reuses the SAME proven machinery — `buildCardHtml` via
  * `renderImage` (#790 auto-fit + overflow throw) — through the shared `generateArtOnce`/render helpers
@@ -125,35 +122,25 @@ interface KanbanCard {
 }
 
 /**
- * The SOURCE-OF-TRUTH body cards (X tweets 2-5). Each headline + sub mirrors its tweet; qualitative, no
- * invented metrics, MIT-honest, real repo URL. The hero VIDEO is tweet 1 (the Threads lead).
+ * The SOURCE-OF-TRUTH X body card(s). #1063 re-cut: the operator rejected the prior FOUR single-point
+ * cards ("each card only carries one point… combine them") — they were thin AND duplicated the Threads
+ * over-art. Combined into ONE dense body card carrying all three feature points; the CTA renders once via
+ * the template footer (product.repoUrl). The X thread is now tweet 1 = hero VIDEO, tweet 2 = this one
+ * combined card. (Memory: feedback_match_card_count_to_content_density_dont_fragment_single_points.)
  */
 export const KANBAN_CARDS: KanbanCard[] = [
   {
     id: "A",
     tweet: 2,
-    title: "Plan → Code → Review",
-    lines: [{ prefix: "the 3-role agent loop,", value: "as Kanban columns" }],
-  },
-  {
-    id: "B",
-    tweet: 3,
-    title: "🟢 WORKING",
-    lines: [{ prefix: "see which ticket your agent", value: "is focused on, live" }],
-  },
-  {
-    id: "C",
-    tweet: 4,
-    title: "The deep timeline",
-    lines: [{ prefix: "every step + the agent's own", value: "review verdict, replayed" }],
-  },
-  {
-    id: "D",
-    tweet: 5,
-    title: "Open-source · MIT",
-    // URL omitted from the CTA on purpose — the card template already renders product.repoUrl as the
-    // footer, so putting it here too prints the URL twice (the over-art dup #1063 eyeball caught).
-    lines: [{ prefix: "point it at your own", value: "agent's work" }],
+    title: "Watch your AI agent work — live",
+    // "Open-source · MIT" tagline only — the repo URL renders once via the template footer (no dup, the
+    // #1063 eyeball lesson).
+    cta: "Open-source · MIT",
+    lines: [
+      { prefix: "Plan → Code → Review:", value: "the 3-role loop as columns" },
+      { prefix: "🟢 WORKING shows", value: "the ticket in focus, live" },
+      { prefix: "tap a ticket for the deep timeline:", value: "every step + the agent's verdict" },
+    ],
   },
 ];
 
@@ -308,12 +295,25 @@ async function main(): Promise<void> {
     console.log(`  art-sha256(agent-kanban-demo)=${kanbanSha}`);
     console.log(`  cross-post uniqueness: PASS — agent-kanban-demo art ≠ any other post's; registered.`);
   } else {
-    console.log("  bg: deterministic DARK brand radial-gradient (SAFE — no paid call, white text legible)");
+    // SAFE: if this post's REAL nano-banana art is already cached on disk (from a prior paid run),
+    // reuse it for FREE (generateArtOnce with paid=false reads the cache) so the combined card renders
+    // over the operator-approved art, not the placeholder. Only switch off the dark gradient on a true
+    // cache HIT — a cache miss returns a 1×1 placeholder, so we keep the legible dark gradient instead.
+    const cachePng = artBasePngPath(outDir, KANBAN_SLUG);
+    const cacheUri = cachePng.replace(/\.png$/i, "") + ".datauri.b64";
+    if (fs.existsSync(cachePng) && fs.existsSync(cacheUri)) {
+      artDataUri = await generateArtOnce(kanbanArtMasterSpec(), false, outDir, KANBAN_ART_OPTS);
+      usedPath = "nano-banana-cached";
+      kanbanSha = sha256File(cachePng);
+      console.log(`  art-cache HIT: REUSE ${cachePng} (free — no paid call); art-sha256=${kanbanSha}`);
+    } else {
+      console.log("  bg: deterministic DARK brand radial-gradient (SAFE — no paid call, white text legible)");
+    }
   }
 
   const written: { name: string; outPath: string; bytes: number }[] = [];
 
-  // The four 1:1 body cards (X tweets 2-5).
+  // The ONE combined 1:1 body card (X tweet 2; #1063 "combine them").
   for (const card of KANBAN_CARDS) {
     const fileName = `card-kanban-${card.id}.png`;
     const { outPath, bytes, fitScale } = await renderKanbanCard(card, "1:1", outDir, fileName, artDataUri);

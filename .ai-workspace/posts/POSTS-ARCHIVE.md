@@ -15,7 +15,7 @@ so any post can later be re-purposed for another platform (e.g. LinkedIn) withou
 > This file is GENERATED from the `*.meta.json` records in this directory — do not hand-edit; edits are
 > overwritten on the next archive. Change the source in `publish/postArchive.ts` (ARCHIVE_POSTS) instead.
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
 
 ---
 
@@ -108,7 +108,7 @@ Last updated: 2026-06-20
 ## Post #8 — agent-kanban — watch your AI agent work, live on a board  (DEMONSTRATION)
 - **Subject:** a DEMONSTRATION of agent-kanban (a real-time Kanban board for AI-agent work): your agent plans, codes, and reviews its own work and you watch it move across Plan → Code → Review columns; a green ● WORKING heartbeat shows which ticket is in focus right now; tap any ticket for the deep timeline (every step the agent took + its own review verdict, replayed); idle-vs-active reads at a glance. Open-source, MIT.
 - **Produced:** 2026-06-20
-- **Published:** 2026-06-20 (LIVE).
+- **Published:** 2026-06-21 (LIVE).
 - **Live URLs:** _(pending publish)_
 - **Copy:** `agent-kanban-demo-copy.json` (this dir)
 - **Media bundle:** `~/coding_projects/_launch-assets/agent-kanban-demo-20260620/`

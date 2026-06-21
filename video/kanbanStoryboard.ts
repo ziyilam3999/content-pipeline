@@ -39,7 +39,7 @@ export const CAP_H = 1920;
  * cover-fits the full-width board device with effectively no crop. Imported by `captureKanbanAssets` (the
  * capture viewport) AND used here to size each clip's inset device frame.
  */
-export const KANBAN_PICKER_CLIP = { w: 390, h: 844 } as const; // MOBILE 390-wide (matches the beat-6 overview still's viewport) so beats 5+6 show the SAME responsive layout — coherent establishing shots (#1082)
+export const KANBAN_PICKER_CLIP = { w: 900, h: 1040 } as const; // #1091 crop-fix: 900-wide (= CARD clip) so the board shows TWO FULL columns (To Do + In Progress) with right margin — a 390-wide mobile capture sliced the right column at the frame edge. Beats 5/6/7 now share the SAME 900-wide 2-col layout (coherent, #1082) and frame CONTAIN (no L/R cut, #1063).
 export const KANBAN_CARD_CLIP = { w: 900, h: 1040 } as const; // portrait — To Do + In Progress side by side (card crosses, board fills)
 export const KANBAN_DRAWER_CLIP = { w: 600, h: 1066 } as const; // portrait — board → tap #1053 → drawer opens (beat 8)
 
@@ -160,24 +160,38 @@ export interface KanbanBeat {
 // each narrated beat ≈ Adam's actual segment length (still beats), clamped to the dynamic clip length
 // where the animation is longer (beat 5 picker 14s, beat 7 card-move 16s). The LAST beat (4s ≈ Adam-exact)
 // keeps the VO's last word at ≈clip end so captions REAL-sync (no even-split). Spine 87s + 3s transition = 90s.
+// #1063 re-cut (dead-air fix): the two DYNAMIC clip beats were over-budgeted to the ANIMATION length
+// (beat5 picker 14s, beat7 card-move 16s) but Adam SPEAKS only ~8.3s / ~11.9s (measured by silencedetect
+// on the shipped cut) → 5.76s + 4.1s of padded TRAILING SILENCE ("the narrator paused too long at 0:36").
+// Re-locked to ≈Adam's measured spoken length + a ≤1.5s breath. Transition cut 3s→1s (the 3s silent
+// dark→cream beat read as a mid-video dead gap with beat3's tail).
+// #1091 PAID re-trim (silence gate on the REAL Adam render, not the free `say` proxy): rendering the actual
+// paid Adam VO + running the dead-air gate exposed 3 beats whose silent TAIL exceeded 1.5s for Adam's pace
+// (the free `say` voice was slower and masked them) — beat2 chat (Adam 5.48s in 7s → 1.57s tail), beat3
+// terminal (9.03s + the 1s transition → 2.03s combined gap), beat7 card-move (11.0s in 13s → 2.03s tail).
+// Re-locked beat2 7→6, beat3 10→8, beat7 13→12 (≈Adam's measured length + ≤1.0s breath) → 76s spine (was 80s).
+// beat3 went to 8 (not 9): the 1s SILENT transition ALWAYS follows beat 3, so beat3-tail + 1s-transition COMBINE
+// into one gap — at beat3=9 that was 0.7s+1.0s=1.78s (still >1.5). beat3=8 makes Adam FILL the beat (tail≈0) so
+// the only remaining silence there is the deliberate 1.0s transition. Lesson: render the PAID voice + run the
+// gate; the free `say` proxy's segment lengths are NOT representative, and a tail adjacent to a silent beat adds.
 export const KANBAN_VO_SEG_SEC: Readonly<Record<number, number>> = {
   1: 7,
-  2: 7,
-  3: 10,
-  5: 14,
+  2: 6,
+  3: 8,
+  5: 9,
   6: 6,
-  7: 16,
+  7: 12,
   8: 15,
   9: 8,
   10: 4,
 };
 /** The silent tool→board transition beat length (seconds) — also the silence voiceKanban splices at the seam. */
-export const KANBAN_TRANSITION_SEC = 3;
+export const KANBAN_TRANSITION_SEC = 1;
 
 // ── The 10-beat storyboard (operator-approved 2026-06-20, ~104s) ────────────────────────────────────
 // 1 hook · 2 chat · 3 tool(terminal) · 4 transition(silent) · 5 board:session-picker(dynamic) ·
 // 6 board:idle/active badge(still) · 7 board:task-moving(dynamic) · 8 board:deep drawer(still) · 9 payoff · 10 cta.
-// Terminal = beat 3 = 13s ≈ 12.5% (≤30%). Each narrated beat's clipSec = KANBAN_VO_SEG_SEC[n].
+// Terminal = beat 3 = 8s ≈ 10.5% (≤30%). Each narrated beat's clipSec = KANBAN_VO_SEG_SEC[n].
 
 export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   // 1 — HOOK.
@@ -189,13 +203,13 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   },
   // 2 — CHAT. The HUMAN's interface: plain English to Claude Code; the agent picks up the task.
   {
-    n: 2, kind: "chat", stepLabel: "you → Claude Code · plain English", clipSec: 7, commands: [],
+    n: 2, kind: "chat", stepLabel: "you → Claude Code · plain English", clipSec: 6, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_CHAT,
     chatRequest: "Plan and ship the board update — and show me every step.",
   },
   // 3 — TOOL. The agent's real pipeline (planner → plan-review → executor → exec-review) on the dark tool world.
   {
-    n: 3, kind: "tool", stepLabel: "the agent's interface, not yours", clipSec: 10,
+    n: 3, kind: "tool", stepLabel: "the agent's interface, not yours", clipSec: 8,
     commands: ["claude  plan and ship the board update", "show the run on agent-kanban"],
     isTerminal: true, isHeroOutput: false, backgroundColor: BG_TOOL,
   },
@@ -206,7 +220,7 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   },
   // 5 — BOARD: session picker (DYNAMIC capture — open picker → switch session → board changes + LIVE→IDLE).
   {
-    n: 5, kind: "output", stepLabel: "the live board · agent-kanban", clipSec: 14, commands: [],
+    n: 5, kind: "output", stepLabel: "the live board · agent-kanban", clipSec: 9, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     clipSource: "out/capture/kanban/clip-session-picker.mp4",
   },
@@ -216,9 +230,9 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
     isTerminal: false, isHeroOutput: true, backgroundColor: BG_OUTPUT_A,
     hero: {
       source: "assets/kanban-demo/board-overview.png",
-      sha256: "b41bcda90638aac49b500e728bd58e394170d3118d41a0652ff5af1ec394ae6b",
-      bytes: 246903,
-      srcW: 1170, srcH: 2532, holdSec: 2.0,
+      sha256: "f3bf17af9ba9e54398dcd4cb71ae9eb776650d2d29487cef2a69132c0adf2a11",
+      bytes: 688267,
+      srcW: 2700, srcH: 3900, holdSec: 2.0, // #1091 crop-fix: 900×1300 capture (DSF 3) w/ 2-col override → two FULL columns, no L/R slice
       // The board still is framed INSET in the portrait device (outputDeviceSpineRect) on the cream world — a
       // MODEST vertical pan UP that SETTLES on the header + the LIVE/IDLE badge (cy 0.04, device top). Pure
       // column-locked vertical pan (cx 0.5 both ends); the inset device gives the badge + ring clear margin
@@ -226,18 +240,17 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
       focusStart: { cx: 0.5, cy: 0.4, zoom: 1.0 },
       focusEnd: { cx: 0.5, cy: 0.04, zoom: 1.0 },
     },
-    // .ak-live badge LIVE-MEASURED via getBoundingClientRect at the REAL still dims (390×844 CSS → 1170×2532 px),
-    // normalized over the TRUE 844-tall image. The pre-fix coords (sy 0.0103, sh 0.0231) were normalized over a
-    // PHANTOM 1180-tall clip that Playwright had silently clamped to the 844 viewport — so the ring landed ~40%
-    // too HIGH (1180/844 = 1.398× off on the y-axis). srcH is now the true 2532 (see assertHeroStillDimsMatchPng).
-    highlight: { sx: 0.795, sy: 0.0144, sw: 0.1691, sh: 0.0322, label: "live or idle", labelBelow: true },
+    // .ak-live badge LIVE-MEASURED via getBoundingClientRect at the REAL still dims (900×1300 CSS → 2700×3900 px
+    // at DSF 3), normalized over the captured image AFTER the 2-col override re-layout. srcW/srcH match the saved
+    // PNG exactly (see assertHeroStillDimsMatchPng / captureKanban hero-bytes assert) — re-measured for #1091.
+    highlight: { sx: 0.9112, sy: 0.0093, sw: 0.0733, sh: 0.0209, label: "live or idle", labelBelow: true },
   },
   // 7 — BOARD: a task moving live (DYNAMIC capture — a card crossing To Do → In Progress, PORTRAIT). #1071
   // frame-economy fix: the v3 capture was landscape all-4-columns → a thin strip in cream; this is a portrait
   // two-column (To Do + In Progress) capture so the card visibly crosses while the board fills the frame. The
   // VO narrates the full to-do→done journey, so one clear cross-column move is the right single illustration.
   {
-    n: 7, kind: "output", stepLabel: "lift · land · then working, live", clipSec: 16, commands: [],
+    n: 7, kind: "output", stepLabel: "lift · land · then working, live", clipSec: 12, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     clipSource: "out/capture/kanban/clip-card-move.mp4",
     // Push in on the landed WORKING card (top of In Progress) so the tiny "● WORKING" breathing
@@ -294,11 +307,11 @@ export const KANBAN_VO_LINES: ReadonlyArray<string> = [
 
 // ── The DemoVideoSpec instance (fed to assertDemoCategoryRecipe — the build's test oracle) ─────────--
 
-const RUNTIME_BAND = { min: 84, max: 94 } as const; // VO-LOCKED to the measured ~78.6s Adam read → ~90s spine (#1046)
+const RUNTIME_BAND = { min: 74, max: 84 } as const; // #1063 re-cut: dead-air trimmed (beats 5/7 + transition) → ~76s spine (was ~90s; #1091 paid-Adam re-trim 80→76)
 const MAX_TERMINAL_FRACTION = 0.3;
 
 export const KANBAN_VO_BUNDLE = "out/review/kanban/kanban-vo-sync.json";
-export const KANBAN_RUNTIME_SEC = KANBAN_BEATS.reduce((s, b) => s + b.clipSec, 0); // 90 (VO-locked)
+export const KANBAN_RUNTIME_SEC = KANBAN_BEATS.reduce((s, b) => s + b.clipSec, 0); // 76 (#1091 paid-Adam re-trim; VO-locked)
 
 function kanbanCaptions(): DemoCaptions {
   return {
@@ -329,9 +342,10 @@ export const KANBAN_BEAT_LAYOUTS: ReadonlyArray<FableBeatLayout> = [
   { beat: 2, kind: "terminal", content: { left: 90, top: 110, right: CAP_W - 90, bottom: CAP_H - 110 }, fill: true },
   // beat 3 — the agent's pipeline terminal.
   { beat: 3, kind: "terminal", content: { left: 108, top: 120, right: CAP_W - 108, bottom: CAP_H - 120 }, fill: true },
-  // beat 5 — session-picker clip, framed COVER in the 90%-wide board device (#1046 v3 fix-2): the picker +
-  // dropdown live at the TOP, so cover top-aligns and crops only the sparse lower board → fills the frame width.
-  { beat: 5, kind: "viewer-video", content: { ...WIDE_BOARD_DEVICE }, fill: false },
+  // beat 5 — session-picker clip, sized exact-aspect/CONTAIN into the board device (#1091 crop-fix): the
+  // 900-wide clip shows two FULL columns and its aspect ≈ the device box, so it maps 1:1 with NO L/R cut
+  // (the old WIDE_BOARD_DEVICE cover sliced the sides). Mirrors beat 7's exact-aspect framing.
+  { beat: 5, kind: "viewer-video", content: kanbanClipDeviceRect(KANBAN_PICKER_CLIP.w, KANBAN_PICKER_CLIP.h), fill: false },
   // beat 7 — the PORTRAIT To-Do→In-Progress card-move clip, sized exact-aspect into the board device (#1071
   // frame-economy fix): the clip aspect ≈ the device box aspect so it fills nearly the full WIDE_BOARD_DEVICE
   // (board fills the frame, no thin-strip cream bands), with the card visibly crossing the two columns.
