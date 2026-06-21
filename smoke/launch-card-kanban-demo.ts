@@ -3,15 +3,12 @@
  *
  * Mirrors smoke/launch-card-post4.ts / smoke/launch-card-ui-evolve.ts 1:1 (read those for the full
  * doctrine). The narrative is the agent-kanban demo: an AI agent that PLANS, CODES, and REVIEWS its
- * own work — shown live on a real-time Kanban board. The cards are the X thread BODY (tweets 2-5) plus
- * one 4:5 card-over-art infographic for the Threads carousel.
+ * own work — shown live on a real-time Kanban board. The cards are the X thread BODY (ONE combined
+ * card after #1063 "combine them") plus one 4:5 card-over-art infographic for the Threads carousel.
  *
- * It produces FOUR X-aspect body cards (1:1, 1080x1080) + ONE 4:5 Threads infographic (1080x1350):
- *   out/review/kanban/image/card-kanban-A.png         (tweet 2 — Plan → Code → Review)
- *   out/review/kanban/image/card-kanban-B.png         (tweet 3 — the green ● WORKING heartbeat)
- *   out/review/kanban/image/card-kanban-C.png         (tweet 4 — the deep timeline)
- *   out/review/kanban/image/card-kanban-D.png         (tweet 5 / CTA — open-source · MIT)
- *   out/review/kanban/image/card-kanban-overart-4x5.png (Threads — all 4 points + the CTA url)
+ * It produces ONE combined X-aspect body card (1:1, 1080x1080) + ONE 4:5 Threads infographic (1080x1350):
+ *   out/review/kanban/image/card-kanban-A.png         (tweet 2 — ONE dense card: 3-role columns + WORKING + deep timeline + CTA)
+ *   out/review/kanban/image/card-kanban-overart-4x5.png (Threads — 4 points + the CTA url)
  *
  * NO FORK OF THE CARD COMPOSITION: it reuses the SAME proven machinery — `buildCardHtml` via
  * `renderImage` (#790 auto-fit + overflow throw) — through the shared `generateArtOnce`/render helpers
@@ -316,7 +313,7 @@ async function main(): Promise<void> {
 
   const written: { name: string; outPath: string; bytes: number }[] = [];
 
-  // The four 1:1 body cards (X tweets 2-5).
+  // The ONE combined 1:1 body card (X tweet 2; #1063 "combine them").
   for (const card of KANBAN_CARDS) {
     const fileName = `card-kanban-${card.id}.png`;
     const { outPath, bytes, fitScale } = await renderKanbanCard(card, "1:1", outDir, fileName, artDataUri);

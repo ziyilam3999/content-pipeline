@@ -311,7 +311,7 @@ const RUNTIME_BAND = { min: 74, max: 84 } as const; // #1063 re-cut: dead-air tr
 const MAX_TERMINAL_FRACTION = 0.3;
 
 export const KANBAN_VO_BUNDLE = "out/review/kanban/kanban-vo-sync.json";
-export const KANBAN_RUNTIME_SEC = KANBAN_BEATS.reduce((s, b) => s + b.clipSec, 0); // 90 (VO-locked)
+export const KANBAN_RUNTIME_SEC = KANBAN_BEATS.reduce((s, b) => s + b.clipSec, 0); // 76 (#1091 paid-Adam re-trim; VO-locked)
 
 function kanbanCaptions(): DemoCaptions {
   return {
