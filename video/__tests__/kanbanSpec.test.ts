@@ -38,6 +38,7 @@ import {
   KANBAN_BEAT_LAYOUTS,
   kanbanClipDeviceRect,
   KANBAN_CARD_CLIP,
+  KANBAN_DRAWER_CLIP,
   KANBAN_VO_SEG_SEC,
   KANBAN_TRANSITION_SEC,
   KANBAN_RUNTIME_SEC,
@@ -46,47 +47,48 @@ import { decodePng, countMatching, isVerdictGreen } from "../pngProbe";
 
 const REPO_ROOT = process.cwd();
 
-describe("#1120 kanban demo-category recipe (feature-tour shape)", () => {
-  test("kanbanSpec PASSES the recipe under the feature-tour shape", () => {
-    expect(kanbanSpec.shape).toBe("feature-tour");
+describe("#1120 kanban demo-category recipe (14-beat tool-demo)", () => {
+  test("kanbanSpec PASSES the strict tool-demo recipe (chat + tool + transition present)", () => {
+    expect(kanbanSpec.shape).toBeUndefined(); // NOT feature-tour — the strict R3/R5 path applies
     expect(() => assertDemoCategoryRecipe(kanbanSpec)).not.toThrow();
   });
 
-  test("BOTH-ENDS carve-out: forcing the strict tool-demo shape FAILS on R3 (no chat/tool beat)", () => {
-    const strict: DemoVideoSpec = { ...kanbanSpec, shape: "tool-demo" };
-    expect(() => assertDemoCategoryRecipe(strict)).toThrow(/demo-recipe R3/);
+  test("BOTH-ENDS: stripping the chat beat FAILS R3 (proves R3/R5 are really enforced, not carved out)", () => {
+    const noChat: DemoVideoSpec = { ...kanbanSpec, beats: kanbanSpec.beats.filter((b) => b.kind !== "chat") };
+    expect(() => assertDemoCategoryRecipe(noChat)).toThrow(/demo-recipe R3/);
   });
 
   test("every kanban beat layout is 4-side title-safe + the full-bleed beats FILL", () => {
     expect(() => assertFableBeatsSafeAndFilled(KANBAN_BEAT_LAYOUTS)).not.toThrow();
   });
 
-  test("kanbanSpec has the v2 feature-tour shape (10 beats, hook first, 1 hero = beat 6)", () => {
-    expect(kanbanSpec.beats.length).toBe(10);
+  test("kanbanSpec has the 14-beat tool-demo shape (hook first, chat/tool/transition present, 1 hero = beat 6)", () => {
+    expect(kanbanSpec.beats.length).toBe(14);
     expect(kanbanSpec.beats[0].kind).toBe("hook");
     expect(kanbanSpec.beats.some((b) => b.vehicle === "captured-footage")).toBe(true);
-    // NO chat / tool / transition beat in the v2 spine.
-    expect(kanbanSpec.beats.some((b) => b.kind === "chat")).toBe(false);
-    expect(kanbanSpec.beats.some((b) => b.kind === "transition")).toBe(false);
-    expect(kanbanSpec.beats.some((b) => b.kind === "tool")).toBe(false);
-    // Exactly ONE hero (committed still) output = beat 6; beats 4/7/8 are NON-hero dynamic clips.
+    // The 14-beat cut RESTORES the agent-interface reframe: chat (beat 2) + tool (beat 3) + transition (beat 4).
+    expect(kanbanSpec.beats.some((b) => b.kind === "chat")).toBe(true);
+    expect(kanbanSpec.beats.some((b) => b.kind === "tool")).toBe(true);
+    expect(kanbanSpec.beats.some((b) => b.kind === "transition")).toBe(true);
+    // Exactly ONE hero (committed still) output = beat 6; the clip beats (5/7/9/11) are NON-hero dynamic clips.
     const heroes = kanbanSpec.beats.filter((b) => b.isHeroOutput);
     expect(heroes.map((b) => b.n)).toEqual([6]);
     for (const h of heroes) expect(h.provenance?.real).toBe(true);
-    for (const n of [4, 7, 8]) expect(KANBAN_BEATS.find((b) => b.n === n)!.isHeroOutput).toBe(false);
-    // Beats 2/3/5 are gitignored stills (no provenance churn); only beat 6 carries `hero`.
+    for (const n of [5, 7, 9, 11]) expect(KANBAN_BEATS.find((b) => b.n === n)!.isHeroOutput).toBe(false);
+    // Only beat 6 carries the committed `hero`; beats 8/10/12 are gitignored stills (no provenance churn).
     expect(KANBAN_BEATS.filter((b) => b.hero).map((b) => b.n)).toEqual([6]);
-    for (const n of [2, 3, 5]) expect(KANBAN_BEATS.find((b) => b.n === n)!.still).toBeDefined();
-    for (const n of [4, 7, 8]) expect(KANBAN_BEATS.find((b) => b.n === n)!.clipSource).toBeDefined();
+    for (const n of [8, 10, 12]) expect(KANBAN_BEATS.find((b) => b.n === n)!.still).toBeDefined();
+    for (const n of [5, 7, 9, 11]) expect(KANBAN_BEATS.find((b) => b.n === n)!.clipSource).toBeDefined();
   });
 
-  test("runtime is in the 74–84s band and terminal share is 0% (no tool beat)", () => {
+  test("runtime is in the 130–150s band and terminal share is the single tool beat (≤30%)", () => {
     const total = kanbanSpec.beats.reduce((s, b) => s + b.durationSec, 0);
-    expect(total).toBe(77);
-    expect(total).toBeGreaterThanOrEqual(74);
-    expect(total).toBeLessThanOrEqual(84);
+    expect(total).toBe(140);
+    expect(total).toBeGreaterThanOrEqual(130);
+    expect(total).toBeLessThanOrEqual(150);
     const terminal = kanbanSpec.beats.filter((b) => b.isTerminal).reduce((s, b) => s + b.durationSec, 0);
-    expect(terminal).toBe(0);
+    expect(terminal).toBe(8); // beat 3 only
+    expect(terminal / total).toBeLessThanOrEqual(0.3);
   });
 
   test("captions carry the R12 fallback shape (durationSec == runtime, lastCue bound)", () => {
@@ -94,7 +96,7 @@ describe("#1120 kanban demo-category recipe (feature-tour shape)", () => {
     expect(c.present).toBe(true);
     expect(c.syncBoundToRealAudio).toBe(true);
     expect(c.audio.real).toBe(true);
-    expect(c.audio.durationSec).toBe(77);
+    expect(c.audio.durationSec).toBe(140);
     expect(Math.abs(c.lastCueEndSec - c.audio.durationSec)).toBeLessThanOrEqual(0.5);
   });
 });
@@ -110,7 +112,7 @@ describe("#1120 kanban frame-economy gate", () => {
 
   test("the board-subject beats (viewer-*) are economy-checked; title beats are exempt", () => {
     const subjects = KANBAN_BEAT_LAYOUTS.filter((l) => isDeviceSubjectBeat(l.kind)).map((l) => l.beat);
-    expect(subjects.sort((a, b) => a - b)).toEqual([2, 3, 4, 5, 6, 7, 8]);
+    expect(subjects.sort((a, b) => a - b)).toEqual([5, 6, 7, 8, 9, 10, 11, 12]);
     expect(isDeviceSubjectBeat("title")).toBe(false);
   });
 
@@ -132,21 +134,68 @@ describe("#1120 kanban frame-economy gate", () => {
   });
 });
 
+// ── #1120 / #1092 CONTAIN-assert: no board beat can slice the board L/R ───────────────────────────────
+// The recurring left-edge "haircut" bug: a board asset COVER-framed in a device of a DIFFERENT aspect crops
+// sideways. The both-ends lock: (a) every board beat's asset aspect ≤ its device-box aspect (so a cover fit
+// only ever crops VERTICALLY, never L/R); (b) every DYNAMIC clip beat's device is the EXACT contain-fit of the
+// clip (kanbanClipDeviceRect) so device-aspect == clip-aspect — a cover-framed clip (the old beat-8 drawer in
+// WIDE_BOARD_DEVICE) FAILS by construction.
+describe("#1120 kanban CONTAIN-assert (no L/R board slice)", () => {
+  const EPS = 0.01;
+  const deviceAspect = (n: number): number => {
+    const l = KANBAN_BEAT_LAYOUTS.find((x) => x.beat === n)!;
+    return (l.content.right - l.content.left) / (l.content.bottom - l.content.top);
+  };
+  const boardBeats = KANBAN_BEATS.filter((b) => b.kind === "output");
+
+  test("every board beat's asset aspect ≤ its device-box aspect (cover crops only vertically, never L/R)", () => {
+    for (const b of boardBeats) {
+      const da = deviceAspect(b.n);
+      const assetAspect = b.clipSource
+        ? b.clipW! / b.clipH!
+        : (b.hero ?? b.still)!.srcW / (b.hero ?? b.still)!.srcH;
+      expect(assetAspect).toBeLessThanOrEqual(da + EPS);
+    }
+  });
+
+  test("every DYNAMIC clip board beat is CONTAIN-framed (device aspect == clip aspect — no L/R slice)", () => {
+    for (const b of boardBeats.filter((x) => x.clipSource)) {
+      const da = deviceAspect(b.n);
+      const ca = b.clipW! / b.clipH!;
+      expect(Math.abs(da - ca)).toBeLessThanOrEqual(EPS);
+    }
+  });
+
+  test("BOTH-ENDS: a clip COVER-framed in WIDE_BOARD_DEVICE FAILS; kanbanClipDeviceRect PASSES", () => {
+    const clipAspect = KANBAN_DRAWER_CLIP.w / KANBAN_DRAWER_CLIP.h;
+    // the OLD bug: drawer clip in the 90%-wide board device (a different, wider aspect) → cover-frame.
+    const wide = KANBAN_BEAT_LAYOUTS.find((x) => x.beat === 6)!.content; // WIDE_BOARD_DEVICE-shaped panzoom box
+    const wideAspect = (wide.right - wide.left) / (wide.bottom - wide.top);
+    expect(Math.abs(wideAspect - clipAspect)).toBeGreaterThan(EPS); // FAILS the contain check
+    // the FIX: a device sized to the clip's exact aspect.
+    const fit = kanbanClipDeviceRect(KANBAN_DRAWER_CLIP.w, KANBAN_DRAWER_CLIP.h);
+    const fitAspect = (fit.right - fit.left) / (fit.bottom - fit.top);
+    expect(Math.abs(fitAspect - clipAspect)).toBeLessThanOrEqual(EPS); // PASSES
+  });
+});
+
 // ── spine↔VO sync SSOT consistency ────────────────────────────────────────────────────────────────────
 describe("#1120 kanban spine↔VO sync SSOT", () => {
-  test("every beat is narrated (no transition) and its clipSec equals KANBAN_VO_SEG_SEC[n]", () => {
-    expect(KANBAN_TRANSITION_SEC).toBe(0);
-    expect(KANBAN_BEATS.some((b) => b.kind === "transition")).toBe(false);
+  test("every beat's clipSec equals KANBAN_VO_SEG_SEC[n] (beat 4 is the 1s silent transition)", () => {
+    expect(KANBAN_TRANSITION_SEC).toBe(1);
+    const transition = KANBAN_BEATS.find((b) => b.kind === "transition")!;
+    expect(transition.n).toBe(4);
+    expect(transition.clipSec).toBe(KANBAN_TRANSITION_SEC);
     for (const b of KANBAN_BEATS) {
       expect(KANBAN_VO_SEG_SEC[b.n]).toBeDefined();
       expect(b.clipSec).toBe(KANBAN_VO_SEG_SEC[b.n]);
     }
   });
 
-  test("KANBAN_RUNTIME_SEC == the spoken total (77s; no transition silence)", () => {
-    const spoken = Object.values(KANBAN_VO_SEG_SEC).reduce((s, v) => s + v, 0);
-    expect(KANBAN_RUNTIME_SEC).toBe(spoken + KANBAN_TRANSITION_SEC);
-    expect(KANBAN_RUNTIME_SEC).toBe(77);
+  test("KANBAN_RUNTIME_SEC == the sum of every beat's VO segment (140s, transition included)", () => {
+    const segTotal = Object.values(KANBAN_VO_SEG_SEC).reduce((s, v) => s + v, 0);
+    expect(KANBAN_RUNTIME_SEC).toBe(segTotal);
+    expect(KANBAN_RUNTIME_SEC).toBe(140);
   });
 });
 

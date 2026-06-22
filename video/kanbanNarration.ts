@@ -1,8 +1,8 @@
 /**
  * #1046 agent-kanban demo VOICED — the spoken narration, as ORDERED SEGMENTS, one per NARRATED kanban beat.
  *
- * The `kanbanNarration.ts` analogue of `video/forgeNarration.ts`. Kanban has TEN beats but only NINE spoken
- * lines — beat 4 (the tool→board TRANSITION) is deliberately SILENT (its `KANBAN_VO_LINES` entry is the
+ * The `kanbanNarration.ts` analogue of `video/forgeNarration.ts`. Kanban has FOURTEEN beats but only THIRTEEN
+ * spoken lines — beat 4 (the tool→board TRANSITION) is deliberately SILENT (its `KANBAN_VO_LINES` entry is the
  * empty string). So this module DERIVES the narration by zipping `KANBAN_BEATS` with `KANBAN_VO_LINES` and
  * dropping the silent transition: the result is the ordered list of spoken segments the VO + caption track
  * are built from.

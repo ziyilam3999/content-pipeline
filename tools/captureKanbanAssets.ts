@@ -30,7 +30,7 @@ import * as crypto from "crypto";
 import { spawnSync } from "child_process";
 
 import { resolveVendoredFfmpeg, probeRender } from "../video/renderProbe";
-import { KANBAN_HEARTBEAT_CLIP, KANBAN_CARD_CLIP, KANBAN_DRAWER_CLIP } from "../video/kanbanStoryboard";
+import { KANBAN_PICKER_CLIP, KANBAN_HEARTBEAT_CLIP, KANBAN_CARD_CLIP, KANBAN_DRAWER_CLIP } from "../video/kanbanStoryboard";
 import { requireApprovedStoryboard } from "../video/storyboardGate";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -55,6 +55,8 @@ const WIDE_VW = 1080;
 const WIDE_VH = 1280;
 const WIDE_DSF = 2;
 // Dynamic-clip recording geometry (recordVideo `size` MUST equal the viewport CSS size).
+const PICKER_W = KANBAN_PICKER_CLIP.w;
+const PICKER_H = KANBAN_PICKER_CLIP.h;
 const HEART_W = KANBAN_HEARTBEAT_CLIP.w;
 const HEART_H = KANBAN_HEARTBEAT_CLIP.h;
 const CARD_W = KANBAN_CARD_CLIP.w;
@@ -66,13 +68,16 @@ const DRAWER_H = KANBAN_DRAWER_CLIP.h;
 // board NEVER slices a partial column at the frame edge. The face-VERDICT renders only for in_review/done, so
 // every verdict beat frames In Progress + In Review (never cols 1–2). Capture-time FRAMING only; ticket DATA
 // is 100% the live board.
+// #1120 clip-fix: zero the strip's horizontal PADDING (16px 14px left a 24px right overflow at 900px) so
+// 2×(50% − 8) + 12px gap = 896 ≤ 900 — the 2 columns sit FLUSH, no L/R overflow. Combined with a scrollLeft=0
+// reset (resetStripScroll, applied in EVERY board capture) this kills the stale-88vw-snap left-edge "haircut".
 const TWO_COL_CSS =
-  ".ak-strip{overflow-x:hidden !important;scroll-snap-type:none !important}" +
+  ".ak-strip{overflow-x:hidden !important;scroll-snap-type:none !important;padding-left:0 !important;padding-right:0 !important}" +
   ".ak-col{flex:0 0 calc(50% - 8px) !important;scroll-snap-align:none !important}" +
   ".ak-col:nth-child(1),.ak-col:nth-child(4){display:none !important}";
 // WIDE framing — all 4 columns contained at 25% each (the reveal + lanes-pan establishing shots).
 const WIDE_COL_CSS =
-  ".ak-strip{overflow-x:hidden !important;scroll-snap-type:none !important}" +
+  ".ak-strip{overflow-x:hidden !important;scroll-snap-type:none !important;padding-left:0 !important;padding-right:0 !important}" +
   ".ak-col{flex:0 0 calc(25% - 6px) !important;scroll-snap-align:none !important}";
 
 function sha256(buf: Buffer): string {
@@ -142,6 +147,32 @@ async function hideDevChrome(page: any): Promise<void> {
   }).catch(() => {});
 }
 
+/** #1120 clip-fix — reset the board strip's horizontal scroll to 0 (the 88vw mount-snap leaves a stale
+ *  scrollLeft → the leftmost column is shaved on the LEFT under overflow-x:hidden). Call AFTER the 2-col
+ *  override + a settle, BEFORE measuring rings / screenshotting / recording. Also asserts the leftmost visible
+ *  column starts at x ≥ 0 and the 2-col content fits the viewport (a regression re-introducing a slice FAILS). */
+async function resetStripScroll(page: any, viewportW: number): Promise<void> {
+  await page.evaluate(() => {
+    const s = (globalThis as any).document.querySelector(".ak-strip");
+    if (s) s.scrollLeft = 0;
+  });
+  await page.waitForTimeout(150);
+  const probe = await page.evaluate(() => {
+    const doc = (globalThis as any).document;
+    const strip = doc.querySelector(".ak-strip");
+    const cols = Array.prototype.slice.call(doc.querySelectorAll(".ak-col")).filter((c: any) => c.offsetParent !== null) as any[];
+    if (!strip || cols.length === 0) return null;
+    const first = cols[0].getBoundingClientRect();
+    const last = cols[cols.length - 1].getBoundingClientRect();
+    return { scrollLeft: strip.scrollLeft, firstX: first.x, lastRight: last.x + last.width };
+  });
+  if (probe) {
+    if (probe.firstX < -1) throw new Error(`captureKanbanAssets: left-edge SLICE — leftmost visible column starts at x=${probe.firstX.toFixed(1)} < 0 (stale scrollLeft=${probe.scrollLeft}).`);
+    if (probe.lastRight > viewportW + 1) throw new Error(`captureKanbanAssets: right OVERFLOW — 2-col content right edge ${probe.lastRight.toFixed(1)} > viewport ${viewportW}.`);
+    console.log(`[clip-fix] strip scrollLeft=${probe.scrollLeft}, leftCol x=${probe.firstX.toFixed(1)}, rightEdge=${probe.lastRight.toFixed(1)} ≤ ${viewportW} (no L/R slice)`);
+  }
+}
+
 async function rectOf(page: any, sel: string): Promise<{ x: number; y: number; w: number; h: number } | null> {
   return await page.evaluate((s: string) => {
     const el = (globalThis as any).document.querySelector(s);
@@ -194,6 +225,7 @@ async function main(): Promise<void> {
     await hideDevChrome(page);
     await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {}); // cols 2–3, no L/R slice
     await page.waitForTimeout(500); // let the flex re-layout settle before measuring rings + screenshot
+    await resetStripScroll(page, VW); // #1120 clip-fix: kill the stale 88vw scrollLeft before measuring/shooting
     // NOTE: no nested named function / `const f = () =>` inside page.evaluate — tsx/esbuild keepNames injects a
     // `__name(...)` helper around them which does NOT exist in the browser context (ReferenceError __name).
     const boxes = await page.evaluate(() => {
@@ -207,15 +239,19 @@ async function main(): Promise<void> {
         if (!exec && /EXECUTOR/.test(t)) exec = phases[i];
       }
       const live = doc.querySelector(".ak-phase--live");
+      const epicEl = doc.querySelector(".ak-tag--parent") || doc.querySelector(".ak-tag--epic");
       const rb = review ? review.getBoundingClientRect() : null;
       const eb = exec ? exec.getBoundingClientRect() : null;
       const lb = live ? live.getBoundingClientRect() : null;
+      const pb = epicEl ? epicEl.getBoundingClientRect() : null;
       return {
         review: rb ? { x: rb.x, y: rb.y, w: rb.width, h: rb.height } : null,
         exec: eb ? { x: eb.x, y: eb.y, w: eb.width, h: eb.height } : null,
         live: lb ? { x: lb.x, y: lb.y, w: lb.width, h: lb.height } : null,
+        epic: pb ? { x: pb.x, y: pb.y, w: pb.width, h: pb.height } : null,
         reviewText: review ? review.textContent : null,
         execText: exec ? exec.textContent : null,
+        epicText: epicEl ? epicEl.textContent : null,
       };
     });
     const out = path.join(ASSET_DIR, "board-overview.png");
@@ -225,10 +261,12 @@ async function main(): Promise<void> {
     const buf = fs.readFileSync(out);
     console.log(`\n[overview] ${path.relative(REPO_ROOT, out)} bytes=${buf.length} sha256=${sha256(buf)}`);
     console.log(`[overview] srcW=${OVERVIEW_CLIP.width * DSF} srcH=${OVERVIEW_CLIP.height * DSF}`);
-    if (boxes.review) console.log(`[overview] BEAT-6 ring .ak-phase "${boxes.reviewText}" => ${JSON.stringify(normBox(boxes.review, OVERVIEW_CLIP))}`);
+    if (boxes.review) console.log(`[overview] BEAT-6 ring (◆ REVIEW) .ak-phase "${boxes.reviewText}" => ${JSON.stringify(normBox(boxes.review, OVERVIEW_CLIP))}`);
     else console.log(`[overview] WARN: ◆ REVIEW phase line NOT found — beat-6 ring NOT measured`);
-    if (boxes.exec) console.log(`[overview] BEAT-5 ring .ak-phase "${boxes.execText}" => ${JSON.stringify(normBox(boxes.exec, OVERVIEW_CLIP))}`);
-    else console.log(`[overview] WARN: ▶ EXECUTOR phase line NOT found — beat-5 ring NOT measured`);
+    if (boxes.exec) console.log(`[overview] BEAT-8 ring (▶ EXECUTOR) .ak-phase "${boxes.execText}" => ${JSON.stringify(normBox(boxes.exec, OVERVIEW_CLIP))}`);
+    else console.log(`[overview] WARN: ▶ EXECUTOR phase line NOT found — beat-8 ring NOT measured`);
+    if (boxes.epic) console.log(`[overview] BEAT-10 ring (parent epic) .ak-tag "${boxes.epicText}" => ${JSON.stringify(normBox(boxes.epic, OVERVIEW_CLIP))}`);
+    else console.log(`[overview] WARN: parent/epic chip NOT found in cols 2–3 — beat-10 ring NOT measured (add a "[#NNNN] " subject prefix to a cols-2–3 ticket)`);
   }
 
   // ── 2. wide-board.png (gitignored, beats 2/3) — ALL 4 columns contained ─────────────────────────────
@@ -242,6 +280,7 @@ async function main(): Promise<void> {
     await hideDevChrome(page);
     await page.addStyleTag({ content: WIDE_COL_CSS }).catch(() => {}); // all 4 columns contained
     await page.waitForTimeout(500);
+    await resetStripScroll(page, WIDE_VW); // #1120 clip-fix
     const out = path.join(CLIP_DIR, "wide-board.png");
     await page.screenshot({ path: out, clip: WIDE_CLIP });
     await ctx.close();
@@ -250,7 +289,41 @@ async function main(): Promise<void> {
     console.log(`\n[wide-board] ${path.relative(REPO_ROOT, out)} bytes=${buf.length} srcW=${WIDE_VW * WIDE_DSF} srcH=${WIDE_VH * WIDE_DSF}`);
   }
 
-  // ── 3. clip-heartbeat.mp4 (beat 4) — cols 2–3, the pulsing ▶ WORKING focus card breathing ───────────
+  // ── 3. clip-session-picker.mp4 (beat 5) — cols 2–3, OPEN the session picker dropdown (the session list IS
+  // the feature) → DWELL with it open over the active board. The dropdown-open is the MOTION. ───────────────
+  {
+    const browser = await chromium.launch();
+    const ctx = await browser.newContext({
+      viewport: { width: PICKER_W, height: PICKER_H },
+      deviceScaleFactor: 2,
+      recordVideo: { dir: recRoot, size: { width: PICKER_W, height: PICKER_H } },
+    });
+    const page = await ctx.newPage();
+    await page.goto(BOARD_URL, { waitUntil: "networkidle" });
+    await page.waitForTimeout(2400); // establish on the ACTIVE board first (clip plays ONCE)
+    await hideDevChrome(page);
+    await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {});
+    await page.waitForTimeout(500);
+    await resetStripScroll(page, PICKER_W); // #1120 clip-fix
+    await page.click(".ak-picker__btn").catch(() => {}); // the dropdown VISIBLY opens (the feature)
+    await page.waitForTimeout(900);
+    const menu = await page.evaluate(() => {
+      const m = (globalThis as any).document.querySelector(".ak-picker__menu");
+      const opts = Array.prototype.slice.call((globalThis as any).document.querySelectorAll(".ak-picker__opt")) as any[];
+      return { open: !!m, count: opts.length, first: opts[0]?.textContent ?? null };
+    });
+    await page.waitForTimeout(9000); // DWELL with the session list open over the active board
+    const video = page.video();
+    await ctx.close();
+    await browser.close();
+    const webm = await video!.path();
+    const out = path.join(CLIP_DIR, "clip-session-picker.mp4");
+    transcodeClip(webm, out);
+    console.log(`\n[picker] dropdown open (menu=${menu.open}, ${menu.count} sessions, top="${menu.first}") → ${path.relative(REPO_ROOT, out)}`);
+    proofStrip(out, "session-picker");
+  }
+
+  // ── 4. clip-heartbeat.mp4 (beat 7) — cols 2–3, the pulsing ▶ WORKING focus card breathing ───────────
   {
     const browser = await chromium.launch();
     const ctx = await browser.newContext({
@@ -264,6 +337,7 @@ async function main(): Promise<void> {
     await hideDevChrome(page);
     await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {});
     await page.waitForTimeout(500);
+    await resetStripScroll(page, HEART_W); // #1120 clip-fix
     const liveText = await page.evaluate(() => (globalThis as any).document.querySelector(".ak-phase--live")?.textContent ?? null);
     await page.waitForTimeout(6000); // DWELL on the breathing ▶ WORKING card (pulse cycle = 1.7s → ~3.5 cycles)
     const video = page.video();
@@ -314,6 +388,7 @@ async function main(): Promise<void> {
     await hideDevChrome(page);
     await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {});
     await page.waitForTimeout(2600); // establish: In Progress + In Review side by side, mover ▶ WORKING at top
+    await resetStripScroll(page, CARD_W); // #1120 clip-fix
     const beforeRect = await rectOf(page, cardSel);
 
     // Flip ONLY the column → in_review (updatedAt=now → top of In Review). The 1500ms poll animates the cross
@@ -373,7 +448,11 @@ async function main(): Promise<void> {
       const bottom = Math.max(...rs.map((r) => r.y + r.height));
       return { x, y, w: right - x, h: bottom - y, count: els.length, texts: els.map((e) => e.textContent) };
     });
-    await page.waitForTimeout(3400); // hold the settled drawer (dwell before the beat-8 ring)
+    // BEAT-12 still — screenshot the SETTLED open drawer (the multi-colored verdict pills) for the pan-zoom
+    // still beat. Gitignored (not byte-checked); its srcW/srcH = DRAWER_W/H × DSF 2.
+    const stillOut = path.join(CLIP_DIR, "drawer-verdicts.png");
+    await page.screenshot({ path: stillOut, clip: DRAWER_VIEWPORT });
+    await page.waitForTimeout(3400); // hold the settled drawer (dwell before the beat-11 clip end)
     const video = page.video();
     await ctx.close();
     await browser.close();
@@ -381,6 +460,8 @@ async function main(): Promise<void> {
     const out = path.join(CLIP_DIR, "clip-drawer-open.mp4");
     transcodeClip(webm, out);
     console.log(`\n[drawer-open] tapped ${hasRich ? "#2005" : "first ticket"} → drawer opened → ${path.relative(REPO_ROOT, out)}`);
+    const stillBuf = fs.readFileSync(stillOut);
+    console.log(`[drawer-verdicts] still ${path.relative(REPO_ROOT, stillOut)} bytes=${stillBuf.length} srcW=${DRAWER_W * 2} srcH=${DRAWER_H * 2}`);
     if (pipeRect && verdicts) {
       const x = Math.min(pipeRect.x, verdicts.x);
       const y = Math.min(pipeRect.y, verdicts.y);
@@ -388,9 +469,9 @@ async function main(): Promise<void> {
       const bottom = Math.max(pipeRect.y + pipeRect.h, verdicts.y + verdicts.h);
       const union = { x, y, w: right - x, h: bottom - y };
       console.log(`[drawer-open] .ak-verdict x${verdicts.count} texts=${JSON.stringify(verdicts.texts)}`);
-      console.log(`[drawer-open] BEAT-8 ring (normalized over ${DRAWER_W}x${DRAWER_H}) => ${JSON.stringify(normBox(union, DRAWER_VIEWPORT))}`);
+      console.log(`[drawer-verdicts] BEAT-12 ring (normalized over ${DRAWER_W}x${DRAWER_H}) => ${JSON.stringify(normBox(union, DRAWER_VIEWPORT))}`);
     } else {
-      console.log(`[drawer-open] WARN: pipeline/verdict not found (pipe=${!!pipeRect} verdicts=${!!verdicts}) — beat-8 ring NOT measured`);
+      console.log(`[drawer-open] WARN: pipeline/verdict not found (pipe=${!!pipeRect} verdicts=${!!verdicts}) — beat-12 ring NOT measured`);
     }
     proofStrip(out, "drawer-open");
   }

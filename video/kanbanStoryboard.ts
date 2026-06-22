@@ -25,7 +25,7 @@
  * Pure data + tsc/jest-gated. NO Playwright / ffmpeg / network / paid call in this module.
  */
 
-import { BG_TOOL, BG_OUTPUT_A } from "./fableStoryboard";
+import { BG_TOOL, BG_CHAT, BG_OUTPUT_A } from "./fableStoryboard";
 import { FABLE_ASPECTS, type FableBeatLayout, type Rect } from "./fableLayout";
 import type { DemoVideoSpec, DemoBeat, DemoBeatKind, DemoCaptions } from "./demoCategoryRecipe";
 
@@ -40,9 +40,10 @@ export const CAP_H = 1920;
  * its inset device-box aspect so it fills the frame (no thin strip, no L/R slice). Imported by
  * `captureKanbanAssets` (the capture viewport) AND used here to size each clip's inset device frame.
  */
+export const KANBAN_PICKER_CLIP = { w: 900, h: 1050 } as const; // cols 2–3 portrait — open the session picker → filter sessions (beat 5)
 export const KANBAN_HEARTBEAT_CLIP = { w: 900, h: 1050 } as const; // cols 2–3 portrait — the pulsing ▶ WORKING card (height tuned so the fuller board fills the frame)
 export const KANBAN_CARD_CLIP = { w: 900, h: 1050 } as const; // cols 2–3 portrait — card lifts In Progress → lands In Review
-export const KANBAN_DRAWER_CLIP = { w: 600, h: 1066 } as const; // tall portrait — tap card → drawer slides open (beat 8)
+export const KANBAN_DRAWER_CLIP = { w: 600, h: 1066 } as const; // tall portrait — tap card → drawer slides open (beat 11)
 
 /**
  * The ENLARGED board "device" — a near-full-width window the board fills. 90% of the frame width (left 5% /
@@ -130,7 +131,9 @@ export interface KanbanBeat {
   headline?: string;
   sub?: string;
   url?: string;
-  /** Terminal/tool commands shown on screen — always [] in v2 (no tool beat). Kept for the shared gate shape. */
+  /** Chat beat — the genuine natural-language request the human types (the agent-interface reframe). */
+  chatRequest?: string;
+  /** Terminal/tool commands shown on screen ([] for non-tool beats). */
   commands: string[];
   isTerminal: boolean;
   isHeroOutput: boolean;
@@ -173,144 +176,183 @@ export interface KanbanBeat {
 // and no silence is spliced. These are RE-LOCKED via fitBeatsToVo after the cheap paid audio-only preview
 // (the dynamic beats 4/7/8 carry an animMinSec floor so the re-lock can't shrink them below their motion);
 // until then they ride the storyboard's design targets. Spine total = 77s (74–84s band).
+// 14-beat tool-demo (#1120 extended cut → 140s). Beat 4 is the SILENT tool→board transition (its VO line is
+// the empty string; the silence-gate keeps the splice ≤1.5s). Every OTHER beat's clipSec == its VO segment.
 export const KANBAN_VO_SEG_SEC: Readonly<Record<number, number>> = {
-  1: 7,
-  2: 7,
-  3: 9,
-  4: 8,
-  5: 7,
-  6: 9,
-  7: 10,
-  8: 9,
-  9: 6,
-  10: 5,
+  1: 8,
+  2: 6,
+  3: 8,
+  4: 1,
+  5: 12,
+  6: 14,
+  7: 12,
+  8: 11,
+  9: 15,
+  10: 9,
+  11: 13,
+  12: 17,
+  13: 9,
+  14: 5,
 };
-/** The silent transition beat length (seconds). v2 has NO transition beat → 0 (no seam splice). */
-export const KANBAN_TRANSITION_SEC = 0;
+/** The silent transition beat length (seconds). Beat 4 is a 1s tool→board handoff (board emerges, no VO). */
+export const KANBAN_TRANSITION_SEC = 1;
 
-// ── The v2 10-beat storyboard (operator-approved 2026-06-21) ────────────────────────────────────────
-// 1 hook · 2 reveal-board(still) · 3 lanes-pan(still) · 4⭐ heartbeat(clip) · 5 role(still) ·
-// 6⭐ verdict-on-face(COMMITTED still) · 7⭐ causal-move(clip) · 8 drawer(clip) · 9 payoff · 10 cta.
-// NO chat / tool / transition. Terminal share = 0% (≤30%). Each beat's clipSec = KANBAN_VO_SEG_SEC[n].
+// ── The #1120 14-beat tool-demo (extended cut → 140s; operator-approved storyboard 2026-06-22) ─────────
+// 1 hook · 2 chat · 3 tool · 4 transition(silent) · 5 picker(clip) · 6 phase-line(COMMITTED still) ·
+// 7 heartbeat(clip) · 8 role(still) · 9 lift·land(clip) · 10 epic-chip(still) · 11 drawer(clip) ·
+// 12 verdict-pills(still) · 13 payoff · 14 cta. Terminal share = beat-3 only (8/140 = 5.7% ≤ 30%).
+// Each beat's clipSec = KANBAN_VO_SEG_SEC[n]; beat 4 is the silent transition (empty VO line).
 
-// The gitignored wide-board still (all 4 columns) shared by the reveal (beat 2) + lanes pan (beat 3).
-const WIDE_BOARD_STILL = "out/capture/kanban/wide-board.png";
-// The committed hero still (cols 2–3: In Progress + In Review) — beat 6's source, REUSED by beat 5's camera.
+// The committed hero still (cols 2–3: In Progress + In Review). Beat 6 reads it as the provenance `hero`;
+// beats 8 (role) + 10 (epic) read the SAME bytes as a non-provenance `still` with a different camera + ring
+// (the ▶ EXECUTOR phase line and the parent-epic chip both render on these cols-2–3 cards).
 const COMMITTED_STILL = "assets/kanban-demo/board-overview.png";
+// Gitignored still (regenerated each capture, NOT byte-checked) — the open deep-timeline drawer (beat 12).
+const VERDICT_STILL = "out/capture/kanban/drawer-verdicts.png"; // beat 12 — open drawer, multi-colored verdict pills
 
 export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   // 1 — HOOK (synth, no board).
   {
-    n: 1, kind: "hook", stepLabel: "", clipSec: 7, commands: [],
+    n: 1, kind: "hook", stepLabel: "", clipSec: 8, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_TOOL,
-    headline: "You hand work to AI agents.",
-    sub: "Then you're flying blind — which one's stuck, which is done, which is waiting on you?",
+    headline: "Watch your AI agent work.",
+    sub: "It plans, codes, and reviews itself. Can you SEE it — and trust it?",
   },
-  // 2 — REVEAL THE BOARD (gitignored wide still, all 4 columns, slow push-in).
+  // 2 — CHAT. The HUMAN's interface: plain English to Claude Code; the agent picks up the task (R3 reframe).
   {
-    n: 2, kind: "output", stepLabel: "the live board · agent-kanban", clipSec: 7, commands: [],
+    n: 2, kind: "chat", stepLabel: "you → Claude Code · plain English", clipSec: 6, commands: [],
+    isTerminal: false, isHeroOutput: false, backgroundColor: BG_CHAT,
+    chatRequest: "Plan and ship the board update — and show me every step.",
+  },
+  // 3 — TOOL. The agent's real pipeline (planner → plan-review → executor → exec-review) on the dark tool world.
+  {
+    n: 3, kind: "tool", stepLabel: "agent-kanban — the agent's interface, not yours", clipSec: 8,
+    commands: ["claude  plan and ship the board update", "show the run on agent-kanban"],
+    isTerminal: true, isHeroOutput: false, backgroundColor: BG_TOOL,
+  },
+  // 4 — TRANSITION (silent). The work surfaces from the tool onto the board (dark → cream).
+  {
+    n: 4, kind: "transition", stepLabel: "", clipSec: KANBAN_TRANSITION_SEC, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
-    still: {
-      source: WIDE_BOARD_STILL, srcW: 2160, srcH: 2560, holdSec: 1.0,
-      // Pure vertical settle + a gentle push-in: establish the whole board, ease toward the columns.
-      focusStart: { cx: 0.5, cy: 0.42, zoom: 1.0 },
-      focusEnd: { cx: 0.5, cy: 0.34, zoom: 0.92 },
-    },
   },
-  // 3 — SELF-EXPLAINING LANES (same wide still, slow L→R pan across QUEUED → ▶ WORKING → ◆ REVIEW · PASS → ✓ DONE).
+  // 5 — BOARD: SESSION PICKER (DYNAMIC clip, cols 2–3 → open the picker dropdown → filter between sessions).
   {
-    n: 3, kind: "output", stepLabel: "every card says where it is", clipSec: 9, commands: [],
+    n: 5, kind: "output", stepLabel: "the live board · agent-kanban", clipSec: 12, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
-    still: {
-      source: WIDE_BOARD_STILL, srcW: 2160, srcH: 2560, holdSec: 0.6,
-      // Horizontal sweep across the lanes (NOT a hero beat → not column-locked; the lanes ARE the subject).
-      focusStart: { cx: 0.22, cy: 0.4, zoom: 0.66 },
-      focusEnd: { cx: 0.8, cy: 0.4, zoom: 0.66 },
-    },
+    clipSource: "out/capture/kanban/clip-session-picker.mp4",
+    clipW: KANBAN_PICKER_CLIP.w, clipH: KANBAN_PICKER_CLIP.h, animMinSec: 8,
+    // NO clip push-in (zoom 1.0) — the cols-2–3 board already fills the frame edge-to-edge; the dropdown OPENING
+    // is the motion. Any horizontal zoom-in would crop the now-flush card text on the L/R (the #1120 clip-fix).
+    clipPanZoom: { cx: 0.5, cy: 0.12, zoom: 1.0, holdFrac: 0.4 },
   },
-  // 4 ⭐ — THE LIVE HEARTBEAT (DYNAMIC clip, cols 2–3; push-in on the pulsing ▶ WORKING card). Ring on the
-  // active card (the breathing card; the phase line itself scales with the pulse, so the ring frames the card).
+  // 6 — PHASE LINE / SELF-EXPLAINING CARD (COMMITTED hero still, cols 2–3; column-locked vertical push-in onto
+  // the top In-Review card's ◆ REVIEW · PASS phase line). The ONLY committed, provenance-hashed frame — the
+  // both-ends AC anchor (the extracted-frame ◆ REVIEW glyph probe runs on these bytes).
   {
-    n: 4, kind: "output", stepLabel: "working right now", clipSec: 8, commands: [],
-    isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
-    clipSource: "out/capture/kanban/clip-heartbeat.mp4",
-    clipW: KANBAN_HEARTBEAT_CLIP.w, clipH: KANBAN_HEARTBEAT_CLIP.h, animMinSec: 6,
-    // Push in toward the top of In Progress (the focus card) so the breathing ▶ WORKING pill reads clearly.
-    // Holds wide first, then eases in. The pulse + push-in IS the highlight — a STATIC ring would not track
-    // the zooming clip underneath it (rings live only on the settled STILL beats 5/6 + the no-zoom drawer 8).
-    clipPanZoom: { cx: 0.28, cy: 0.2, zoom: 0.6, holdFrac: 0.45 },
-  },
-  // 5 — NAMES THE ROLE (camera move over the COMMITTED cols-2–3 still onto the ▶ EXECUTOR card in In Progress).
-  {
-    n: 5, kind: "output", stepLabel: "the exact role on the job", clipSec: 7, commands: [],
-    isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
-    still: {
-      source: COMMITTED_STILL, srcW: 2700, srcH: 3150, holdSec: 0.6,
-      // Tight on the In Progress (LEFT) column's ▶ EXECUTOR card. NOT a hero beat → free to frame the left
-      // column (cx locked to ~0.27 so it is a vertical settle, no cross-column sweep).
-      focusStart: { cx: 0.27, cy: 0.46, zoom: 0.7 },
-      focusEnd: { cx: 0.27, cy: 0.51, zoom: 0.46 },
-    },
-    // Measured live (`.ak-phase` ▶ EXECUTOR element box: sx 0.0344 sy 0.5051 sh 0.0115); ring width tightened
-    // to hug the "▶ EXECUTOR" text (the element box is the full column width). Baked by capture:kanban-assets.
-    highlight: { sx: 0.034, sy: 0.5051, sw: 0.14, sh: 0.0115, label: "the role on the job", labelBelow: true },
-  },
-  // 6 ⭐ — VERDICT ON THE FACE (COMMITTED hero still, cols 2–3; column-locked vertical push-in onto the top
-  // In-Review card's ◆ REVIEW · PASS face line). The ONLY committed, provenance-hashed frame — the both-ends
-  // AC anchor (the extracted-frame ◆ REVIEW glyph probe runs on these bytes).
-  {
-    n: 6, kind: "output", stepLabel: "the verdict, on the face", clipSec: 9, commands: [],
+    n: 6, kind: "output", stepLabel: "every card says where it is", clipSec: 14, commands: [],
     isTerminal: false, isHeroOutput: true, backgroundColor: BG_OUTPUT_A,
     hero: {
       source: COMMITTED_STILL,
-      // RE-BAKED from the re-capture (capture:kanban-assets prints sha256/bytes/srcW/srcH).
-      sha256: "b9d2a1043affa3df7b765da9dc73f2be4c6ad596eaf934f202a975c914eae9a2",
-      bytes: 376916,
-      srcW: 2700, srcH: 3150, holdSec: 1.6,
-      // Column-locked vertical pan (cx 0.5 both ends — the camera-framing guard) + a gentle push-in that
-      // settles on the top row where the ◆ REVIEW · PASS face line sits in the In Review (RIGHT) column.
-      focusStart: { cx: 0.5, cy: 0.3, zoom: 1.0 },
-      focusEnd: { cx: 0.5, cy: 0.18, zoom: 0.86 },
+      // RE-BAKED 2026-06-22 from the re-capture (capture:kanban-assets prints sha256/bytes/srcW/srcH).
+      sha256: "7dda50b747f6ebcdbe0acb55aa844820dea87dd99df82201d025f080ff8c188c",
+      bytes: 373595,
+      srcW: 2700, srcH: 3150, holdSec: 2.0,
+      // FULL-WIDTH both columns (zoom 1.0→0.98 cx 0.5 → visible [0.0098, 0.990] ⊃ card text [0.018, 0.982] → NO
+      // L/R crop, the #1120 clip-fix), with a gentle vertical settle toward the top rows. cx 0.5 both ends
+      // satisfies the hero camera-framing guard; the ◆ REVIEW · PASS ring sits in the In Review (RIGHT) column.
+      focusStart: { cx: 0.5, cy: 0.42, zoom: 1.0 },
+      focusEnd: { cx: 0.5, cy: 0.34, zoom: 0.98 },
     },
-    // Measured live (`.ak-phase` ◆ REVIEW · PASS element box: sx 0.5233 sy 0.1878 sh 0.01); ring width
-    // tightened to hug the "◆ REVIEW · PASS" text (the element box is the full column width). The glyph probe
+    // Measured live (`.ak-phase` ◆ REVIEW · PASS element box). RE-BAKED by capture:kanban-assets. The glyph probe
     // (kanbanSpec.test) confirms verdict-green pixels live INSIDE this region on the committed PNG.
-    highlight: { sx: 0.5233, sy: 0.1878, sw: 0.18, sh: 0.01, label: "review · passed", labelBelow: true },
+    highlight: { sx: 0.5233, sy: 0.1878, sw: 0.18, sh: 0.01, label: "in review · passed", labelBelow: true },
   },
-  // 7 ⭐ — CAUSAL MOVE (DYNAMIC clip, cols 2–3; card LIFTS from In Progress, crosses, LANDS in In Review;
-  // the phase line flips ▶ WORKING → ◆ REVIEW · PASS on land — the verdict appears CAUSALLY as the card arrives).
+  // 7 — THE LIVE HEARTBEAT (DYNAMIC clip, cols 2–3; push-in on the pulsing ▶ WORKING card). The pulse + push-in
+  // IS the highlight — a STATIC ring would not track the zooming clip underneath it.
   {
-    n: 7, kind: "output", stepLabel: "lift · land · explained", clipSec: 10, commands: [],
+    n: 7, kind: "output", stepLabel: "working right now", clipSec: 12, commands: [],
+    isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
+    clipSource: "out/capture/kanban/clip-heartbeat.mp4",
+    clipW: KANBAN_HEARTBEAT_CLIP.w, clipH: KANBAN_HEARTBEAT_CLIP.h, animMinSec: 6,
+    // LEFT-anchored push-in (cx 0.0 → scale origin at the left edge → visible [0, 0.62] = the In Progress column
+    // with the breathing ▶ WORKING card; left edge stays put, no L/R crop). cy 0.16 keeps the top cards in view.
+    clipPanZoom: { cx: 0.0, cy: 0.16, zoom: 0.62, holdFrac: 0.45 },
+  },
+  // 8 — NAMES THE ROLE (gitignored cols-2–3 still onto the ▶ EXECUTOR card in In Progress; settled ring).
+  {
+    n: 8, kind: "output", stepLabel: "the exact role on the job", clipSec: 11, commands: [],
+    isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
+    still: {
+      source: COMMITTED_STILL, srcW: 2700, srcH: 3150, holdSec: 1.2,
+      // The In Progress (LEFT) column. cx ≤ zoom/2 (0.31≤0.31, 0.25≤0.25) → posX clamps to 0 → the left edge
+      // (source x=0) is always shown → the full In Progress column, NO left crop (the #1120 clip-fix).
+      focusStart: { cx: 0.31, cy: 0.46, zoom: 0.62 },
+      focusEnd: { cx: 0.25, cy: 0.5, zoom: 0.5 },
+    },
+    // Measured live 2026-06-22 (`.ak-phase` ▶ EXECUTOR box: sx 0.0189 sy 0.5053 sh 0.0112; sw tightened to hug the token).
+    highlight: { sx: 0.0189, sy: 0.5053, sw: 0.16, sh: 0.0112, label: "the role on the job", labelBelow: true },
+  },
+  // 9 — CAUSAL MOVE (DYNAMIC clip, cols 2–3; card LIFTS from In Progress, crosses, LANDS in In Review; the phase
+  // line flips ▶ WORKING → ◆ REVIEW · PASS on land — the verdict appears CAUSALLY as the card arrives).
+  {
+    n: 9, kind: "output", stepLabel: "lift · land · explained", clipSec: 15, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     clipSource: "out/capture/kanban/clip-card-move.mp4",
     clipW: KANBAN_CARD_CLIP.w, clipH: KANBAN_CARD_CLIP.h, animMinSec: 8,
-    // Hold wide for the cross, then push in on the LANDED card (top of In Review, RIGHT column) so the
-    // newly-lit ◆ REVIEW · PASS face line reads clearly.
-    clipPanZoom: { cx: 0.74, cy: 0.22, zoom: 0.6, holdFrac: 0.55 },
+    // FULL-BOARD, no push-in (zoom 1.0) — the card visibly LIFTS from In Progress (left), crosses, and LANDS in
+    // In Review (right) with both columns fully on screen the whole time. A push-in would crop the In Progress
+    // column on the left (reading as the haircut); the cross + the verdict-flip-on-land IS the motion.
+    clipPanZoom: { cx: 0.5, cy: 0.2, zoom: 1.0, holdFrac: 0.4 },
   },
-  // 8 — DEPTH ON TAP (DYNAMIC drawer clip — tap the card → timeline drawer SLIDES OPEN → settle on the role
-  // ledger rows + verdict pills + elapsed; ring on the pipeline+verdict union).
+  // 10 — PARENT / EPIC CHIP (gitignored cols-2–3 still; settled ring on the "↳ #NNNN" parent chip).
   {
-    n: 8, kind: "output", stepLabel: "the agent's own reviews", clipSec: 9, commands: [],
+    n: 10, kind: "output", stepLabel: "rolls up to its parent epic", clipSec: 9, commands: [],
+    isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
+    still: {
+      source: COMMITTED_STILL, srcW: 2700, srcH: 3150, holdSec: 1.0,
+      // The In Progress (LEFT) card carrying the "↳ #1063" parent chip (cy ≈ 0.52). cx ≤ zoom/2 → posX clamps
+      // to 0 → full In Progress column, NO left crop (the #1120 clip-fix).
+      focusStart: { cx: 0.31, cy: 0.5, zoom: 0.62 },
+      focusEnd: { cx: 0.25, cy: 0.524, zoom: 0.5 },
+    },
+    // Measured live 2026-06-22 (`.ak-tag--parent` "↳ #1063" box: sx 0.0189 sy 0.5235 sw 0.0662 sh 0.0157; sw padded).
+    highlight: { sx: 0.0189, sy: 0.5235, sw: 0.09, sh: 0.0157, label: "parent epic", labelBelow: true },
+  },
+  // 11 — DEPTH ON TAP (DYNAMIC drawer clip — tap the card → timeline drawer SLIDES OPEN → settle on the role
+  // ledger rows + verdict pills + elapsed).
+  {
+    n: 11, kind: "output", stepLabel: "tap for the full timeline", clipSec: 13, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     clipSource: "out/capture/kanban/clip-drawer-open.mp4",
     clipW: KANBAN_DRAWER_CLIP.w, clipH: KANBAN_DRAWER_CLIP.h, animMinSec: 7,
-    // Measured live (the `.ak-pipeline` + `.ak-verdict` union) over the drawer clip; baked by capture:kanban-assets.
+  },
+  // 12 — THE VERDICTS (gitignored open-drawer still; settled ring on the MULTIPLE colored verdict pills + elapsed).
+  {
+    n: 12, kind: "output", stepLabel: "every step's verdict — passed, with-notes, blocked", clipSec: 17, commands: [],
+    isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
+    still: {
+      source: VERDICT_STILL, srcW: 1200, srcH: 2132, holdSec: 1.4,
+      // FULL-WIDTH drawer (zoom 1.0 cx 0.5 → posX=0 → no L/R crop); the narrow drawer over-fills vertically, so
+      // the cy 0.6→0.66 settle pans DOWN onto the colored verdict pills (no horizontal zoom-in to crop them).
+      focusStart: { cx: 0.5, cy: 0.6, zoom: 1.0 },
+      focusEnd: { cx: 0.5, cy: 0.66, zoom: 1.0 },
+    },
+    // Measured live 2026-06-22 (the `.ak-pipeline` + `.ak-verdict` union over the open drawer).
     highlight: { sx: 0.0267, sy: 0.6931, sw: 0.9467, sh: 0.256, label: "each step's verdict" },
   },
-  // 9 — PAYOFF (synth title, board pull-back read in the line).
+  // 13 — PAYOFF (synth title, board pull-back read in the line).
   {
-    n: 9, kind: "payoff", stepLabel: "", clipSec: 6, commands: [],
+    n: 13, kind: "payoff", stepLabel: "", clipSec: 9, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_TOOL,
-    headline: "Your AI agents — finally legible.",
-    sub: "Every card says where it is, and why — right on its face.",
+    headline: "Your AI agent — finally legible.",
+    sub: "Every move, every verdict — right on the board, not in a black box.",
   },
-  // 10 — CTA (synth, no board).
+  // 14 — CTA (synth, no board).
   {
-    n: 10, kind: "cta", stepLabel: "", clipSec: 5, commands: [],
+    n: 14, kind: "cta", stepLabel: "", clipSec: 5, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_TOOL,
     headline: "agent-kanban",
-    sub: "open-source · MIT · see your agents work",
+    sub: "open-source · MIT · see your agent work",
     url: "github.com/ziyilam3999/agent-kanban",
   },
 ];
@@ -318,29 +360,48 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
 /**
  * The VO / caption text per beat (the caption-track SOURCE). Stored for the LATER (gated, PAID) VO leg;
  * deliberately NOT fed into the spec's `onScreenText` (R9 dev-token scan), exactly like forge/#824.
- * `KANBAN_VO_LINES[i]` is the line for `KANBAN_BEATS[i]`. v2 has NO silent beat — all 10 are narrated.
- * Each load-bearing line NAMES a thing you can SEE in its shot (the live heartbeat, the role, the on-face verdict).
+ * `KANBAN_VO_LINES[i]` is the line for `KANBAN_BEATS[i]`. Beat 4 (the tool→board transition) is SILENT —
+ * its entry is the empty string (the narration module drops it). Each load-bearing line NAMES a thing you can
+ * SEE in its shot (the phase line, the live heartbeat, the role, the on-face verdict, the parent epic).
  */
 export const KANBAN_VO_LINES: ReadonlyArray<string> = [
-  "You hand real work to your AI agents — and then you're flying blind. Which one's stuck? Which is done? Which is quietly waiting on you?",
-  "This board answers that at a glance — every agent and every task it's running, laid out in one live place.",
-  "Because every card says where it is, in plain words, right on its own face — queued, working, in review, or done. No decoder ring, no digging through logs.",
-  "The one card it is working on right now gently breathes, with a live pulse, so you can always see exactly where the agent's focus is this second.",
-  "And for multi-step work, it names the exact role on the job right now — here, you can see the executor is the one in the seat.",
-  "When something reaches review, the verdict sits right there on the card's face — passed, approved with notes, or blocked — so you never dig to find out why.",
-  "Now watch a card actually move — it lifts off one column, crosses, and lands in review — and it explains itself the instant it arrives, the passed verdict appearing right as it lands.",
-  "And when you want the whole story, just tap any card — its full timeline opens up, showing every role that touched it, every verdict it earned, and every timing, in order.",
-  "Your AI agents — finally legible. You always know who did what, and whether their own review actually passed.",
-  "agent-kanban — it's open-source and free under MIT. The link is in the replies.",
+  // 1 hook
+  "Your AI agent plans, codes, and reviews its own work. But can you actually see it — and trust it?",
+  // 2 chat
+  "It starts how you already work: you just ask, in plain English, and the agent picks up the task.",
+  // 3 tool
+  "Behind the scenes it runs a real pipeline — planner, plan-review, executor, exec-review — each step checked before the next.",
+  // 4 transition — SILENT (the work surfaces from the tool onto the board).
+  "",
+  // 5 picker
+  "And here it all is, live. Every work session your agent runs is one tap away — open the picker and filter between them.",
+  // 6 phase line
+  "Every card says where it is, in plain words, right on its face — queued, working, in review, or done. No decoder ring, no digging through logs.",
+  // 7 heartbeat
+  "The one card it is working on right now gently breathes, with a live pulse, so you always see exactly where its focus is this second.",
+  // 8 role
+  "And for multi-step work, it names the exact role on the job — here, you can see the executor is the one in the seat.",
+  // 9 lift · land
+  "Now watch a task actually move — it lifts off one column, crosses, and grows as it lands in review — and the passed verdict appears the instant it arrives.",
+  // 10 epic chip
+  "Every card also shows its parent epic, so you can see how the small work rolls up into the big goal.",
+  // 11 drawer
+  "Want the whole story? Tap any task and its full timeline opens up — every role that touched it, in order, with how long each one took.",
+  // 12 verdict pills
+  "And a colored verdict sits on each step — green passed, amber approved-with-notes, red blocked — so you see whether its own reviews really passed, not just that it did something.",
+  // 13 payoff
+  "You ask. The agent works. And you watch every move and every verdict — not a black box.",
+  // 14 cta
+  "agent-kanban — it's open-source and free under MIT. See your agent work.",
 ];
 
 // ── The DemoVideoSpec instance (fed to assertDemoCategoryRecipe — the build's test oracle) ─────────--
 
-const RUNTIME_BAND = { min: 74, max: 84 } as const; // v2 design-target spine ≈ 77s (re-locked via fitBeatsToVo post-preview)
+const RUNTIME_BAND = { min: 130, max: 150 } as const; // #1120 extended cut ≈ 140s (∈ demo {110,180}); re-locked via fitBeatsToVo post-preview
 const MAX_TERMINAL_FRACTION = 0.3;
 
 export const KANBAN_VO_BUNDLE = "out/review/kanban/kanban-vo-sync.json";
-export const KANBAN_RUNTIME_SEC = KANBAN_BEATS.reduce((s, b) => s + b.clipSec, 0); // 77 (design target)
+export const KANBAN_RUNTIME_SEC = KANBAN_BEATS.reduce((s, b) => s + b.clipSec, 0); // 140 (design target)
 
 function kanbanCaptions(): DemoCaptions {
   return {
@@ -354,27 +415,33 @@ function kanbanCaptions(): DemoCaptions {
 /** The on-screen TEXT FIELDS a beat carries (label + title fields) — VO/caption + the elaboration
  *  highlight.label are authored separately and scrubbed in the capture gate (R9-exempt here). */
 function kanbanOnScreenText(b: KanbanBeat): string[] {
-  return [b.stepLabel, b.headline ?? "", b.sub ?? "", b.url ?? ""].filter((t) => t.length > 0);
+  return [b.stepLabel, b.headline ?? "", b.sub ?? "", b.url ?? "", b.chatRequest ?? ""].filter((t) => t.length > 0);
 }
 
 /**
- * Title beats are centered (fill:false). ALL board beats sit INSET on the cream output world (fill:false —
- * a framed object on a designed matte): the STILL beats (2/3/5/6) pan-zoom inside a device, the DYNAMIC beats
- * (4/7/8) play their clip inside a device sized to the clip's aspect.
+ * Title beats are centered (fill:false); the chat + tool beats fill the frame (fill:true, full-bleed like
+ * fable/forge). The silent transition (beat 4) is a transient handoff — OMITTED from the layout array. ALL
+ * board beats (5–12) sit INSET on the cream output world (fill:false — a framed object on a designed matte):
+ * the STILL beats (6/8/10/12) pan-zoom inside a 90%-wide device; the DYNAMIC clip beats (5/7/9/11) play their
+ * clip inside a device sized to the clip's EXACT aspect (kanbanClipDeviceRect) so the clip can NEVER slice L/R.
  */
 export const KANBAN_BEAT_LAYOUTS: ReadonlyArray<FableBeatLayout> = [
   { beat: 1, kind: "title", content: { left: 120, top: 520, right: CAP_W - 120, bottom: 1400 }, fill: false },
-  { beat: 2, kind: "viewer-panzoom", content: { ...WIDE_BOARD_DEVICE }, fill: false },
-  { beat: 3, kind: "viewer-panzoom", content: { ...WIDE_BOARD_DEVICE }, fill: false },
-  { beat: 4, kind: "viewer-video", content: kanbanClipDeviceRect(KANBAN_HEARTBEAT_CLIP.w, KANBAN_HEARTBEAT_CLIP.h), fill: false },
-  { beat: 5, kind: "viewer-panzoom", content: { ...WIDE_BOARD_DEVICE }, fill: false },
+  { beat: 2, kind: "terminal", content: { left: 90, top: 110, right: CAP_W - 90, bottom: CAP_H - 110 }, fill: true },
+  { beat: 3, kind: "terminal", content: { left: 108, top: 120, right: CAP_W - 108, bottom: CAP_H - 120 }, fill: true },
+  // beat 4 (silent transition) — transient handoff, omitted (no economy/safe-area subject to check).
+  { beat: 5, kind: "viewer-video", content: kanbanClipDeviceRect(KANBAN_PICKER_CLIP.w, KANBAN_PICKER_CLIP.h), fill: false },
   { beat: 6, kind: "viewer-panzoom", content: { ...WIDE_BOARD_DEVICE }, fill: false },
-  { beat: 7, kind: "viewer-video", content: kanbanClipDeviceRect(KANBAN_CARD_CLIP.w, KANBAN_CARD_CLIP.h), fill: false },
-  // beat 8 — drawer clip framed COVER in the 90%-wide board device, BOTTOM-anchored so the deep timeline
-  // (pipeline header + verdict pills, in the LOWER drawer) stays on screen + big and the ring lands on the pills.
-  { beat: 8, kind: "viewer-video", content: { ...WIDE_BOARD_DEVICE }, fill: false },
-  { beat: 9, kind: "title", content: { left: 120, top: 480, right: CAP_W - 120, bottom: 1440 }, fill: false },
-  { beat: 10, kind: "title", content: { left: 120, top: 480, right: CAP_W - 120, bottom: 1440 }, fill: false },
+  { beat: 7, kind: "viewer-video", content: kanbanClipDeviceRect(KANBAN_HEARTBEAT_CLIP.w, KANBAN_HEARTBEAT_CLIP.h), fill: false },
+  { beat: 8, kind: "viewer-panzoom", content: { ...WIDE_BOARD_DEVICE }, fill: false },
+  { beat: 9, kind: "viewer-video", content: kanbanClipDeviceRect(KANBAN_CARD_CLIP.w, KANBAN_CARD_CLIP.h), fill: false },
+  { beat: 10, kind: "viewer-panzoom", content: { ...WIDE_BOARD_DEVICE }, fill: false },
+  // beat 11 (drawer) — CONTAIN-framed in a device sized to the drawer clip's aspect (the #1120 / #1092 fix:
+  // was COVER in WIDE_BOARD_DEVICE, which could slice the drawer sideways; kanbanClipDeviceRect can't).
+  { beat: 11, kind: "viewer-video", content: kanbanClipDeviceRect(KANBAN_DRAWER_CLIP.w, KANBAN_DRAWER_CLIP.h), fill: false },
+  { beat: 12, kind: "viewer-panzoom", content: { ...WIDE_BOARD_DEVICE }, fill: false },
+  { beat: 13, kind: "title", content: { left: 120, top: 480, right: CAP_W - 120, bottom: 1440 }, fill: false },
+  { beat: 14, kind: "title", content: { left: 120, top: 480, right: CAP_W - 120, bottom: 1440 }, fill: false },
 ];
 
 function buildKanbanSpec(): DemoVideoSpec {
@@ -403,7 +470,8 @@ function buildKanbanSpec(): DemoVideoSpec {
 
   return {
     task: 1120,
-    shape: "feature-tour", // #1120 v2 — 10-beat tour: R3/R5 carved out at merge baseline (dropped in the 14-beat re-cut)
+    // #1120 14-beat tool-demo: chat (beat 2) + agent-interface tool (beat 3) + transition (beat 4) are present,
+    // so R3/R5 apply and PASS — NO feature-tour carve-out (the v2 10-beat tour dropped them; this cut restores them).
     videoType: "demo", // #1137 — kanban is a demo-category video
     beats,
     aspects: FABLE_ASPECTS,

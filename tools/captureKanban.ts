@@ -594,6 +594,25 @@ async function runCapture(): Promise<void> {
       case "cta":
         webm = await recordHtml(buildTitleHtml({ headline: beat.headline!, sub: beat.sub, url: beat.url }), rec, recRoot, chromium);
         break;
+      case "chat":
+        webm = await recordHtml(buildKanbanChatHtml(beat.stepLabel), rec, recRoot, chromium, async (page) => {
+          const req = beat.chatRequest!;
+          for (let i = 0; i < req.length; i += 2) {
+            await page.evaluate((c: string) => (globalThis as any).window.__chatType(c), req.slice(i, i + 2));
+            await page.waitForTimeout(40);
+          }
+          await page.waitForTimeout(400);
+          await page.evaluate(() => (globalThis as any).window.__chatSend());
+        });
+        break;
+      case "tool":
+        webm = await recordKanbanTerminal(beat, rec, recRoot, chromium);
+        break;
+      case "transition": {
+        const card = fileToDataUri(path.join(REPO_ROOT, "assets/kanban-demo/board-overview.png"), "image/png");
+        webm = await recordHtml(buildTransitionHtml(card), rec, recRoot, chromium, undefined, "networkidle");
+        break;
+      }
       case "output":
         if (beat.hero || beat.still) webm = await recordKanbanPanZoomBeat(beat, rec, recRoot, chromium);
         else webm = await recordViewerVideoBeat(beat, `http://127.0.0.1:${port}/${relOf(path.join(REPO_ROOT, beat.clipSource!))}`, recRoot, chromium);
