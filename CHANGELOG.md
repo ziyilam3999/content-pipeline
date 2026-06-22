@@ -1,3 +1,9 @@
+## [0.41.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.40.0...v0.41.0) (2026-06-23)
+
+### Features
+
+* **video:** #1156 bundle Inter font + brand-tokens SSOT + fonts-loaded gate — Inter `.woff2` bundled and loaded so Remotion renders the brand font instead of silently falling back to Helvetica; shared `video/brandTokens.ts` (brand colours + font family) as the single source imported by the renderers; a fonts-loaded assertion (`video/fontGate.ts`) fails the render if Inter isn't actually loaded, so the silent-fallback class can't recur. Foundation for the #1157 thumbnail generator. (#164)
+
 ## [0.40.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.39.0...v0.40.0) (2026-06-22)
 
 ### Features
