@@ -1,3 +1,9 @@
+## [0.37.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.36.0...v0.37.0) (2026-06-22)
+
+### Features
+
+* **demo:** #1120 re-cut agent-kanban demo — fix the recurring board left-edge clip (scrollLeft reset + both-ends contain-assert) + extend 77s→140s (14 beats, videoType demo) (#155)
+
 ## [0.36.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.35.0...v0.36.0) (2026-06-22)
 
 ### Features
