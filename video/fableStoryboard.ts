@@ -15,14 +15,14 @@
  */
 
 // ── The two VISUALLY DISTINCT worlds (the core of the agent-interface reframe) ─────────────────────
-// THE TOOL — dark navy, teal accent (the agent's interface: terminal, hook, payoff, cta).
-export const BG_TOOL = "#0b1020";
-// THE OUTPUT — a LIGHT warm cream surface (unmistakably different from the dark tool world). The real
-// card / real video are FRAMED on this so the viewer can never confuse the output with the tool.
-export const BG_OUTPUT_A = "#f7f1e6"; // cream
-export const BG_OUTPUT_B = "#ecdfc8"; // deeper sand (gradient end)
-// THE HUMAN's Claude Code chat surface — warm clay world, distinct from BOTH tool and output.
-export const BG_CHAT = "#1c1917";
+// #1156 — the world background VALUES now live in the brand SSOT (video/brandTokens.ts) so the future
+// thumbnail (#1157) + every renderer import ONE source. Re-exported here so the existing importers
+// (capture tools + storyboards, via tools/captureFable.ts re-export) keep working unchanged.
+//   BG_TOOL    — THE TOOL: dark navy, teal accent (terminal / hook / payoff / cta).
+//   BG_OUTPUT_A — THE OUTPUT: light warm cream (unmistakably different from the dark tool world).
+//   BG_OUTPUT_B — deeper sand (cream gradient end).
+//   BG_CHAT    — THE HUMAN's chat surface: warm clay, distinct from both tool and output.
+export { BG_TOOL, BG_OUTPUT_A, BG_OUTPUT_B, BG_CHAT } from "./brandTokens";
 
 // ── The 8-beat storyboard (the approved REVISED ~90s spine) ────────────────────────────────────────
 
