@@ -23,10 +23,14 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("buildAuthUrl", () => {
-  it("contains youtube.upload scope, access_type=offline, prompt=consent, and a 127.0.0.1 loopback redirect", () => {
+  it("contains the youtube.force-ssl scope, access_type=offline, prompt=consent, and a 127.0.0.1 loopback redirect", () => {
     const url = buildAuthUrl({ clientId: "cid.apps.googleusercontent.com", port: 49321 });
     const parsed = new URL(url);
     expect(parsed.searchParams.get("scope")).toBe(YOUTUBE_UPLOAD_SCOPE);
+    // #1132: lock the BROADER scope — force-ssl covers upload + title/description/privacy
+    // edits, pinned comments, and playlists. A revert to the upload-only scope trips this
+    // (both-ends guard).
+    expect(YOUTUBE_UPLOAD_SCOPE).toContain("youtube.force-ssl");
     expect(parsed.searchParams.get("access_type")).toBe("offline");
     expect(parsed.searchParams.get("prompt")).toBe("consent");
     expect(parsed.searchParams.get("response_type")).toBe("code");

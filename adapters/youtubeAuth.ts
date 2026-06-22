@@ -22,8 +22,14 @@ import type { FetchLike } from "./youtube";
 /** Google's OAuth 2.0 endpoints. */
 export const GOOGLE_AUTH_BASE = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-/** The single scope the upload path needs (`videos.insert`). */
-export const YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload";
+/**
+ * The scope the pipeline requests (#1132). `youtube.force-ssl` is the broad
+ * "manage my channel" scope — it covers uploading (videos.insert) AND editing
+ * titles / descriptions / privacy, pinned comments (commentThreads.insert), and
+ * playlists. It supersedes the upload-only `youtube.upload` so a single re-consent
+ * unlocks the full reach workflow. (Constant name kept for import stability.)
+ */
+export const YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl";
 
 /** The loopback redirect URI for a Desktop-app client bound to an ephemeral 127.0.0.1 port. */
 export function loopbackRedirectUri(port: number): string {
