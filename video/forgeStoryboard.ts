@@ -330,6 +330,9 @@ function buildForgeSpec(): DemoVideoSpec {
     };
     if (b.hero) {
       beat.provenance = { source: b.hero.source, real: true, sha256: b.hero.sha256, bytes: b.hero.bytes };
+      // #1092 — forge heroes are pan-zoom stills inset into the title-safe band; populate the contain-rule
+      // input from the REAL render dims (dynamic:false — no clips). MANDATORY so R18 is non-vacuous for forge.
+      beat.insetAsset = { w: b.hero.srcW, h: b.hero.srcH, dynamic: false };
     }
     return beat;
   });
