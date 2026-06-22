@@ -37,7 +37,10 @@ describe("#1148 fit-beats — derive VO-first durations from a committed fixture
 
   it("resolvePreviewPath: explicit --preview path and a slug both resolve sensibly", () => {
     expect(resolvePreviewPath({ previewPath: FIXTURE })).toBe(FIXTURE);
-    expect(resolvePreviewPath({ slug: "kanban" })).toMatch(/out\/review\/kanban\/kanban-vo-preview\.json$/);
+    // normalize separators so the assertion holds on Windows (path.join emits "\") as well as POSIX
+    expect(resolvePreviewPath({ slug: "kanban" }).replace(/\\/g, "/")).toMatch(
+      /out\/review\/kanban\/kanban-vo-preview\.json$/,
+    );
   });
 
   it("formatDerived prints a paste-ready, VO-first-labeled block", () => {
