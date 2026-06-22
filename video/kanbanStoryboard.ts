@@ -5,12 +5,14 @@
  * SELF-EXPLAINING CARD: every card face carries a plain-words PHASE LINE —
  *   QUEUED · ▶ WORKING (mint, pulsing when live) · ▶ EXECUTOR (the role) · ◆ REVIEW · PASS · ✓ DONE · PASS.
  * The old demo filmed the board BEFORE that upgrade and was shaped like a "how you talk to the tool" ad
- * (you-type → terminal → board). The operator-approved v2 is a FEATURE TOUR of the self-explaining card:
- *   1 hook · 2 reveal board · 3 lanes pan · 4⭐ live heartbeat · 5 names the role · 6⭐ verdict on the face ·
- *   7⭐ causal move · 8 depth on tap · 9 payoff · 10 cta.
- * ⭐ = the three headline beats (live heartbeat · face-verdict · causal flip). There is NO chat / tool /
- * transition beat — so the spec opts into the demonstration recipe's `shape: "feature-tour"` carve-out
- * (R3/R5 not asserted; every other rule still applies).
+ * (you-type → terminal → board). The operator-approved 14-beat tool-demo (#1120 extended cut → 140s) shows
+ * the agent-interface reframe AND the self-explaining card:
+ *   1 hook · 2 chat · 3 tool · 4 transition(silent) · 5 picker(clip) · 6⭐ phase-line(committed still) ·
+ *   7⭐ live heartbeat · 8 names the role · 9⭐ causal move · 10 epic chip · 11 depth on tap ·
+ *   12 verdict pills · 13 payoff · 14 cta.
+ * ⭐ = the three headline beats (face-verdict · live heartbeat · causal flip). Chat (beat 2) + agent-interface
+ * tool (beat 3) + the explicit tool→board transition (beat 4) are PRESENT, so the strict recipe rules R3/R5
+ * apply and PASS — NO `shape: "feature-tour"` carve-out (the spec leaves `shape` unset → strict R3/R5).
  *
  * Motion approach: the STILL board beats (2/3/5/6) are render-time pan/zoom over high-res board screenshots
  * (smooth at output fps by construction); the DYNAMIC board beats (4/7/8) are real Playwright captures
@@ -171,11 +173,11 @@ export interface KanbanBeat {
 }
 
 // ── VO-driven beat lengths — the spine↔voice sync SSOT ──────────────────────────────────────────────
-// DESIGN-TARGET spoken durations per beat (the operator-approved storyboard's ~76–80s). Each beat's clipSec
-// MUST equal KANBAN_VO_SEG_SEC[n] (jest-gated). The v2 spine has NO transition beat → KANBAN_TRANSITION_SEC=0
-// and no silence is spliced. These are RE-LOCKED via fitBeatsToVo after the cheap paid audio-only preview
-// (the dynamic beats 4/7/8 carry an animMinSec floor so the re-lock can't shrink them below their motion);
-// until then they ride the storyboard's design targets. Spine total = 77s (74–84s band).
+// DESIGN-TARGET spoken durations per beat (the operator-approved 14-beat storyboard → ~140s). Each beat's
+// clipSec MUST equal KANBAN_VO_SEG_SEC[n] (jest-gated). The spine has exactly ONE transition beat (beat 4,
+// silent) → KANBAN_TRANSITION_SEC=1 and 1s of silence is spliced at the tool→board seam. These are RE-LOCKED
+// via fitBeatsToVo after the cheap paid audio-only preview (the dynamic clip beats carry an animMinSec floor
+// so the re-lock can't shrink them below their motion); until then they ride the storyboard's design targets.
 // 14-beat tool-demo (#1120 extended cut → 140s). Beat 4 is the SILENT tool→board transition (its VO line is
 // the empty string; the silence-gate keeps the splice ≤1.5s). Every OTHER beat's clipSec == its VO segment.
 export const KANBAN_VO_SEG_SEC: Readonly<Record<number, number>> = {
@@ -465,13 +467,22 @@ function buildKanbanSpec(): DemoVideoSpec {
     if (b.hero) {
       beat.provenance = { source: b.hero.source, real: true, sha256: b.hero.sha256, bytes: b.hero.bytes };
     }
+    // #1092 — populate the CONTAIN-rule input (R18) from the REAL asset dims: a DYNAMIC clip beat
+    // (clipSource → clipW/clipH, exact-fit rule b) or a still pan-zoom beat (hero/still srcW/srcH, rule a).
+    // MANDATORY on every board beat so R18 is non-vacuous for kanban. The drawer hero is really 1200×2132.
+    if (b.clipSource) {
+      beat.insetAsset = { w: b.clipW!, h: b.clipH!, dynamic: true };
+    } else if (b.hero ?? b.still) {
+      const src = (b.hero ?? b.still)!;
+      beat.insetAsset = { w: src.srcW, h: src.srcH, dynamic: false };
+    }
     return beat;
   });
 
   return {
     task: 1120,
     // #1120 14-beat tool-demo: chat (beat 2) + agent-interface tool (beat 3) + transition (beat 4) are present,
-    // so R3/R5 apply and PASS — NO feature-tour carve-out (the v2 10-beat tour dropped them; this cut restores them).
+    // so R3/R5 apply and PASS — NO feature-tour carve-out (an earlier tour cut dropped them; this 14-beat cut restores them).
     videoType: "demo", // #1137 — kanban is a demo-category video
     beats,
     aspects: FABLE_ASPECTS,
