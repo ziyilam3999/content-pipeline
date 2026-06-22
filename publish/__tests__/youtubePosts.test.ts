@@ -125,14 +125,14 @@ describe("#1153 — metadata convention (per-post title override + format-aware 
   it("AC5: agent-kanban-demo description carries the subscribe CTA + the ⭐ GitHub repo link", () => {
     const desc = buildDescription(YOUTUBE_POSTS["agent-kanban-demo"]);
     expect(desc).toContain("▶ Subscribe for more:");
-    expect(desc).toContain("https://www.youtube.com/@ansonlam9488");
+    expect(desc).toContain("https://www.youtube.com/@AnsonAndAI");
     expect(desc).toContain("⭐ GitHub: https://github.com/ziyilam3999/agent-kanban");
   });
 
   // CTA applies to ALL formats (short posts get it too).
   it("the subscribe CTA renders on a short post as well", () => {
     const desc = buildDescription(YOUTUBE_POSTS["lfah-post1"]);
-    expect(desc).toContain("▶ Subscribe for more: https://www.youtube.com/@ansonlam9488");
+    expect(desc).toContain("▶ Subscribe for more: https://www.youtube.com/@AnsonAndAI");
   });
 });
 

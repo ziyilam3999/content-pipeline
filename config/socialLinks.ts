@@ -8,7 +8,7 @@
  *   - github  : github.com/ziyilam3999          (repo owner — verified by existence)
  *   - x       : x.com/anson3999                  (the posts link real statuses there — verified)
  *   - threads : threads.com/@gotextrameal        (verified 2026-06-19 — live profile, display "Anson Lam")
- *   - youtube : @ansonlam9488                    (operator-provided channel)
+ *   - youtube : @AnsonAndAI                       (operator-confirmed channel handle, 2026-06-22)
  *
  * LinkedIn is intentionally ABSENT: it is on hold (the operator's day-job employer might notice), and
  * linking it from a PUBLIC channel re-creates exactly that discoverable connection. Add a `linkedin`
@@ -21,4 +21,4 @@ export const SOCIAL_LINKS = {
 } as const;
 
 /** The YouTube channel these uploads target. */
-export const YOUTUBE_CHANNEL = "@ansonlam9488";
+export const YOUTUBE_CHANNEL = "@AnsonAndAI";
