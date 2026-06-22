@@ -190,9 +190,9 @@ describe("#1137 demo videoType + widened {110,180} band — the three shipped de
     expect(() => assertDemoCategoryRecipe(forgeSpec)).not.toThrow();
   });
 
-  test("kanbanSpec (~76s, pinned {74,84}) still PASSES", () => {
+  test("kanbanSpec (~140s 14-beat, pinned {130,150}) still PASSES", () => {
     expect(kanbanSpec.videoType).toBe("demo");
-    expect(kanbanSpec.beats.reduce((a, b) => a + b.durationSec, 0)).toBe(76);
+    expect(kanbanSpec.beats.reduce((a, b) => a + b.durationSec, 0)).toBe(140);
     expect(() => assertDemoCategoryRecipe(kanbanSpec)).not.toThrow();
   });
 });

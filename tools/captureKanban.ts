@@ -51,11 +51,12 @@ import {
   KANBAN_BEAT_LAYOUTS,
   kanbanSpec,
   kanbanClipDeviceRect,
-  KANBAN_PICKER_CLIP,
+  KANBAN_HEARTBEAT_CLIP,
   KANBAN_CARD_CLIP,
   KANBAN_DRAWER_CLIP,
   WIDE_BOARD_DEVICE,
   type KanbanBeat,
+  type KanbanStill,
 } from "../video/kanbanStoryboard";
 import { resolveVendoredFfmpeg, probeRender } from "../video/renderProbe";
 import { requireApprovedStoryboard } from "../video/storyboardGate";
@@ -394,10 +395,10 @@ function assertKanbanBeatsClean(): void {
   assertCaptureBrandClean(shaped);
   for (const b of KANBAN_BEATS) {
     const hl = b.highlight?.label ?? "";
-    const texts = [b.stepLabel, b.headline ?? "", b.sub ?? "", b.url ?? "", b.chatRequest ?? "", hl].filter((s) => s.length > 0);
+    const texts = [b.stepLabel, b.headline ?? "", b.sub ?? "", b.url ?? "", hl].filter((s) => s.length > 0);
     for (const t of texts) assertBrandClean(t); // every on-screen text field + the highlight label
     assertNoInternalDevTokens(
-      [b.stepLabel, b.headline ?? "", b.sub ?? "", b.chatRequest ?? "", hl].filter((s) => s.length > 0),
+      [b.stepLabel, b.headline ?? "", b.sub ?? "", hl].filter((s) => s.length > 0),
       `beat ${b.n}`,
     );
     assertNoPlaceholderUrls([b.url ?? ""].filter((s) => s.length > 0), `beat ${b.n} url`);
@@ -469,9 +470,10 @@ async function recordKanbanTerminal(beat: KanbanBeat, recordSec: number, recDir:
   return await video!.path();
 }
 
-/** STILL board beat: render the committed PNG under an animated pan-zoom camera + a settled ring (dsf 2). */
+/** STILL board beat: render the board PNG under an animated pan-zoom camera + a settled ring (dsf 2). Reads
+ *  the committed hero still (beat 6) OR a gitignored still (beats 2/3/5) — both share the KanbanStill shape. */
 async function recordKanbanPanZoomBeat(beat: KanbanBeat, recordSec: number, recDir: string, chromium: any): Promise<string> {
-  const h = beat.hero!;
+  const h: KanbanStill = (beat.hero ?? beat.still)!;
   const html = buildKanbanPanZoomHtml({
     imgDataUri: fileToDataUri(path.join(REPO_ROOT, h.source), "image/png"),
     srcW: h.srcW, srcH: h.srcH,
@@ -506,7 +508,7 @@ async function recordKanbanPanZoomBeat(beat: KanbanBeat, recordSec: number, recD
  *    timeline (pipeline header + verdict pills, which sit in the LOWER drawer) stays fully on screen + big;
  *    only the ticket title/board above is cropped. The ring's cover transform uses the same bottom alignment. */
 function kanbanDynamicFraming(beatN: number): { device: Rect; objectPosition: string; posFrac: { x: number; y: number }; clipW: number; clipH: number } {
-  if (beatN === 5) return { device: kanbanClipDeviceRect(KANBAN_PICKER_CLIP.w, KANBAN_PICKER_CLIP.h), objectPosition: "center", posFrac: { x: 0.5, y: 0.5 }, clipW: KANBAN_PICKER_CLIP.w, clipH: KANBAN_PICKER_CLIP.h };
+  if (beatN === 4) return { device: kanbanClipDeviceRect(KANBAN_HEARTBEAT_CLIP.w, KANBAN_HEARTBEAT_CLIP.h), objectPosition: "center", posFrac: { x: 0.5, y: 0.5 }, clipW: KANBAN_HEARTBEAT_CLIP.w, clipH: KANBAN_HEARTBEAT_CLIP.h };
   if (beatN === 7) return { device: kanbanClipDeviceRect(KANBAN_CARD_CLIP.w, KANBAN_CARD_CLIP.h), objectPosition: "center", posFrac: { x: 0.5, y: 0.5 }, clipW: KANBAN_CARD_CLIP.w, clipH: KANBAN_CARD_CLIP.h };
   return { device: WIDE_BOARD_DEVICE, objectPosition: "center bottom", posFrac: { x: 0.5, y: 1 }, clipW: KANBAN_DRAWER_CLIP.w, clipH: KANBAN_DRAWER_CLIP.h };
 }
@@ -545,6 +547,13 @@ async function runCapture(): Promise<void> {
     if (!fs.existsSync(abs)) throw new Error(`captureKanban: hero still missing: ${b.hero.source} (run capture:kanban-assets)`);
     const bytes = fs.statSync(abs).size;
     if (bytes !== b.hero.bytes) throw new Error(`captureKanban: hero still ${b.hero.source} is ${bytes} bytes, spec says ${b.hero.bytes}`);
+  }
+  // Verify the gitignored stills (beats 2/3/5) exist — regenerated each capture, NOT byte-checked.
+  for (const b of KANBAN_BEATS) {
+    if (!b.still) continue;
+    if (!fs.existsSync(path.join(REPO_ROOT, b.still.source))) {
+      throw new Error(`captureKanban: still board source missing: ${b.still.source} — run \`npm run capture:kanban-assets\` first.`);
+    }
   }
   // Verify the dynamic clips exist (captured by tools/captureKanbanAssets.ts).
   for (const b of KANBAN_BEATS) {
@@ -605,7 +614,7 @@ async function runCapture(): Promise<void> {
         break;
       }
       case "output":
-        if (beat.hero) webm = await recordKanbanPanZoomBeat(beat, rec, recRoot, chromium);
+        if (beat.hero || beat.still) webm = await recordKanbanPanZoomBeat(beat, rec, recRoot, chromium);
         else webm = await recordViewerVideoBeat(beat, `http://127.0.0.1:${port}/${relOf(path.join(REPO_ROOT, beat.clipSource!))}`, recRoot, chromium);
         break;
       default:
@@ -662,9 +671,8 @@ async function main(): Promise<void> {
     console.log("KANBAN-CAPTURE: recipe-passed (#870 demonstration-category recipe R1–R13 enforced).");
     console.log(`KANBAN-CAPTURE: --dry-run (gates passed: paid-free + brand-clean + owner-clean). ${KANBAN_BEATS.length} beats, ${total}s:`);
     for (const b of KANBAN_BEATS) {
-      const what = b.kind === "tool" ? b.commands.join("  ;  ")
-        : b.kind === "chat" ? `chat: "${b.chatRequest}"`
-        : b.hero ? `pan-zoom: ${b.hero.source}`
+      const what = b.hero ? `hero pan-zoom: ${b.hero.source}`
+        : b.still ? `still pan-zoom: ${b.still.source}`
         : b.clipSource ? `clip: ${b.clipSource}`
         : b.headline ? `title: "${b.headline}"` : `[${b.kind}]`;
       console.log(`  beat ${b.n} (${b.kind}, ${b.clipSec}s) — ${b.stepLabel || "—"}  ::  ${what}`);

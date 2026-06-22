@@ -1,25 +1,26 @@
 /**
- * #1046 agent-kanban demo — capture the RAW BOARD ASSETS (content-pipeline INPUTS, not the deliverable).
+ * #1120 agent-kanban demo (v2) — capture the RAW BOARD ASSETS (content-pipeline INPUTS, not the deliverable).
  *
- * Produces the four real inputs the kanban demo build consumes:
- *   • assets/kanban-demo/board-overview.png  — high-res still of the live board (beat 6 pan-zoom; ring .ak-live)
- *   • out/capture/kanban/clip-session-picker.mp4 — dynamic capture: open picker → switch to an idle session →
- *                                              board changes + LIVE→IDLE (beat 5 viewer-video)
- *   • out/capture/kanban/clip-drawer-open.mp4 — dynamic capture: board → tap #1053 → drawer SLIDES OPEN →
- *                                              settle on .ak-pipeline + .ak-verdict pills (beat 8 viewer-video).
- *                                              Prints the SETTLED pipeline+verdict union box for the beat-8 ring.
- *   • out/capture/kanban/clip-card-move.mp4  — dynamic capture: a card advancing todo→in_progress→in_review→done
- *                                              via the 1500ms poll (beat 7 viewer-video)
+ * Produces the real inputs the v2 feature-tour build consumes from agent-kanban's SELF-EXPLAINING card:
+ *   • assets/kanban-demo/board-overview.png  — COMMITTED hero still, cols 2–3 (In Progress + In Review), DSF 3.
+ *       Beat 6 (verdict-on-face) pan-zoom + beat 5 (role) camera. Prints sha256/bytes/srcW/srcH + the
+ *       re-measured ◆ REVIEW · PASS `.ak-phase` ring + the ▶ EXECUTOR `.ak-phase` ring.
+ *   • out/capture/kanban/wide-board.png       — gitignored still, ALL 4 columns (beats 2/3 reveal + lanes pan).
+ *   • out/capture/kanban/clip-heartbeat.mp4   — DYNAMIC: cols 2–3, the pulsing ▶ WORKING card breathing (beat 4).
+ *   • out/capture/kanban/clip-card-move.mp4   — DYNAMIC: cols 2–3, a card LIFTS In Progress → LANDS In Review,
+ *       the phase line flips ▶ WORKING → ◆ REVIEW · PASS on land (beat 7 — the causal move).
+ *   • out/capture/kanban/clip-drawer-open.mp4 — DYNAMIC: tap a card → the timeline drawer SLIDES OPEN; settles
+ *       on the role ledger + verdict pills. Prints the .ak-pipeline + .ak-verdict union for the beat-8 ring.
  *
- * Requires the agent-kanban dev server up at http://localhost:3210 (PORT=3210 npm run dev in that repo).
- * Uses THIS repo's playwright. High res: deviceScaleFactor 3, mobile viewport 390x844 (overview still);
- * the dynamic clips use their own per-beat capture viewports.
+ * Requires the agent-kanban dev server up at http://localhost:3210 (PORT=3210 npm run dev in that repo) serving
+ * the BRAND-SAFE demo board. This tool PLACES the committed `assets/kanban-demo/demo-board.json` fixture into
+ * agent-kanban's data/board.json (after backing up + restoring the user's REAL board, byte-verified) and rebases
+ * its timestamps to "now" so the live session breathes — so a re-run never films the operator's private board.
  *
- * board.json safety: the card-move capture mutates agent-kanban's data/board.json, then RESTORES it to the
- * EXACT original bytes (sha256-verified) in a finally block. The overview/drawer-open captures only READ.
+ * MOTION PROOF: each dynamic clip emits a ≥6-frame strip under out/review/kanban/strip-<clip>/ and prints the
+ * per-frame md5 so the orchestrator can verify the frames are DISTINCT (real motion, not a static pan).
  *
- * Prints the MEASURED normalized highlight boxes (sx/sy/sw/sh) for the ringed elements so they can be baked
- * into video/kanbanStoryboard.ts. out/ is gitignored; the overview PNG is committed.
+ * Uses THIS repo's playwright + the vendored ffmpeg. out/ is gitignored; the overview PNG is committed.
  */
 
 import * as fs from "fs";
@@ -28,55 +29,56 @@ import * as path from "path";
 import * as crypto from "crypto";
 import { spawnSync } from "child_process";
 
-import { resolveVendoredFfmpeg } from "../video/renderProbe";
-import { KANBAN_PICKER_CLIP, KANBAN_CARD_CLIP, KANBAN_DRAWER_CLIP } from "../video/kanbanStoryboard";
+import { resolveVendoredFfmpeg, probeRender } from "../video/renderProbe";
+import { KANBAN_PICKER_CLIP, KANBAN_HEARTBEAT_CLIP, KANBAN_CARD_CLIP, KANBAN_DRAWER_CLIP } from "../video/kanbanStoryboard";
 import { requireApprovedStoryboard } from "../video/storyboardGate";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const BOARD_URL = "http://localhost:3210/";
-// agent-kanban repo location: override with KANBAN_REPO, else default under the user's home (no hardcoded user/home path in a PUBLIC repo).
+// agent-kanban repo location: override with KANBAN_REPO, else default under the user's home (no hardcoded
+// user/home path in a PUBLIC repo).
 const KANBAN_REPO = process.env.KANBAN_REPO || path.join(os.homedir(), "coding_projects", "agent-kanban");
 const BOARD_JSON = path.join(KANBAN_REPO, "data", "board.json");
 const REPO_ROOT = fs.realpathSync(process.cwd());
 const ASSET_DIR = path.join(REPO_ROOT, "assets", "kanban-demo");
+const DEMO_BOARD_FIXTURE = path.join(ASSET_DIR, "demo-board.json");
 const CLIP_DIR = path.join(REPO_ROOT, "out", "capture", "kanban");
+const STRIP_DIR = path.join(REPO_ROOT, "out", "review", "kanban");
 
-// #1091 crop-fix: 900-wide so the overview still (beat 6) shows the SAME clean TWO-column layout as the
-// picker (beat 5) and card-move (beat 7) clips — a 390-wide mobile capture sliced the right column at the
-// frame edge (the L/R-crop defect). VH is taller than the device aspect so beat 6's vertical pan-to-the-badge
-// has room to move (cover keeps the full 900 width on screen → no L/R cut).
+// Hero still (committed, beat 6): cols 2–3 (In Progress + In Review), DSF 3 → 2700×3900.
 const VW = 900;
-const VH = 1300;
+const VH = 1050;
 const DSF = 3;
-// Dynamic-clip recording geometry. recordVideo `size` MUST equal the viewport CSS size — if `size` is larger
-// than the viewport, Playwright paints the page into the TOP-LEFT and leaves the rest GRAY (the #1046 defect).
-// dsf 2 renders the page sharp, downsampled to `size`.
-//
-// PICKER clip (beat 5): 900-wide so the board shows TWO FULL columns (To Do + In Progress) with right margin
-// — a 390-wide mobile capture sliced the right column at the frame edge (#1091 L/R-crop fix). The picker
-// button + dropdown menu sit at the TOP-left and stay uncropped; the clip frames CONTAIN (no cover crop).
+// Wide-board still (beats 2/3): all 4 columns, DSF 2 → 2160×2560.
+const WIDE_VW = 1080;
+const WIDE_VH = 1280;
+const WIDE_DSF = 2;
+// Dynamic-clip recording geometry (recordVideo `size` MUST equal the viewport CSS size).
 const PICKER_W = KANBAN_PICKER_CLIP.w;
 const PICKER_H = KANBAN_PICKER_CLIP.h;
-// CARD-MOVE clip (beat 7): DESKTOP width (≥ 1024 → the board's 4-up grid, all four columns side by side) and
-// LANDSCAPE, so a card advancing column-to-column visibly LEAVES one column and ARRIVES in the next on screen
-// (defect-2 fix — in the mobile single-column view the destination columns are off-screen).
+const HEART_W = KANBAN_HEARTBEAT_CLIP.w;
+const HEART_H = KANBAN_HEARTBEAT_CLIP.h;
 const CARD_W = KANBAN_CARD_CLIP.w;
 const CARD_H = KANBAN_CARD_CLIP.h;
-// DRAWER-OPEN clip (beat 8): PORTRAIT mobile so the full deep-timeline drawer (header → pipeline → verdict
-// pills) is visible uncropped. The clip captures board → tap #1053 → drawer SLIDES OPEN → settle, and we
-// MEASURE the settled pipeline+verdict-pills union box (normalized over this clip) for the elaboration ring.
 const DRAWER_W = KANBAN_DRAWER_CLIP.w;
 const DRAWER_H = KANBAN_DRAWER_CLIP.h;
 
-// #1091 crop-fix: force the board to exactly TWO full columns (To Do + In Progress) at 50%-each so the
-// captured board NEVER slices a partial column at the frame edge. The board's natural column width (~585px)
-// fits only ~1.5 columns in a 900-wide capture → the right column gets cut (the L/R-crop defect). Applied to
-// the overview still (beat 6) + picker clip (beat 5) + card-move clip (beat 7) so all three establishing
-// board shots share ONE clean 2-column layout. Capture-time FRAMING only — the ticket DATA is 100% live.
+// COLS 2–3 framing — show exactly In Progress + In Review (hide To Do + Done) at 50% each, so the captured
+// board NEVER slices a partial column at the frame edge. The face-VERDICT renders only for in_review/done, so
+// every verdict beat frames In Progress + In Review (never cols 1–2). Capture-time FRAMING only; ticket DATA
+// is 100% the live board.
+// #1120 clip-fix: zero the strip's horizontal PADDING (16px 14px left a 24px right overflow at 900px) so
+// 2×(50% − 8) + 12px gap = 896 ≤ 900 — the 2 columns sit FLUSH, no L/R overflow. Combined with a scrollLeft=0
+// reset (resetStripScroll, applied in EVERY board capture) this kills the stale-88vw-snap left-edge "haircut".
 const TWO_COL_CSS =
-  ".ak-strip{overflow-x:hidden !important;scroll-snap-type:none !important}" +
-  ".ak-col{flex:0 0 calc(50% - 8px) !important;scroll-snap-align:none !important}";
+  ".ak-strip{overflow-x:hidden !important;scroll-snap-type:none !important;padding-left:0 !important;padding-right:0 !important}" +
+  ".ak-col{flex:0 0 calc(50% - 8px) !important;scroll-snap-align:none !important}" +
+  ".ak-col:nth-child(1),.ak-col:nth-child(4){display:none !important}";
+// WIDE framing — all 4 columns contained at 25% each (the reveal + lanes-pan establishing shots).
+const WIDE_COL_CSS =
+  ".ak-strip{overflow-x:hidden !important;scroll-snap-type:none !important;padding-left:0 !important;padding-right:0 !important}" +
+  ".ak-col{flex:0 0 calc(25% - 6px) !important;scroll-snap-align:none !important}";
 
 function sha256(buf: Buffer): string {
   return crypto.createHash("sha256").update(buf).digest("hex");
@@ -86,7 +88,7 @@ function ffmpegEnv(dir: string): NodeJS.ProcessEnv {
   return process.platform === "darwin" ? { ...process.env, DYLD_FALLBACK_LIBRARY_PATH: dir } : { ...process.env };
 }
 
-/** Transcode a recorded webm → an even-dimension mp4 (no scaling — preserve the mobile board aspect). */
+/** Transcode a recorded webm → an even-dimension mp4 (no scaling — preserve the board aspect). */
 function transcodeClip(webm: string, outMp4: string): void {
   const { bin, dir } = resolveVendoredFfmpeg();
   const r = spawnSync(
@@ -102,6 +104,29 @@ function transcodeClip(webm: string, outMp4: string): void {
   if (!fs.existsSync(outMp4) || fs.statSync(outMp4).size === 0) {
     throw new Error(`captureKanbanAssets: transcode produced no output (exit ${r.status}) for ${webm}`);
   }
+}
+
+/** MOTION PROOF — extract `count` evenly-spread frames from a clip → a strip dir, print per-frame md5 so the
+ *  orchestrator can verify the frames are DISTINCT (real motion). Returns the md5 list. */
+function proofStrip(mp4: string, label: string, count = 6): string[] {
+  const { bin, dir } = resolveVendoredFfmpeg();
+  const dur = probeRender(mp4).videoDurationSec || 1;
+  const outDir = path.join(STRIP_DIR, `strip-${label}`);
+  fs.rmSync(outDir, { recursive: true, force: true });
+  fs.mkdirSync(outDir, { recursive: true });
+  const md5s: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = ((i + 0.5) / count) * dur;
+    const frame = path.join(outDir, `frame-${String(i).padStart(2, "0")}.png`);
+    spawnSync(bin, ["-hide_banner", "-y", "-ss", t.toFixed(2), "-i", mp4, "-frames:v", "1", frame],
+      { env: ffmpegEnv(dir), encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    md5s.push(fs.existsSync(frame) ? crypto.createHash("md5").update(fs.readFileSync(frame)).digest("hex") : "MISSING");
+  }
+  const distinct = new Set(md5s).size;
+  console.log(`[motion-proof:${label}] ${count} frames → ${path.relative(REPO_ROOT, outDir)}  (${distinct}/${count} DISTINCT)`);
+  md5s.forEach((m, i) => console.log(`  frame-${String(i).padStart(2, "0")}.png  md5=${m}`));
+  if (distinct < 4) console.log(`[motion-proof:${label}] ⚠ FEWER than 4 distinct frames — motion NOT proven for ${label}.`);
+  return md5s;
 }
 
 /** Normalized box (0..1) of a rect inside a clip window. */
@@ -122,6 +147,32 @@ async function hideDevChrome(page: any): Promise<void> {
   }).catch(() => {});
 }
 
+/** #1120 clip-fix — reset the board strip's horizontal scroll to 0 (the 88vw mount-snap leaves a stale
+ *  scrollLeft → the leftmost column is shaved on the LEFT under overflow-x:hidden). Call AFTER the 2-col
+ *  override + a settle, BEFORE measuring rings / screenshotting / recording. Also asserts the leftmost visible
+ *  column starts at x ≥ 0 and the 2-col content fits the viewport (a regression re-introducing a slice FAILS). */
+async function resetStripScroll(page: any, viewportW: number): Promise<void> {
+  await page.evaluate(() => {
+    const s = (globalThis as any).document.querySelector(".ak-strip");
+    if (s) s.scrollLeft = 0;
+  });
+  await page.waitForTimeout(150);
+  const probe = await page.evaluate(() => {
+    const doc = (globalThis as any).document;
+    const strip = doc.querySelector(".ak-strip");
+    const cols = Array.prototype.slice.call(doc.querySelectorAll(".ak-col")).filter((c: any) => c.offsetParent !== null) as any[];
+    if (!strip || cols.length === 0) return null;
+    const first = cols[0].getBoundingClientRect();
+    const last = cols[cols.length - 1].getBoundingClientRect();
+    return { scrollLeft: strip.scrollLeft, firstX: first.x, lastRight: last.x + last.width };
+  });
+  if (probe) {
+    if (probe.firstX < -1) throw new Error(`captureKanbanAssets: left-edge SLICE — leftmost visible column starts at x=${probe.firstX.toFixed(1)} < 0 (stale scrollLeft=${probe.scrollLeft}).`);
+    if (probe.lastRight > viewportW + 1) throw new Error(`captureKanbanAssets: right OVERFLOW — 2-col content right edge ${probe.lastRight.toFixed(1)} > viewport ${viewportW}.`);
+    console.log(`[clip-fix] strip scrollLeft=${probe.scrollLeft}, leftCol x=${probe.firstX.toFixed(1)}, rightEdge=${probe.lastRight.toFixed(1)} ≤ ${viewportW} (no L/R slice)`);
+  }
+}
+
 async function rectOf(page: any, sel: string): Promise<{ x: number; y: number; w: number; h: number } | null> {
   return await page.evaluate((s: string) => {
     const el = (globalThis as any).document.querySelector(s);
@@ -131,22 +182,39 @@ async function rectOf(page: any, sel: string): Promise<{ x: number; y: number; w
   }, sel);
 }
 
+/** Place the BRAND-SAFE demo board into agent-kanban's data/board.json, rebasing timestamps to "now" so the
+ *  live session breathes. Backs up the user's REAL board bytes and returns them (or null) for restoration. */
+function placeDemoBoard(): Buffer | null {
+  const real = fs.existsSync(BOARD_JSON) ? fs.readFileSync(BOARD_JSON) : null;
+  const board = JSON.parse(fs.readFileSync(DEMO_BOARD_FIXTURE, "utf8"));
+  const now = Date.now();
+  const maxU = Math.max(...board.tickets.map((t: any) => t.updatedAt));
+  for (const t of board.tickets) t.updatedAt = now - (maxU - t.updatedAt);
+  for (const s of board.sessions) s.lastActive = now - (maxU - s.lastActive);
+  board.generatedAt = now;
+  fs.mkdirSync(path.dirname(BOARD_JSON), { recursive: true });
+  fs.writeFileSync(BOARD_JSON, JSON.stringify(board, null, 2));
+  console.log(`[demo-board] placed brand-safe demo board → ${BOARD_JSON} (${board.tickets.length} tickets, live session, timestamps rebased to now)`);
+  return real;
+}
+
 async function main(): Promise<void> {
   // #1120 Leg 0 — refuse to capture until an approved storyboard exists for this post (design-first).
   requireApprovedStoryboard("agent-kanban-demo");
   fs.mkdirSync(ASSET_DIR, { recursive: true });
   fs.mkdirSync(CLIP_DIR, { recursive: true });
-  // `--clips-only` re-captures ONLY the two dynamic mp4s and leaves the committed stills untouched (the stills
-  // carry wall-clock "Xm ago" timestamps → re-capturing them would change their sha256 + break the provenance test).
+  fs.mkdirSync(STRIP_DIR, { recursive: true });
+  // `--clips-only` re-captures ONLY the dynamic mp4s + the gitignored stills and leaves the committed hero
+  // still untouched (re-capturing it changes its sha256 → breaks the provenance test).
   const clipsOnly = process.argv.includes("--clips-only");
   const { chromium } = await import("playwright");
   const recRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kanban-assets-"));
 
-  // ── 1. board-overview.png (still for beat 6) — top of the live board, ring .ak-live ────────────────
-  // Clip height MUST NOT exceed the viewport height (VH) — a non-fullPage screenshot clip is CLAMPED to the
-  // viewport, so height:1180 silently produced an 844-tall (VH) image while the log/storyboard recorded 1180
-  // (×DSF=3540) → the beat-6 ring normalized against a phantom height landed ~40% too high (#1046). Keep clip
-  // height == VH so the saved PNG, the logged srcH, and the measured normBox all agree.
+  // Place the brand-safe demo board; restore the user's REAL board in the OUTER finally (byte-verified).
+  const realBoardBytes = placeDemoBoard();
+
+  try {
+  // ── 1. board-overview.png (committed hero, beats 5/6) — cols 2–3, ring ◆ REVIEW · PASS + ▶ EXECUTOR ──
   const OVERVIEW_CLIP = { x: 0, y: 0, width: VW, height: VH };
   if (!clipsOnly) {
     const browser = await chromium.launch();
@@ -155,9 +223,37 @@ async function main(): Promise<void> {
     await page.goto(BOARD_URL, { waitUntil: "networkidle" });
     await page.waitForTimeout(1500);
     await hideDevChrome(page);
-    await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {}); // #1091: 2 full columns, no L/R slice
-    await page.waitForTimeout(400); // let the flex re-layout settle before measuring the ring + screenshot
-    const liveRect = await rectOf(page, ".ak-live");
+    await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {}); // cols 2–3, no L/R slice
+    await page.waitForTimeout(500); // let the flex re-layout settle before measuring rings + screenshot
+    await resetStripScroll(page, VW); // #1120 clip-fix: kill the stale 88vw scrollLeft before measuring/shooting
+    // NOTE: no nested named function / `const f = () =>` inside page.evaluate — tsx/esbuild keepNames injects a
+    // `__name(...)` helper around them which does NOT exist in the browser context (ReferenceError __name).
+    const boxes = await page.evaluate(() => {
+      const doc = (globalThis as any).document;
+      const phases = Array.prototype.slice.call(doc.querySelectorAll(".ak-phase")) as any[];
+      let review: any = null;
+      let exec: any = null;
+      for (let i = 0; i < phases.length; i++) {
+        const t = phases[i].textContent || "";
+        if (!review && /◆\s*REVIEW/.test(t)) review = phases[i];
+        if (!exec && /EXECUTOR/.test(t)) exec = phases[i];
+      }
+      const live = doc.querySelector(".ak-phase--live");
+      const epicEl = doc.querySelector(".ak-tag--parent") || doc.querySelector(".ak-tag--epic");
+      const rb = review ? review.getBoundingClientRect() : null;
+      const eb = exec ? exec.getBoundingClientRect() : null;
+      const lb = live ? live.getBoundingClientRect() : null;
+      const pb = epicEl ? epicEl.getBoundingClientRect() : null;
+      return {
+        review: rb ? { x: rb.x, y: rb.y, w: rb.width, h: rb.height } : null,
+        exec: eb ? { x: eb.x, y: eb.y, w: eb.width, h: eb.height } : null,
+        live: lb ? { x: lb.x, y: lb.y, w: lb.width, h: lb.height } : null,
+        epic: pb ? { x: pb.x, y: pb.y, w: pb.width, h: pb.height } : null,
+        reviewText: review ? review.textContent : null,
+        execText: exec ? exec.textContent : null,
+        epicText: epicEl ? epicEl.textContent : null,
+      };
+    });
     const out = path.join(ASSET_DIR, "board-overview.png");
     await page.screenshot({ path: out, clip: OVERVIEW_CLIP });
     await ctx.close();
@@ -165,71 +261,36 @@ async function main(): Promise<void> {
     const buf = fs.readFileSync(out);
     console.log(`\n[overview] ${path.relative(REPO_ROOT, out)} bytes=${buf.length} sha256=${sha256(buf)}`);
     console.log(`[overview] srcW=${OVERVIEW_CLIP.width * DSF} srcH=${OVERVIEW_CLIP.height * DSF}`);
-    if (liveRect) console.log(`[overview] .ak-live highlight ${JSON.stringify(normBox(liveRect, OVERVIEW_CLIP))}`);
+    if (boxes.review) console.log(`[overview] BEAT-6 ring (◆ REVIEW) .ak-phase "${boxes.reviewText}" => ${JSON.stringify(normBox(boxes.review, OVERVIEW_CLIP))}`);
+    else console.log(`[overview] WARN: ◆ REVIEW phase line NOT found — beat-6 ring NOT measured`);
+    if (boxes.exec) console.log(`[overview] BEAT-8 ring (▶ EXECUTOR) .ak-phase "${boxes.execText}" => ${JSON.stringify(normBox(boxes.exec, OVERVIEW_CLIP))}`);
+    else console.log(`[overview] WARN: ▶ EXECUTOR phase line NOT found — beat-8 ring NOT measured`);
+    if (boxes.epic) console.log(`[overview] BEAT-10 ring (parent epic) .ak-tag "${boxes.epicText}" => ${JSON.stringify(normBox(boxes.epic, OVERVIEW_CLIP))}`);
+    else console.log(`[overview] WARN: parent/epic chip NOT found in cols 2–3 — beat-10 ring NOT measured (add a "[#NNNN] " subject prefix to a cols-2–3 ticket)`);
   }
 
-  // ── 2. clip-drawer-open.mp4 (beat 8) — board → tap #1053 → drawer SLIDES OPEN → settle on pipeline+pills ──
-  // #1046 v3 fix-3: the v2 beat 8 cut to a PRE-OPEN drawer still (it "appeared from nowhere"). This captures
-  // the real tap→open MOTION; we then MEASURE the settled pipeline+verdict-pills union box (normalized over
-  // this clip's 600×1066 window) so the beat-8 elaboration ring lands exactly on the pills.
+  // ── 2. wide-board.png (gitignored, beats 2/3) — ALL 4 columns contained ─────────────────────────────
   {
-    const DRAWER_VIEWPORT = { x: 0, y: 0, width: DRAWER_W, height: DRAWER_H };
+    const WIDE_CLIP = { x: 0, y: 0, width: WIDE_VW, height: WIDE_VH };
     const browser = await chromium.launch();
-    const ctx = await browser.newContext({
-      viewport: { width: DRAWER_W, height: DRAWER_H },
-      deviceScaleFactor: 2,
-      recordVideo: { dir: recRoot, size: { width: DRAWER_W, height: DRAWER_H } },
-    });
+    const ctx = await browser.newContext({ viewport: { width: WIDE_VW, height: WIDE_VH }, deviceScaleFactor: WIDE_DSF });
     const page = await ctx.newPage();
     await page.goto(BOARD_URL, { waitUntil: "networkidle" });
-    await page.waitForTimeout(2600); // establish on the live board BEFORE the tap (clip plays ONCE)
+    await page.waitForTimeout(1500);
     await hideDevChrome(page);
-    // Tap #1053 (the demo's own ticket — it carries real verdict pills: APPROVE-WITH-NOTES, PASS). Auto-scrolls
-    // it into view, then the drawer springs open. Fall back to any ticket if #1053 isn't present.
-    const sel1053 = 'button[aria-label^="Open ticket #1053:"]';
-    const has1053 = await page.evaluate((s) => !!(globalThis as any).document.querySelector(s), sel1053);
-    await page.click(has1053 ? sel1053 : "button[aria-label^='Open ticket #']");
-    await page.waitForTimeout(1200); // drawer slide/spring open + settle
-    const pipeRect = await rectOf(page, ".ak-pipeline");
-    const verdicts = await page.evaluate(() => {
-      const els = [...(globalThis as any).document.querySelectorAll(".ak-verdict")] as any[];
-      if (els.length === 0) return null;
-      const rs = els.map((e) => e.getBoundingClientRect());
-      const x = Math.min(...rs.map((r) => r.x));
-      const y = Math.min(...rs.map((r) => r.y));
-      const right = Math.max(...rs.map((r) => r.x + r.width));
-      const bottom = Math.max(...rs.map((r) => r.y + r.height));
-      return { x, y, w: right - x, h: bottom - y, count: els.length, texts: els.map((e) => e.textContent) };
-    });
-    await page.waitForTimeout(3200); // hold the settled drawer (so the played clip dwells on it before the ring)
-    const video = page.video();
+    await page.addStyleTag({ content: WIDE_COL_CSS }).catch(() => {}); // all 4 columns contained
+    await page.waitForTimeout(500);
+    await resetStripScroll(page, WIDE_VW); // #1120 clip-fix
+    const out = path.join(CLIP_DIR, "wide-board.png");
+    await page.screenshot({ path: out, clip: WIDE_CLIP });
     await ctx.close();
     await browser.close();
-    const webm = await video!.path();
-    const out = path.join(CLIP_DIR, "clip-drawer-open.mp4");
-    transcodeClip(webm, out);
-    console.log(`\n[drawer-open] tapped ${has1053 ? "#1053" : "first ticket"} → drawer opened → ${path.relative(REPO_ROOT, out)}`);
-    if (pipeRect && verdicts) {
-      const x = Math.min(pipeRect.x, verdicts.x);
-      const y = Math.min(pipeRect.y, verdicts.y);
-      const right = Math.max(pipeRect.x + pipeRect.w, verdicts.x + verdicts.w);
-      const bottom = Math.max(pipeRect.y + pipeRect.h, verdicts.y + verdicts.h);
-      const union = { x, y, w: right - x, h: bottom - y };
-      console.log(`[drawer-open] .ak-verdict x${verdicts.count} texts=${JSON.stringify(verdicts.texts)}`);
-      console.log(`[drawer-open] pipeline+verdict union rect=${JSON.stringify(union)}`);
-      console.log(`[drawer-open] BEAT-8 highlight (normalized over ${DRAWER_W}x${DRAWER_H}) => ${JSON.stringify(normBox(union, DRAWER_VIEWPORT))}`);
-    } else {
-      console.log(`[drawer-open] WARN: pipeline/verdict not found (pipe=${!!pipeRect} verdicts=${!!verdicts}) — beat-8 ring box NOT measured`);
-    }
+    const buf = fs.readFileSync(out);
+    console.log(`\n[wide-board] ${path.relative(REPO_ROOT, out)} bytes=${buf.length} srcW=${WIDE_VW * WIDE_DSF} srcH=${WIDE_VH * WIDE_DSF}`);
   }
 
-  // ── 3. clip-session-picker.mp4 (beat 5) — establish on the ACTIVE full board → OPEN the dropdown (the
-  // session list IS the feature) → DWELL with it open over the active board. #1071 fix (operator 2026-06-20):
-  // the v3 capture SWITCHED to the busiest non-live session, but that is only a 3-ticket IDLE session → the
-  // board settled near-empty ("large device, mostly empty black"). We no longer switch — we demonstrate the
-  // picker by opening the dropdown over the ACTIVE (~86-ticket) board and holding it open, so the final
-  // frame is the full board + the open session list, never the barren idle session. The idle state is beat
-  // 6's job. The dropdown-open MOTION is preserved (it visibly opens, as in v3).
+  // ── 3. clip-session-picker.mp4 (beat 5) — cols 2–3, OPEN the session picker dropdown (the session list IS
+  // the feature) → DWELL with it open over the active board. The dropdown-open is the MOTION. ───────────────
   {
     const browser = await chromium.launch();
     const ctx = await browser.newContext({
@@ -239,56 +300,74 @@ async function main(): Promise<void> {
     });
     const page = await ctx.newPage();
     await page.goto(BOARD_URL, { waitUntil: "networkidle" });
-    await page.waitForTimeout(2800); // establish on the LIVE/ACTIVE (full) board first (clip plays ONCE)
+    await page.waitForTimeout(2400); // establish on the ACTIVE board first (clip plays ONCE)
     await hideDevChrome(page);
-    await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {}); // #1091: 2 full columns, no L/R slice
-    await page.waitForTimeout(400); // let the flex re-layout settle
-    await page.click(".ak-picker__btn"); // the dropdown VISIBLY opens (the feature) — DO NOT switch sessions
+    await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {});
+    await page.waitForTimeout(500);
+    await resetStripScroll(page, PICKER_W); // #1120 clip-fix
+    await page.click(".ak-picker__btn").catch(() => {}); // the dropdown VISIBLY opens (the feature)
     await page.waitForTimeout(900);
     const menu = await page.evaluate(() => {
       const m = (globalThis as any).document.querySelector(".ak-picker__menu");
-      const opts = [...(globalThis as any).document.querySelectorAll(".ak-picker__opt")] as any[];
+      const opts = Array.prototype.slice.call((globalThis as any).document.querySelectorAll(".ak-picker__opt")) as any[];
       return { open: !!m, count: opts.length, first: opts[0]?.textContent ?? null };
     });
-    await page.waitForTimeout(9000); // DWELL with the session list open over the ACTIVE board (never settle idle)
-    const liveText = await page.evaluate(() => (globalThis as any).document.querySelector(".ak-live")?.textContent);
+    await page.waitForTimeout(9000); // DWELL with the session list open over the active board
     const video = page.video();
     await ctx.close();
     await browser.close();
     const webm = await video!.path();
     const out = path.join(CLIP_DIR, "clip-session-picker.mp4");
     transcodeClip(webm, out);
-    console.log(`\n[picker] dropdown open (menu=${menu.open}, ${menu.count} sessions, top="${menu.first}") over ACTIVE board (badge "${liveText}") → ${path.relative(REPO_ROOT, out)}`);
+    console.log(`\n[picker] dropdown open (menu=${menu.open}, ${menu.count} sessions, top="${menu.first}") → ${path.relative(REPO_ROOT, out)}`);
+    proofStrip(out, "session-picker");
   }
 
-  // ── 4. clip-card-move.mp4 (beat 7) — a card crossing To Do → In Progress, PORTRAIT two-column ──────
-  // #1071 frame-economy fix (operator 2026-06-20): the v3 capture was a LANDSCAPE all-4-columns desktop grid
-  // that scaled into 9:16 as a thin strip. This captures PORTRAIT with a capture-time 2-column flex override
-  // so exactly the To Do + In Progress columns (the two the card crosses) sit side by side, large + readable,
-  // and the board FILLS the frame. We bump the mover to the TOP of To Do first (so it loads on-screen), then
-  // during recording flip ONLY its column to in_progress — the 1500ms poll animates it leaving To Do and
-  // arriving at the top of In Progress, both columns visible (one clear cross; the VO narrates the full
-  // to-do→done journey). board.json is restored to the exact original bytes in the finally block.
-  //
-  // Two-column override: below the 1024px desktop breakpoint each .ak-col is `flex:0 0 88vw` (≈1 col on
-  // screen). We override to 50%-each so the first TWO columns (To Do, In Progress) fit with no scroll — a
-  // capture-time FRAMING tweak (like hideDevChrome), the ticket DATA is 100% the real live board.
-  // (TWO_COL_CSS is hoisted to module scope so the overview + picker captures share the same 2-col override.)
-  const originalBytes = fs.readFileSync(BOARD_JSON);
-  const originalSha = sha256(originalBytes);
-  const backup = path.join(recRoot, "board.json.bak");
-  fs.writeFileSync(backup, originalBytes);
-  try {
-    const board = JSON.parse(originalBytes.toString("utf8"));
-    const activeSession: string = board.sessionId;
-    const active8 = activeSession.slice(0, 8);
-    const mover = board.tickets.find(
-      (t: any) => t.column === "todo" && (t.sessionId === active8 || t.sessionId === activeSession),
-    );
-    if (!mover) throw new Error("captureKanbanAssets: no todo ticket in the active session to move.");
-    console.log(`\n[card-move] mover ticket #${mover.id} (${mover.column}) in active session ${active8}`);
+  // ── 4. clip-heartbeat.mp4 (beat 7) — cols 2–3, the pulsing ▶ WORKING focus card breathing ───────────
+  {
+    const browser = await chromium.launch();
+    const ctx = await browser.newContext({
+      viewport: { width: HEART_W, height: HEART_H },
+      deviceScaleFactor: 2,
+      recordVideo: { dir: recRoot, size: { width: HEART_W, height: HEART_H } },
+    });
+    const page = await ctx.newPage();
+    await page.goto(BOARD_URL, { waitUntil: "networkidle" });
+    await page.waitForTimeout(1800);
+    await hideDevChrome(page);
+    await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {});
+    await page.waitForTimeout(500);
+    await resetStripScroll(page, HEART_W); // #1120 clip-fix
+    const liveText = await page.evaluate(() => (globalThis as any).document.querySelector(".ak-phase--live")?.textContent ?? null);
+    await page.waitForTimeout(6000); // DWELL on the breathing ▶ WORKING card (pulse cycle = 1.7s → ~3.5 cycles)
+    const video = page.video();
+    await ctx.close();
+    await browser.close();
+    const webm = await video!.path();
+    const out = path.join(CLIP_DIR, "clip-heartbeat.mp4");
+    transcodeClip(webm, out);
+    console.log(`\n[heartbeat] cols 2–3, live pill "${liveText}" breathing → ${path.relative(REPO_ROOT, out)}`);
+    proofStrip(out, "heartbeat");
+  }
 
-    // Pre-bump the mover to the TOP of To Do (updatedAt sorts desc) so it loads on-screen at the column head.
+  // ── 4. clip-card-move.mp4 (beat 7) — mover LIFTS In Progress → LANDS In Review, phase flips on land ──
+  // The mover = the in_progress card carrying a PRE-BAKED execution-review PASS comment but NO work-role
+  // comment (so it reads ▶ WORKING in progress; on flipping to in_review the pre-baked PASS surfaces as
+  // ◆ REVIEW · PASS — the verdict appears CAUSALLY on land). board.json restored to pre-mutation bytes here;
+  // the user's REAL board is restored in the OUTER finally.
+  const preMoveBytes = fs.readFileSync(BOARD_JSON);
+  const preMoveSha = sha256(preMoveBytes);
+  try {
+    const board = JSON.parse(preMoveBytes.toString("utf8"));
+    const mover = board.tickets.find(
+      (t: any) => t.column === "in_progress"
+        && t.comments.some((c: any) => c.role === "execution-review" && c.verdict)
+        && !t.comments.some((c: any) => c.role === "planner" || c.role === "executor"),
+    );
+    if (!mover) throw new Error("captureKanbanAssets: no in_progress mover (execution-review PASS, no work-role) in the demo board.");
+    console.log(`\n[card-move] mover ticket #${mover.id} (${mover.column}) — pre-baked execution-review PASS`);
+
+    // Pre-bump the mover to the TOP of In Progress (focus → ▶ WORKING breathing, loads on-screen at the head).
     {
       const b = JSON.parse(fs.readFileSync(BOARD_JSON, "utf8"));
       const t = b.tickets.find((x: any) => x.id === mover.id);
@@ -308,41 +387,109 @@ async function main(): Promise<void> {
     await page.waitForTimeout(1200);
     await hideDevChrome(page);
     await page.addStyleTag({ content: TWO_COL_CSS }).catch(() => {});
-    await page.evaluate(() => { const s = (globalThis as any).document.querySelector(".ak-strip"); if (s) s.scrollLeft = 0; });
-    await page.waitForTimeout(2600); // establish: To Do + In Progress side by side, mover at TOP of To Do
+    await page.waitForTimeout(2600); // establish: In Progress + In Review side by side, mover ▶ WORKING at top
+    await resetStripScroll(page, CARD_W); // #1120 clip-fix
     const beforeRect = await rectOf(page, cardSel);
 
-    // Flip ONLY the column → in_progress (updatedAt=now → top of In Progress). The poll animates the cross.
+    // Flip ONLY the column → in_review (updatedAt=now → top of In Review). The 1500ms poll animates the cross
+    // and the phase line flips ▶ WORKING → ◆ REVIEW · PASS on land.
     {
       const b = JSON.parse(fs.readFileSync(BOARD_JSON, "utf8"));
       const t = b.tickets.find((x: any) => x.id === mover.id);
-      t.column = "in_progress";
+      t.column = "in_review";
       t.updatedAt = Date.now();
       fs.writeFileSync(BOARD_JSON, JSON.stringify(b, null, 2));
     }
-    await page.waitForTimeout(3200); // poll (1500ms) + 0.32s exit/enter + 700ms arrival glow, held to read
+    await page.waitForTimeout(3200); // poll (1500ms) + 0.7s lift + 2s arrival glow, held to read the flip
     const afterRect = await rectOf(page, cardSel);
-    await page.waitForTimeout(7600); // dwell on the settled state — card at top of In Progress, board fills frame
+    await page.waitForTimeout(5200); // dwell on the landed ◆ REVIEW · PASS card at top of In Review
     const video = page.video();
     await ctx.close();
     await browser.close();
     const webm = await video!.path();
     const out = path.join(CLIP_DIR, "clip-card-move.mp4");
     transcodeClip(webm, out);
-    console.log(`[card-move] #${mover.id} crossed To Do → In Progress (portrait 2-col) → ${path.relative(REPO_ROOT, out)}`);
-    console.log(`[card-move] mover card rect before(To Do)=${JSON.stringify(beforeRect)} after(In Progress)=${JSON.stringify(afterRect)} (x should shift right by ≈ one column)`);
+    console.log(`[card-move] #${mover.id} lifted In Progress → landed In Review (cols 2–3) → ${path.relative(REPO_ROOT, out)}`);
+    console.log(`[card-move] mover rect before(In Progress)=${JSON.stringify(beforeRect)} after(In Review)=${JSON.stringify(afterRect)} (x should shift toward the right column)`);
+    proofStrip(out, "card-move");
   } finally {
-    // RESTORE board.json to the EXACT original bytes — verify.
-    fs.writeFileSync(BOARD_JSON, originalBytes);
+    fs.writeFileSync(BOARD_JSON, preMoveBytes);
     const afterSha = sha256(fs.readFileSync(BOARD_JSON));
-    if (afterSha !== originalSha) {
-      throw new Error(`captureKanbanAssets: board.json restore FAILED (sha ${afterSha} != ${originalSha}) — backup at ${backup}`);
-    }
-    console.log(`[restore] data/board.json restored to original bytes (sha256 ${afterSha.slice(0, 12)}… verified)`);
+    if (afterSha !== preMoveSha) throw new Error(`captureKanbanAssets: card-move board restore FAILED (sha ${afterSha} != ${preMoveSha}).`);
+    console.log(`[card-move] board restored to pre-move bytes (sha ${afterSha.slice(0, 12)}… verified)`);
   }
 
-  fs.rmSync(recRoot, { recursive: true, force: true });
-  console.log("\nKANBAN-ASSETS: done — 2 stills committed-ready + 2 dynamic clips under out/capture/kanban/.");
+  // ── 5. clip-drawer-open.mp4 (beat 8) — tap the In Review PASS card → drawer SLIDES OPEN → settle ─────
+  {
+    const DRAWER_VIEWPORT = { x: 0, y: 0, width: DRAWER_W, height: DRAWER_H };
+    const browser = await chromium.launch();
+    const ctx = await browser.newContext({
+      viewport: { width: DRAWER_W, height: DRAWER_H },
+      deviceScaleFactor: 2,
+      recordVideo: { dir: recRoot, size: { width: DRAWER_W, height: DRAWER_H } },
+    });
+    const page = await ctx.newPage();
+    await page.goto(BOARD_URL, { waitUntil: "networkidle" });
+    await page.waitForTimeout(2400); // establish on the live board BEFORE the tap (clip plays ONCE)
+    await hideDevChrome(page);
+    // Tap the In Review card with the richest ledger (4 roles + verdict pills). Fall back to any ticket.
+    const richSel = 'button[aria-label^="Open ticket #2005:"]';
+    const hasRich = await page.evaluate((s) => !!(globalThis as any).document.querySelector(s), richSel);
+    await page.click(hasRich ? richSel : "button[aria-label^='Open ticket #']");
+    await page.waitForTimeout(1300); // drawer slide/spring open + settle
+    const pipeRect = await rectOf(page, ".ak-pipeline");
+    const verdicts = await page.evaluate(() => {
+      const els = [...(globalThis as any).document.querySelectorAll(".ak-verdict")] as any[];
+      if (els.length === 0) return null;
+      const rs = els.map((e) => e.getBoundingClientRect());
+      const x = Math.min(...rs.map((r) => r.x));
+      const y = Math.min(...rs.map((r) => r.y));
+      const right = Math.max(...rs.map((r) => r.x + r.width));
+      const bottom = Math.max(...rs.map((r) => r.y + r.height));
+      return { x, y, w: right - x, h: bottom - y, count: els.length, texts: els.map((e) => e.textContent) };
+    });
+    // BEAT-12 still — screenshot the SETTLED open drawer (the multi-colored verdict pills) for the pan-zoom
+    // still beat. Gitignored (not byte-checked); its srcW/srcH = DRAWER_W/H × DSF 2.
+    const stillOut = path.join(CLIP_DIR, "drawer-verdicts.png");
+    await page.screenshot({ path: stillOut, clip: DRAWER_VIEWPORT });
+    await page.waitForTimeout(3400); // hold the settled drawer (dwell before the beat-11 clip end)
+    const video = page.video();
+    await ctx.close();
+    await browser.close();
+    const webm = await video!.path();
+    const out = path.join(CLIP_DIR, "clip-drawer-open.mp4");
+    transcodeClip(webm, out);
+    console.log(`\n[drawer-open] tapped ${hasRich ? "#2005" : "first ticket"} → drawer opened → ${path.relative(REPO_ROOT, out)}`);
+    const stillBuf = fs.readFileSync(stillOut);
+    console.log(`[drawer-verdicts] still ${path.relative(REPO_ROOT, stillOut)} bytes=${stillBuf.length} srcW=${DRAWER_W * 2} srcH=${DRAWER_H * 2}`);
+    if (pipeRect && verdicts) {
+      const x = Math.min(pipeRect.x, verdicts.x);
+      const y = Math.min(pipeRect.y, verdicts.y);
+      const right = Math.max(pipeRect.x + pipeRect.w, verdicts.x + verdicts.w);
+      const bottom = Math.max(pipeRect.y + pipeRect.h, verdicts.y + verdicts.h);
+      const union = { x, y, w: right - x, h: bottom - y };
+      console.log(`[drawer-open] .ak-verdict x${verdicts.count} texts=${JSON.stringify(verdicts.texts)}`);
+      console.log(`[drawer-verdicts] BEAT-12 ring (normalized over ${DRAWER_W}x${DRAWER_H}) => ${JSON.stringify(normBox(union, DRAWER_VIEWPORT))}`);
+    } else {
+      console.log(`[drawer-open] WARN: pipeline/verdict not found (pipe=${!!pipeRect} verdicts=${!!verdicts}) — beat-12 ring NOT measured`);
+    }
+    proofStrip(out, "drawer-open");
+  }
+  } finally {
+    // RESTORE the user's REAL board.json (byte-exact) — or remove the demo board if there was none.
+    if (realBoardBytes) {
+      fs.writeFileSync(BOARD_JSON, realBoardBytes);
+      const afterSha = sha256(fs.readFileSync(BOARD_JSON));
+      if (afterSha !== sha256(realBoardBytes)) throw new Error("captureKanbanAssets: REAL board restore FAILED.");
+      console.log(`\n[restore] user's REAL data/board.json restored (sha ${afterSha.slice(0, 12)}… verified)`);
+    } else {
+      fs.rmSync(BOARD_JSON, { force: true });
+      console.log(`\n[restore] no prior board.json — demo board removed`);
+    }
+    fs.rmSync(recRoot, { recursive: true, force: true });
+  }
+
+  console.log("\nKANBAN-ASSETS: done — 1 committed hero still + 1 wide still + 3 dynamic clips + motion strips.");
 }
 
 main().catch((err) => {

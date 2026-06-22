@@ -1,6 +1,6 @@
 {
   "slug": "agent-kanban-demo",
-  "docSha": "eec30319acc6e2e3a1da39a7b1213e32e0b0a11decfefd6be4423913750f4968",
-  "approvedAt": "2026-06-21T14:47:24.557Z",
-  "note": "operator signed off the v2 storyboard 2026-06-21 (#1120)"
+  "docSha": "3468fd5473cd03d814fcad368316c15d92f049627bcbc3b623b7f542d521f4b9",
+  "approvedAt": "2026-06-22T05:54:49.035Z",
+  "note": "executor re-pin: #1120 14-beat extended cut (140s); silent rough cut is the operator eyeball artifact — paid VO still gated"
 }

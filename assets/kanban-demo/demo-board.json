@@ -1,0 +1,431 @@
+{
+  "schema": 1,
+  "generatedAt": 1790000000000,
+  "sessionId": "demo-session-0001",
+  "sessions": [
+    {
+      "id": "demo-ses",
+      "label": "active just now · 20 tickets",
+      "lastActive": 1790000000000,
+      "ticketCount": 20,
+      "live": true
+    },
+    {
+      "id": "7f3a9c21",
+      "label": "active 2h ago · 6 tickets",
+      "lastActive": 1789992800000,
+      "ticketCount": 6,
+      "live": false
+    },
+    {
+      "id": "b4e8d610",
+      "label": "active yesterday · 3 tickets",
+      "lastActive": 1789913600000,
+      "ticketCount": 3,
+      "live": false
+    }
+  ],
+  "tickets": [
+    {
+      "id": "2000",
+      "subject": "Add pagination to the search endpoint",
+      "description": "Cursor-based paging on the search results so the grid stops loading every row at once.",
+      "column": "todo",
+      "status": "pending",
+      "blockedBy": [],
+      "comments": [],
+      "updatedAt": 1789999600000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2001",
+      "subject": "Fix the flaky checkout integration test",
+      "description": "The checkout suite fails about one run in eight on CI; suspected race on the test fixture seed.",
+      "column": "todo",
+      "status": "pending",
+      "blockedBy": [],
+      "comments": [],
+      "updatedAt": 1789999560000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2002",
+      "subject": "Cache the pricing API responses (5-min TTL)",
+      "description": "Memoize the upstream pricing calls with a short TTL to shave p95 latency on the quote page.",
+      "column": "todo",
+      "status": "pending",
+      "blockedBy": [],
+      "comments": [],
+      "updatedAt": 1789999520000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2014",
+      "subject": "Paginate the audit log view",
+      "description": "The audit log loads every event at once; page it so the table opens instantly.",
+      "column": "todo",
+      "status": "pending",
+      "blockedBy": [],
+      "comments": [],
+      "updatedAt": 1789999480000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2015",
+      "subject": "Add dark-mode tokens to the design system",
+      "description": "Define the missing dark-surface and on-surface tokens so the theme stops falling back to light.",
+      "column": "todo",
+      "status": "pending",
+      "blockedBy": [],
+      "comments": [],
+      "updatedAt": 1789999440000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2003",
+      "subject": "Rate-limit the public webhook endpoint",
+      "description": "Add a per-client token bucket so a noisy integration can't flood the ingest queue.",
+      "column": "in_progress",
+      "status": "in_progress",
+      "blockedBy": [],
+      "comments": [],
+      "updatedAt": 1790000000000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2007",
+      "subject": "Validate the CSV import schema",
+      "description": "Reject malformed import rows up front with a clear per-column error instead of failing mid-load.",
+      "column": "in_progress",
+      "status": "in_progress",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "execution-review",
+          "ts": "2026-09-21T09:55:00.000Z",
+          "agentId": "c3d4e5f6",
+          "artifact": "exec-review.md",
+          "verdict": "PASS"
+        }
+      ],
+      "updatedAt": 1789999910000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2010",
+      "subject": "Stream large exports instead of buffering",
+      "description": "Stream the export to the client so a big report no longer pins a whole worker in memory.",
+      "column": "in_progress",
+      "status": "in_progress",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "planner",
+          "ts": "2026-09-21T09:48:00.000Z",
+          "agentId": "f1e2d3c4",
+          "artifact": "2026-09-21-stream-exports.md"
+        }
+      ],
+      "updatedAt": 1789999850000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2004",
+      "subject": "[#1063] Add a health-check probe to the worker pool",
+      "description": "Expose a liveness endpoint per worker so the orchestrator can recycle a stuck process.",
+      "column": "in_progress",
+      "status": "in_progress",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "planner",
+          "ts": "2026-09-21T09:30:00.000Z",
+          "agentId": "a1b2c3d4",
+          "artifact": "2026-09-21-worker-healthcheck.md"
+        },
+        {
+          "role": "executor",
+          "ts": "2026-09-21T09:42:00.000Z",
+          "agentId": "e5f6a7b8",
+          "artifact": "workerHealthcheck.ts"
+        }
+      ],
+      "updatedAt": 1789999820000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2011",
+      "subject": "Add idempotency keys to the payment webhook",
+      "description": "Dedupe retried webhook deliveries so a double-send can't charge or refund twice.",
+      "column": "in_progress",
+      "status": "in_progress",
+      "blockedBy": [],
+      "comments": [],
+      "updatedAt": 1789999300000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2005",
+      "subject": "[#1080] Add retry and backoff to the email worker",
+      "description": "Retry transient send failures with exponential backoff and a dead-letter after five attempts.",
+      "column": "in_review",
+      "status": "in_progress",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "planner",
+          "ts": "2026-09-21T09:10:00.000Z",
+          "agentId": "11aa22bb",
+          "artifact": "2026-09-21-email-worker-retry.md"
+        },
+        {
+          "role": "plan-review",
+          "ts": "2026-09-21T09:18:00.000Z",
+          "agentId": "33cc44dd",
+          "artifact": "plan-review.md",
+          "verdict": "APPROVE"
+        },
+        {
+          "role": "executor",
+          "ts": "2026-09-21T09:40:00.000Z",
+          "agentId": "55ee66ff",
+          "artifact": "emailWorker.ts"
+        },
+        {
+          "role": "execution-review",
+          "ts": "2026-09-21T09:58:00.000Z",
+          "agentId": "77aa88bb",
+          "artifact": "exec-review.md",
+          "verdict": "PASS"
+        }
+      ],
+      "updatedAt": 1789999970000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2012",
+      "subject": "Debounce the autosave on the editor",
+      "description": "Coalesce rapid keystrokes into one save so the editor stops hammering the API on every key.",
+      "column": "in_review",
+      "status": "in_progress",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "executor",
+          "ts": "2026-09-21T09:20:00.000Z",
+          "agentId": "22bb33cc",
+          "artifact": "editorAutosave.ts"
+        },
+        {
+          "role": "execution-review",
+          "ts": "2026-09-21T09:46:00.000Z",
+          "agentId": "44dd55ee",
+          "artifact": "exec-review.md",
+          "verdict": "PASS"
+        }
+      ],
+      "updatedAt": 1789999800000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2006",
+      "subject": "Tighten the rate-limit response headers",
+      "description": "Return standard RateLimit headers so clients can back off before they hit the wall.",
+      "column": "in_review",
+      "status": "in_progress",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "planner",
+          "ts": "2026-09-21T08:50:00.000Z",
+          "agentId": "99cc00dd",
+          "artifact": "2026-09-21-ratelimit-headers.md"
+        },
+        {
+          "role": "execution-review",
+          "ts": "2026-09-21T09:35:00.000Z",
+          "agentId": "aa11bb22",
+          "artifact": "exec-review.md",
+          "verdict": "APPROVE-WITH-NOTES"
+        }
+      ],
+      "updatedAt": 1789999760000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2018",
+      "subject": "Invalidate the CDN cache on publish",
+      "description": "Purge the edge cache when content is published so readers stop seeing the stale version.",
+      "column": "in_review",
+      "status": "in_progress",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "executor",
+          "ts": "2026-09-21T08:40:00.000Z",
+          "agentId": "bb33cc44",
+          "artifact": "cdnInvalidate.ts"
+        },
+        {
+          "role": "execution-review",
+          "ts": "2026-09-21T09:05:00.000Z",
+          "agentId": "cc44dd55",
+          "artifact": "exec-review.md",
+          "verdict": "PASS"
+        }
+      ],
+      "updatedAt": 1789999700000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2013",
+      "subject": "Sanitize filenames on upload",
+      "description": "Strip path separators and control characters from uploaded names before they touch disk.",
+      "column": "in_review",
+      "status": "in_progress",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "executor",
+          "ts": "2026-09-21T08:25:00.000Z",
+          "agentId": "dd55ee66",
+          "artifact": "uploadSanitize.ts"
+        },
+        {
+          "role": "execution-review",
+          "ts": "2026-09-21T08:52:00.000Z",
+          "agentId": "ee66ff77",
+          "artifact": "exec-review.md",
+          "verdict": "BLOCK"
+        }
+      ],
+      "updatedAt": 1789999640000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2008",
+      "subject": "Migrate the session store to Redis",
+      "description": "Move sessions off the single-node cache so a deploy no longer logs everyone out.",
+      "column": "done",
+      "status": "completed",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "executor",
+          "ts": "2026-09-21T08:20:00.000Z",
+          "agentId": "bb22cc33",
+          "artifact": "sessionStore.ts"
+        },
+        {
+          "role": "execution-review",
+          "ts": "2026-09-21T08:44:00.000Z",
+          "agentId": "cc33dd44",
+          "artifact": "exec-review.md",
+          "verdict": "PASS"
+        }
+      ],
+      "updatedAt": 1789999400000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2016",
+      "subject": "Compress avatars on upload",
+      "description": "Resize and re-encode avatars at upload so the profile grid stops shipping multi-MB images.",
+      "column": "done",
+      "status": "completed",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "executor",
+          "ts": "2026-09-21T08:05:00.000Z",
+          "agentId": "ff77aa88",
+          "artifact": "avatarCompress.ts"
+        },
+        {
+          "role": "execution-review",
+          "ts": "2026-09-21T08:28:00.000Z",
+          "agentId": "aa88bb99",
+          "artifact": "exec-review.md",
+          "verdict": "PASS"
+        }
+      ],
+      "updatedAt": 1789999350000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2009",
+      "subject": "Backfill the analytics events table",
+      "description": "One-off backfill of the events table so the new dashboard has history to chart.",
+      "column": "done",
+      "status": "completed",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "executor",
+          "ts": "2026-09-21T07:50:00.000Z",
+          "agentId": "dd44ee55",
+          "artifact": "backfillEvents.ts"
+        },
+        {
+          "role": "execution-review",
+          "ts": "2026-09-21T08:08:00.000Z",
+          "agentId": "ee55ff66",
+          "artifact": "exec-review.md",
+          "verdict": "PASS"
+        }
+      ],
+      "updatedAt": 1789999280000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2017",
+      "subject": "Index the orders table on customer id",
+      "description": "Add the missing composite index so the orders-by-customer query stops doing a full scan.",
+      "column": "done",
+      "status": "completed",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "executor",
+          "ts": "2026-09-21T07:35:00.000Z",
+          "agentId": "1122aabb",
+          "artifact": "ordersIndex.sql"
+        },
+        {
+          "role": "execution-review",
+          "ts": "2026-09-21T07:56:00.000Z",
+          "agentId": "2233bbcc",
+          "artifact": "exec-review.md",
+          "verdict": "PASS"
+        }
+      ],
+      "updatedAt": 1789999240000,
+      "sessionId": "demo-ses"
+    },
+    {
+      "id": "2019",
+      "subject": "Dedupe duplicate webhook deliveries",
+      "description": "Drop deliveries that repeat a delivery id within the window so consumers see each event once.",
+      "column": "done",
+      "status": "completed",
+      "blockedBy": [],
+      "comments": [
+        {
+          "role": "executor",
+          "ts": "2026-09-21T07:20:00.000Z",
+          "agentId": "3344ccdd",
+          "artifact": "webhookDedupe.ts"
+        },
+        {
+          "role": "execution-review",
+          "ts": "2026-09-21T07:42:00.000Z",
+          "agentId": "4455ddee",
+          "artifact": "exec-review.md",
+          "verdict": "PASS"
+        }
+      ],
+      "updatedAt": 1789999180000,
+      "sessionId": "demo-ses"
+    }
+  ]
+}

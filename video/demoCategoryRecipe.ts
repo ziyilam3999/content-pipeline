@@ -152,10 +152,25 @@ export interface DemoBeat {
   subscribeCta?: boolean;
 }
 
+/**
+ * The spec's SHAPE — selects which recipe rules apply (#1120):
+ *   • "tool-demo"     (DEFAULT) — the proven #824/#871 agent-tool-demo: a chat (plain-English request) beat,
+ *                       a tool/terminal beat framed as the agent's interface (R3), and an explicit tool→output
+ *                       transition beat (R5). fable/forge are tool-demos and leave this UNSET → strict recipe.
+ *   • "feature-tour"  — a captured-footage FEATURE TOUR of a live product surface (the agent-kanban board)
+ *                       with NO chat / tool / transition beat. R3 + R5 are NOT asserted for this shape; EVERY
+ *                       other rule (R1/R2/R4/R6/R7/R8/R9/R10/R11/R12/R13) still applies. This is per-spec OPT-IN
+ *                       — a tool-demo with the flag unset still HARD-FAILS without chat+tool+transition, so the
+ *                       carve-out does NOT weaken the default recipe.
+ */
+export type DemoSpecShape = "tool-demo" | "feature-tour";
+
 /** The whole demonstration-category video spec the validator enforces. */
 export interface DemoVideoSpec {
   /** Originating task id (provenance only). */
   task: number;
+  /** Recipe shape (default "tool-demo" — strict R3/R5). "feature-tour" opts out of R3/R5 ONLY (#1120). */
+  shape?: DemoSpecShape;
   /**
    * #1137 — which recipe to apply. Absent ⇒ `"demo"` (the proven R1–R13 path). `"intro"` switches to
    * the short YouTube-reach path (shared geometry/caption rules + intro band + R14–R17).
@@ -257,8 +272,15 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
     );
   }
 
+  // #1120 — the FEATURE-TOUR shape (a captured-footage tour of a live product surface) has NO chat / tool /
+  // transition beat, so R3 (chat + agent-interface tool) and R5 (explicit tool→output transition) do not
+  // apply. They are SKIPPED for "feature-tour" ONLY; every other rule still runs. The default "tool-demo"
+  // (fable/forge — `shape` unset) keeps R3/R5 asserted, so this is a per-spec opt-out, not a gate weakening.
+  const featureTour = spec.shape === "feature-tour";
+
   // R3 — agent-interface reframe: a chat (plain-English request) beat AND a tool beat framed as the
   // agent's interface ("the agent's interface, not yours").
+  if (!featureTour) {
   if (!beats.some((b) => b.kind === "chat")) {
     throw new Error(
       "demo-recipe R3: missing the chat beat. An agent-operated tool must be framed as the agent's " +
@@ -274,6 +296,7 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
         '("the agent\'s interface, not yours"). Make explicit that the tool is the AGENT\'s interface, not the human\'s.',
     );
   }
+  } // end R3 (skipped for feature-tour)
 
   // R4 — TOOL and OUTPUT beats have VISUALLY DISTINCT backgrounds + output beats are labeled.
   const toolBgs = new Set(toolBeats.map((b) => b.backgroundColor));
@@ -295,6 +318,8 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
   }
 
   // R5 — an explicit TRANSITION beat sits between the (last) tool beat and the first output beat.
+  // Skipped for the feature-tour shape (no tool→output seam exists — the board is on-screen from beat 2).
+  if (!featureTour) {
   const lastToolIdx = lastIndexOf(beats, (b) => b.kind === "tool");
   const firstOutputIdx = beats.findIndex((b) => b.isHeroOutput);
   const transitionIdx = beats.findIndex((b) => b.kind === "transition");
@@ -311,6 +336,7 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
         `must sit AFTER the tool and BEFORE the first output — never a hard cut.`,
     );
   }
+  } // end R5 (skipped for feature-tour)
 
   // R6 — hero output beats carry real-artifact provenance (never placeholder/stub).
   for (const o of outputBeats) {
