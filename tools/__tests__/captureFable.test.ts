@@ -39,6 +39,9 @@ describe("#824 Fable — the REVISED ~90s 8-beat storyboard", () => {
   });
 
   it("totals ~90s (acceptance bar: 85–92s), up from the rejected 31s cut", () => {
+    // #1148 VO-FIRST: fable's runtime is asserted as the demonstration type-BAND (length follows the VO),
+    // NOT pinned to an exact second count — so a future VO re-derive re-times the spine without breaking
+    // this test. This is the fable end of the forge `runtime is in the 92–100s band` band check.
     const total = FABLE_BEATS.reduce((s, b) => s + b.clipSec, 0);
     expect(total).toBeGreaterThanOrEqual(85);
     expect(total).toBeLessThanOrEqual(92);

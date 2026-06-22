@@ -1,12 +1,13 @@
 {
   "name": "content-pipeline",
-  "version": "0.38.0",
+  "version": "0.39.0",
   "private": true,
   "description": "Turn a launch announcement into ready-to-post social content: copy, an image card, a voiceover spec, and video render specs.",
   "scripts": {
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
+    "fit-beats": "tsx tools/fitBeats.ts",
     "smoke:copy": "tsx smoke/copy-smoke.ts",
     "smoke:image": "tsx smoke/image-smoke.ts",
     "smoke:video": "tsx smoke/video-smoke.ts",

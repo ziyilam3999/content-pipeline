@@ -1,0 +1,25 @@
+{
+  "script": "FIXTURE — a measured-VO preview standing in for the gitignored paid preview output, so `npm run fit-beats -- --preview <this>` and its test run with NO paid render. Shape mirrors video/voicePreviewGate.ts VoPreviewRecord + the optional fit-beats spine fields.",
+  "deadAirPass": true,
+  "worstGapSec": 0.87,
+  "paid": true,
+  "createdAt": "2026-06-22T00:00:00.000Z",
+  "measuredSpokenSec": {
+    "1": 6.3,
+    "2": 5.5,
+    "3": 7.9,
+    "5": 8.3,
+    "6": 5.4,
+    "7": 11.0,
+    "8": 14.2,
+    "9": 7.4,
+    "10": 3.6
+  },
+  "transitionBeats": [4],
+  "transitionSec": 1,
+  "animMinByBeat": {
+    "5": 9,
+    "7": 12,
+    "8": 15
+  }
+}
