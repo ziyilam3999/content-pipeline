@@ -1,3 +1,9 @@
+## [0.38.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.37.0...v0.38.0) (2026-06-22)
+
+### Features
+
+* **video:** #1092 general edge-crop bake — shared CONTAIN recipe rule (all videoTypes) + shared capture-hygiene assert + mandatory insetAsset on kanban/forge/fable + non-vacuousness lock (#157)
+
 ## [0.37.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.36.0...v0.37.0) (2026-06-22)
 
 ### Features
