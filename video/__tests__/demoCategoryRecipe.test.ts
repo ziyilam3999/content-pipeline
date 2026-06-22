@@ -16,6 +16,8 @@ import {
   type DemoVideoSpec,
   type DemoBeat,
 } from "../demoCategoryRecipe";
+import { forgeSpec } from "../forgeStoryboard";
+import { kanbanSpec } from "../kanbanStoryboard";
 
 /** Deep clone so each mutation test starts from the clean shipped spec. */
 function clone(spec: DemoVideoSpec = fableSpec): DemoVideoSpec {
@@ -171,6 +173,56 @@ describe("#870 R8 — total runtime inside the ~90s window", () => {
     const s = clone();
     s.beats[0].durationSec = 400; // blows the upper bound
     expect(() => assertDemoCategoryRecipe(s)).toThrow(/R8\b/);
+  });
+});
+
+describe("#1137 demo videoType + widened {110,180} band — the three shipped demos stay GREEN", () => {
+  // Each storyboard pins its OWN sub-110 band (fable {85,92} grandfathered, forge {92,100}, kanban
+  // {74,84}), so retargeting the band-less DEFAULT to {110,180} cannot move them.
+  test("fableSpec (~85s, grandfathered {85,92}) still PASSES", () => {
+    expect(fableSpec.videoType).toBe("demo");
+    expect(fableSpec.beats.reduce((a, b) => a + b.durationSec, 0)).toBe(85);
+    expect(() => assertDemoCategoryRecipe(fableSpec)).not.toThrow();
+  });
+
+  test("forgeSpec (~94s, pinned {92,100}) still PASSES", () => {
+    expect(forgeSpec.videoType).toBe("demo");
+    expect(() => assertDemoCategoryRecipe(forgeSpec)).not.toThrow();
+  });
+
+  test("kanbanSpec (~76s, pinned {74,84}) still PASSES", () => {
+    expect(kanbanSpec.videoType).toBe("demo");
+    expect(kanbanSpec.beats.reduce((a, b) => a + b.durationSec, 0)).toBe(76);
+    expect(() => assertDemoCategoryRecipe(kanbanSpec)).not.toThrow();
+  });
+});
+
+describe("#1137 demo-floor both-ends lock — a band-LESS demo now requires >=110s", () => {
+  /** Clone fableSpec, DROP its pinned band (so it inherits VIDEO_TYPE_BAND.demo {110,180}), and stretch
+   *  a NON-terminal beat so the total hits `totalSec` (keeps R7 terminal-fraction green). */
+  function bandlessDemoAt(totalSec: number): DemoVideoSpec {
+    const s = clone();
+    delete (s as Partial<DemoVideoSpec>).runtimeWindowSec;
+    const current = s.beats.reduce((a, b) => a + b.durationSec, 0);
+    s.beats[0].durationSec += totalSec - current; // beat 0 is the hook (non-terminal)
+    return s;
+  }
+
+  test("a ~100s band-less demo FAILS the >=110 floor (R8)", () => {
+    const s = bandlessDemoAt(100);
+    expect(s.beats.reduce((a, b) => a + b.durationSec, 0)).toBe(100);
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/R8\b/);
+  });
+
+  test("a ~70s band-less demo also FAILS the >=110 floor (R8)", () => {
+    const s = bandlessDemoAt(70);
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/R8\b/);
+  });
+
+  test("a ~140s band-less demo PASSES (inside {110,180}) — the good end", () => {
+    const s = bandlessDemoAt(140);
+    expect(s.beats.reduce((a, b) => a + b.durationSec, 0)).toBe(140);
+    expect(() => assertDemoCategoryRecipe(s)).not.toThrow();
   });
 });
 

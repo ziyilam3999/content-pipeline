@@ -336,6 +336,7 @@ function buildForgeSpec(): DemoVideoSpec {
 
   return {
     task: 871,
+    videoType: "demo", // #1137 — forge is a demo-category video (its {92,100} band is untouched)
     beats,
     aspects: FABLE_ASPECTS,
     beatLayouts: FORGE_BEAT_LAYOUTS,
