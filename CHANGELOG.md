@@ -1,3 +1,9 @@
+## [0.39.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.38.0...v0.39.0) (2026-06-22)
+
+### Features
+
+* **video:** #1148 VO-first natural order as the supported default for video posts — fitBeatsToVo defaults to breath 0 (TTS segments already carry the speaker's pause; extra breath → dead-air) + the beat before a silent transition gets no breath; `npm run fit-beats -- <slug>` re-derives a post's per-beat durations from its measured voice (committed fixture, CI-runnable); demo length tests assert the type-BAND not an exact second count; VO-first doctrine documented. (#159)
+
 ## [0.38.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.37.0...v0.38.0) (2026-06-22)
 
 ### Features
