@@ -186,8 +186,11 @@ describe("fitBeatsToVo (#1095 — derive the beat spine FROM the measured VO)", 
     const byN = Object.fromEntries(fit.beats.map((b) => [b.n, b]));
     expect(byN[4].clipSec).toBe(1); // = transitionSec
     expect(byN[4].measuredSec).toBe(0);
-    // 7.0+6.2+8.6+1+9.0+6.1+12+15+8.1+4.3 = 77.3
-    expect(fit.totalSec).toBe(77.3);
+    // #1148 pre-transition-no-breath: beat 3 is RIGHT BEFORE the silent transition (beat 4), so it gets
+    // breath 0 → 7.9 (not 7.9 + 0.7); every other narrated beat still gets the passed 0.7 breath.
+    // 7.0+6.2+7.9+1+9.0+6.1+12+15+8.1+4.3 = 76.6
+    expect(byN[3].clipSec).toBe(7.9); // pre-transition → no breath even though breathSec=0.7 is passed
+    expect(fit.totalSec).toBe(76.6);
   });
 
   it("BOTH-ENDS contrast: the OLD hand-guessed clipSec pads beyond the gate; the fit-derived clipSec does NOT", () => {
@@ -207,5 +210,61 @@ describe("fitBeatsToVo (#1095 — derive the beat spine FROM the measured VO)", 
     expect(() => fitBeatsToVo({ beats, measuredSpokenSec: partial, breathSec, transitionSec })).toThrow(
       /missing\/invalid measured spoken length for narrated beat n=5/,
     );
+  });
+});
+
+describe("fitBeatsToVo (#1148 — VO-first default: breath 0 + pre-transition-no-breath)", () => {
+  // A minimal VO-first fixture: 3 narrated beats with a silent transition between beats 2 and 3, so beat 2
+  // is the PRE-TRANSITION beat. NONE of the narrated beats sets animMinSec — so clipSec == measured is a
+  // pure breath check (an animMin floor would push clipSec above measured for an UNRELATED reason).
+  const beats: BeatToFit[] = [
+    { n: 1, narrated: true, transition: false },
+    { n: 2, narrated: true, transition: false }, // ← immediately before the transition
+    { n: 3, narrated: false, transition: true },
+    { n: 4, narrated: true, transition: false },
+  ];
+  const measuredSpokenSec: Record<number, number> = { 1: 6.3, 2: 5.5, 4: 7.9 };
+  const transitionSec = 1;
+
+  it("(a) DEFAULT breath is 0 — a normal narrated beat's clipSec == its measured spoken length (no pad)", () => {
+    // No breathSec passed → exercises the #1148 default of 0.
+    const fit = fitBeatsToVo({ beats, measuredSpokenSec, transitionSec });
+    const byN = Object.fromEntries(fit.beats.map((b) => [b.n, b]));
+    expect(byN[1].clipSec).toBe(6.3); // measured + 0 default breath → no trailing silence
+    expect(byN[1].padSec).toBe(0);
+    expect(byN[4].clipSec).toBe(7.9); // last narrated beat (next beat is none) — still measured + 0
+    expect(fit.maxPadSec).toBe(0); // VO-first leaves zero dead-air by construction
+  });
+
+  it("(b) PRE-TRANSITION beat gets breath 0 (clipSec == measured) EVEN when breathSec=0.7 is passed", () => {
+    const fit = fitBeatsToVo({ beats, measuredSpokenSec, breathSec: 0.7, transitionSec });
+    const byN = Object.fromEntries(fit.beats.map((b) => [b.n, b]));
+    // beat 1's NEXT beat (2) is narrated → it DOES get the 0.7 breath.
+    expect(byN[1].clipSec).toBe(7.0); // 6.3 + 0.7
+    // beat 2's NEXT beat (3) is the silent transition → breath forced to 0 → clipSec == measured.
+    expect(byN[2].clipSec).toBe(5.5); // 5.5 + 0 (breath suppressed before the transition)
+    expect(byN[2].padSec).toBe(0);
+  });
+
+  it("(AC#4 smoke) a measured-VO map incl. a pre-transition beat, fit at breath 0 → maxPadSec < 1.5", () => {
+    // A kanban-shaped fixture with a transition (beat 4) + dynamic clip beats carrying an animMin floor.
+    // VO-first (breath 0) must keep the worst trailing silence STRICTLY under the 1.5s dead-air gate.
+    const smokeBeats: BeatToFit[] = [
+      { n: 1, narrated: true, transition: false },
+      { n: 2, narrated: true, transition: false },
+      { n: 3, narrated: true, transition: false }, // ← pre-transition
+      { n: 4, narrated: false, transition: true },
+      { n: 5, narrated: true, transition: false, animMinSec: 9 },
+      { n: 6, narrated: true, transition: false },
+      { n: 7, narrated: true, transition: false, animMinSec: 12 },
+      { n: 8, narrated: true, transition: false, animMinSec: 15 },
+      { n: 9, narrated: true, transition: false },
+      { n: 10, narrated: true, transition: false },
+    ];
+    const smokeMeasured: Record<number, number> = {
+      1: 6.3, 2: 5.5, 3: 7.9, 5: 8.3, 6: 5.4, 7: 11.0, 8: 14.2, 9: 7.4, 10: 3.6,
+    };
+    const fit = fitBeatsToVo({ beats: smokeBeats, measuredSpokenSec: smokeMeasured, transitionSec: 1 });
+    expect(fit.maxPadSec).toBeLessThan(1.5); // VO-first → no dead-air, first pass, zero hand-tuning
   });
 });
