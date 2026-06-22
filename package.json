@@ -1,6 +1,6 @@
 {
   "name": "content-pipeline",
-  "version": "0.34.0",
+  "version": "0.36.0",
   "private": true,
   "description": "Turn a launch announcement into ready-to-post social content: copy, an image card, a voiceover spec, and video render specs.",
   "scripts": {
@@ -53,6 +53,11 @@
     "smoke:publish-typefully-kanban-demo": "tsx smoke/publish-typefully-kanban-demo.ts",
     "smoke:publish-typefully-kanban-demo:live": "TYPEFULLY_LIVE=1 tsx smoke/publish-typefully-kanban-demo.ts",
     "smoke:verify-published": "tsx smoke/verify-published.ts",
+    "smoke:publish-youtube": "tsx smoke/publish-youtube.ts",
+    "smoke:publish-youtube:live": "YOUTUBE_LIVE=1 tsx smoke/publish-youtube.ts",
+    "youtube:dry": "tsx smoke/publish-youtube.ts",
+    "youtube:live": "YOUTUBE_LIVE=1 tsx smoke/publish-youtube.ts",
+    "youtube:auth": "tsx tools/youtube-auth.ts",
     "smoke:eyeball": "tsx smoke/eyeball-gate.ts",
     "eyeball:sheet": "tsx tools/eyeball-sheet.ts",
     "eyeball:ack": "tsx tools/eyeball-ack.ts",

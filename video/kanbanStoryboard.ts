@@ -403,7 +403,8 @@ function buildKanbanSpec(): DemoVideoSpec {
 
   return {
     task: 1120,
-    shape: "feature-tour", // #1120 — no chat/tool/transition beat; R3/R5 carved out, every other rule applies.
+    shape: "feature-tour", // #1120 v2 — 10-beat tour: R3/R5 carved out at merge baseline (dropped in the 14-beat re-cut)
+    videoType: "demo", // #1137 — kanban is a demo-category video
     beats,
     aspects: FABLE_ASPECTS,
     beatLayouts: KANBAN_BEAT_LAYOUTS,

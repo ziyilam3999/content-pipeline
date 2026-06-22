@@ -1,3 +1,16 @@
+## [0.36.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.35.0...v0.36.0) (2026-06-22)
+
+### Features
+
+* **video:** #1137 formalize demo|intro videoTypes + bake the YouTube reach playbook into the intro recipe — demo band {110,180} (~140s), intro band {30,40} + reach rules R14 frame-1 hook / R15 keyword-early / R16 clean loop / R17 subscribe CTA; captions mandatory both paths; one optional videoType field (full back-compat). (#153)
+
+## [0.35.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.34.0...v0.35.0) (2026-06-22)
+
+### Features
+
+* **youtube:** #1068 YouTube publish path — Shorts adapter + loopback OAuth helper + post specs + dry-run smoke + anti-hand-roll guard (#150)
+* **youtube:** #1132 broaden OAuth scope to youtube.force-ssl — one re-consent unlocks managing titles/descriptions/privacy, pinned comments, and playlists (#151)
+
 ## [0.34.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.33.0...v0.34.0) (2026-06-21)
 
 ### Features

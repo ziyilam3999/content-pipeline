@@ -60,6 +60,14 @@ import {
  */
 export type DemoVehicle = "captured-footage" | "overlay" | "generative-video" | "composition";
 
+/**
+ * #1137 — the TWO video types the recipe knows. `demo` is the long product walk-through (the proven
+ * R1–R13 narrative arc, ~110–180s); `intro` is the short YouTube-reach clip (~30–40s) that drops the
+ * demo-narrative rules and instead bakes the reach playbook (frame-1 hook / keyword-early / clean loop /
+ * subscribe CTA — R14–R17). A spec with NO `videoType` is treated as `"demo"` (backward-compat).
+ */
+export type VideoType = "demo" | "intro";
+
 /** The role a beat plays in the demonstration arc. */
 export type DemoBeatKind =
   | "hook"
@@ -132,6 +140,16 @@ export interface DemoBeat {
   /** This beat shows a HERO product output (requires real-artifact provenance, R6). */
   isHeroOutput: boolean;
   provenance?: DemoProvenance;
+  /**
+   * #1137 INTRO (R14) — this beat's hook text is rendered FROM FRAME 1 (no fade-in dwell). The renderer
+   * reads it; the recipe asserts the opening hook beat carries it. Optional (demo specs omit it).
+   */
+  frameOneHook?: boolean;
+  /**
+   * #1137 INTRO (R17) — this beat carries a subscribe call-to-action (the closing CTA beat sets it).
+   * Optional (demo specs omit it).
+   */
+  subscribeCta?: boolean;
 }
 
 /**
@@ -153,6 +171,11 @@ export interface DemoVideoSpec {
   task: number;
   /** Recipe shape (default "tool-demo" — strict R3/R5). "feature-tour" opts out of R3/R5 ONLY (#1120). */
   shape?: DemoSpecShape;
+  /**
+   * #1137 — which recipe to apply. Absent ⇒ `"demo"` (the proven R1–R13 path). `"intro"` switches to
+   * the short YouTube-reach path (shared geometry/caption rules + intro band + R14–R17).
+   */
+  videoType?: VideoType;
   beats: DemoBeat[];
   /** Publish aspects + caption geometry — reused by the R11 caption-overlap leg. */
   aspects: ReadonlyArray<FableAspect>;
@@ -164,10 +187,28 @@ export interface DemoVideoSpec {
   maxTerminalFraction: number;
   /** Real-voice-synced caption track (R12) — REQUIRED + provenance-bound to its real voiceover. */
   captions: DemoCaptions;
+  // ── #1137 INTRO-only reach fields (all OPTIONAL; required only on the `intro` path) ──────────────--
+  /** R15 — the single reach keyword that must appear in beat-1's on-screen text AND the VO opening line. */
+  focusKeyword?: string;
+  /** R15 — the first sentence of the narration script (the first-5s proxy), authored in the storyboard. */
+  voOpeningLine?: string;
+  /** R16 — the cut is authored to loop cleanly back to its opening world. */
+  loops?: boolean;
+  /** R17 — timestamp (seconds) of the mid-video subscribe nudge; must land in [0.4·total, 0.75·total]. */
+  subscribeReminderAtSec?: number;
 }
 
 // ── Recipe constants ────────────────────────────────────────────────────────────────────────────--
-const DEFAULT_RUNTIME_BAND = { min: 85, max: 92 } as const; // the proven #824 ~90s window
+/**
+ * #1137 — the DEFAULT runtime band per video type (used when a spec omits its own `runtimeWindowSec`).
+ * demo `{110,180}` (post-research band, operator-approved 2026-06-22 — conversion peaks 2–3 min: floor
+ * 110s past the commitment gate, ceiling 180s = the 3-min retention cliff); intro `{30,40}` (hard cap 40).
+ * The three shipped demos pin their OWN sub-110 bands (fable {85,92} grandfathered, forge {92,100},
+ * kanban {74,84}), so `{110,180}` binds only NEW band-less demos.
+ */
+export const VIDEO_TYPE_BAND = { demo: { min: 110, max: 180 }, intro: { min: 30, max: 40 } } as const;
+/** #1137 INTRO (R14) — the opening hook beat must be SHORT (a scroll-stopper, not a long dwell). */
+const INTRO_HOOK_MAX_SEC = 6;
 const DEFAULT_MAX_TERMINAL_FRACTION = 0.3; // terminal/tool ≲30% of runtime
 const FORBIDDEN_VEHICLES: ReadonlyArray<DemoVehicle> = ["generative-video", "composition"];
 const PLACEHOLDER_SOURCE_RE = /\b(placeholder|stub|sample|example|dummy|fixture|todo|wip)\b/i;
@@ -192,6 +233,13 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
   const beats = spec.beats;
   if (!Array.isArray(beats) || beats.length === 0) {
     throw new Error("demo-recipe R0: a demonstration-category spec must have at least one beat.");
+  }
+
+  // #1137 — branch on videoType. An `intro` runs the SHARED geometry/caption/copy rules + the intro band
+  // + the reach rules R14–R17, and SKIPS the demo-narrative rules R1–R6 (which a 35s intro doesn't carry).
+  if ((spec.videoType ?? "demo") === "intro") {
+    assertIntroRecipe(spec);
+    return;
   }
 
   const toolBeats = beats.filter((b) => b.kind === "tool");
@@ -327,12 +375,13 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
     );
   }
 
-  // R8 — total runtime inside the ~90s window.
-  const band = spec.runtimeWindowSec ?? DEFAULT_RUNTIME_BAND;
+  // R8 — total runtime inside the demo window. #1137: band-less demos now inherit VIDEO_TYPE_BAND.demo
+  // ({110,180}); the three shipped demos pin their own grandfathered sub-110 bands.
+  const band = spec.runtimeWindowSec ?? VIDEO_TYPE_BAND.demo;
   if (total < band.min || total > band.max) {
     throw new Error(
       `demo-recipe R8: total runtime ${total}s is outside the ${band.min}–${band.max}s window. Keep a ` +
-        `demonstration video around ~90s.`,
+        `demonstration video inside its declared runtime band.`,
     );
   }
 
@@ -379,49 +428,8 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
   // R11 only checks captions IF they exist (no-overlap geometry); a captionless demo passes R11
   // silently. R12 makes captions a hard requirement AND binds the last cue to the real audio's end
   // (the #742/#19 provenance lesson) so a stale/mismatched alignment (#744's 20s drift) can't ship.
-  const caps = spec.captions;
-  if (!caps || caps.present !== true) {
-    throw new Error(
-      "demo-recipe R12: the demonstration video carries no captions (captions.present !== true). " +
-        "Real-voice-synced captions are a defining quality of a demo-category video — a captionless " +
-        "cut must HARD-FAIL before render/publish, not sail through R11's IF-captions-exist geometry check.",
-    );
-  }
-  if (caps.syncBoundToRealAudio !== true) {
-    throw new Error(
-      "demo-recipe R12: captions.syncBoundToRealAudio !== true — the captions are not timed against a " +
-        "REAL voiceover alignment. Captions must be driven by the real per-character audio alignment, " +
-        "not hand-placed or mock timing (the #742/#19 sync-provenance lesson).",
-    );
-  }
-  const audio = caps.audio;
-  if (!audio || audio.real !== true || !audio.source || PLACEHOLDER_SOURCE_RE.test(audio.source)) {
-    throw new Error(
-      `demo-recipe R12: caption audio source "${audio?.source}" is not a real voiceover (real=${audio?.real}). ` +
-        "Captions must bind to a real producer voiceover bundle, never a placeholder/stub/mock.",
-    );
-  }
-  if (!(Number.isFinite(audio.durationSec) && audio.durationSec > 0)) {
-    throw new Error(
-      `demo-recipe R12: caption audio.durationSec (${audio.durationSec}) is non-finite or ≤0 — there is no ` +
-        "real voiceover duration to bind the captions to.",
-    );
-  }
-  if (!(Number.isFinite(caps.lastCueEndSec) && caps.lastCueEndSec > 0)) {
-    throw new Error(
-      `demo-recipe R12: captions.lastCueEndSec (${caps.lastCueEndSec}) is non-finite or ≤0 — there is no ` +
-        "last caption cue to bind to the audio.",
-    );
-  }
-  // Provenance binding: the last cue must end ~when the audio ends. This is the STATIC declarative twin
-  // of `assertAudioMatchesSync` (#744: a 64.86s mp3 paired with 84.847s timing → 20s drift would fail here).
-  if (Math.abs(caps.lastCueEndSec - audio.durationSec) > CAPTION_SYNC_TOLERANCE_SEC) {
-    throw new Error(
-      `demo-recipe R12: caption provenance binding broken — last cue ends at ${caps.lastCueEndSec}s but the ` +
-        `real voiceover is ${audio.durationSec}s (drift > ${CAPTION_SYNC_TOLERANCE_SEC}s tolerance). An alignment ` +
-        "is valid ONLY for the exact audio it was derived from — never pair captions with a different audio file.",
-    );
-  }
+  // #1137 — extracted to `assertCaptionsRule` so BOTH the demo and the intro path enforce R12 identically.
+  assertCaptionsRule(spec.captions, "demo-recipe");
 
   // R13 — PHONE FULL-SCREEN ASPECT DISCIPLINE (#871/#927, 2026-06-15). The vertical social GOLD STANDARD is
   // 9:16 (1080×1920). A modern phone is TALLER than 9:16 (Samsung S25 Ultra 3120×1440 = 19.5:9; many Android
@@ -434,6 +442,213 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
     assertPhoneFullScreenAspectDiscipline(spec.aspects);
   } catch (err) {
     throw new Error(`demo-recipe R13: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * R12 — real-voice-synced captions, provenance-bound to the real voiceover. Mandatory for BOTH the demo
+ * and the intro path (#1137): a captionless cut passes R11's IF-captions-exist geometry silently, so R12
+ * is the hard gate, and the last-cue↔audio-end binding (the #742/#19 lesson) blocks a stale/mismatched
+ * alignment (#744's 20s drift). `prefix` is the rule namespace ("demo-recipe" / "intro-recipe").
+ */
+function assertCaptionsRule(caps: DemoCaptions, prefix: string): void {
+  if (!caps || caps.present !== true) {
+    throw new Error(
+      `${prefix} R12: the video carries no captions (captions.present !== true). Real-voice-synced ` +
+        "captions are a defining quality — a captionless cut must HARD-FAIL before render/publish, not " +
+        "sail through R11's IF-captions-exist geometry check (85% of Shorts are watched muted).",
+    );
+  }
+  if (caps.syncBoundToRealAudio !== true) {
+    throw new Error(
+      `${prefix} R12: captions.syncBoundToRealAudio !== true — the captions are not timed against a ` +
+        "REAL voiceover alignment. Captions must be driven by the real per-character audio alignment, " +
+        "not hand-placed or mock timing (the #742/#19 sync-provenance lesson).",
+    );
+  }
+  const audio = caps.audio;
+  if (!audio || audio.real !== true || !audio.source || PLACEHOLDER_SOURCE_RE.test(audio.source)) {
+    throw new Error(
+      `${prefix} R12: caption audio source "${audio?.source}" is not a real voiceover (real=${audio?.real}). ` +
+        "Captions must bind to a real producer voiceover bundle, never a placeholder/stub/mock.",
+    );
+  }
+  if (!(Number.isFinite(audio.durationSec) && audio.durationSec > 0)) {
+    throw new Error(
+      `${prefix} R12: caption audio.durationSec (${audio.durationSec}) is non-finite or ≤0 — there is no ` +
+        "real voiceover duration to bind the captions to.",
+    );
+  }
+  if (!(Number.isFinite(caps.lastCueEndSec) && caps.lastCueEndSec > 0)) {
+    throw new Error(
+      `${prefix} R12: captions.lastCueEndSec (${caps.lastCueEndSec}) is non-finite or ≤0 — there is no ` +
+        "last caption cue to bind to the audio.",
+    );
+  }
+  // Provenance binding: the last cue must end ~when the audio ends. STATIC declarative twin of
+  // `assertAudioMatchesSync` (#744: a 64.86s mp3 paired with 84.847s timing → 20s drift fails here).
+  if (Math.abs(caps.lastCueEndSec - audio.durationSec) > CAPTION_SYNC_TOLERANCE_SEC) {
+    throw new Error(
+      `${prefix} R12: caption provenance binding broken — last cue ends at ${caps.lastCueEndSec}s but the ` +
+        `real voiceover is ${audio.durationSec}s (drift > ${CAPTION_SYNC_TOLERANCE_SEC}s tolerance). An alignment ` +
+        "is valid ONLY for the exact audio it was derived from — never pair captions with a different audio file.",
+    );
+  }
+}
+
+/**
+ * #1137 — the INTRO-category recipe (the short YouTube-reach clip, ~30–40s). It runs the SHARED
+ * geometry/caption/copy rules (R7 terminal, R8 intro band + hard cap, R9 copy-clean, R10 no fake URLs,
+ * R11 layout-safe, R12 captions, R13 9:16 discipline) and the FOUR reach rules (R14 frame-1 hook /
+ * R15 keyword-early / R16 clean loop / R17 subscribe CTA), and it SKIPS the demo-narrative rules
+ * R1–R6 (captured-footage spine / hook-first / agent-interface reframe / distinct tool-output
+ * backgrounds / explicit transition / hero provenance) — a 35s product intro does not carry the
+ * chat→tool→transition→output arc those rules encode. The reach rules check the INGREDIENTS are present
+ * (frame-1 hook flag + non-empty hook text, keyword in beat-1 text AND the opening line, declared loop +
+ * matching first/last world, closing subscribe CTA + a mid reminder); whether the hook GRIPS / the
+ * keyword is the RIGHT one / the loop FEELS seamless stays the Rule-19 director eyeball + storyboard gate.
+ */
+export function assertIntroRecipe(spec: DemoVideoSpec): void {
+  const beats = spec.beats;
+  const first = beats[0];
+  const last = beats[beats.length - 1];
+  const allText: string[] = beats.flatMap((b) =>
+    b.onScreenText.filter((t) => typeof t === "string" && t.length > 0),
+  );
+  const allCommands: string[] = beats.flatMap((b) => b.commands ?? []);
+  const total = beats.reduce((s, b) => s + b.durationSec, 0);
+
+  // ── SHARED rules (geometry / caption / copy — reused from the demo path) ──────────────────────────--
+
+  // R7 — terminal/tool beats are ≤ maxTerminalFraction of total runtime (an intro is expected 0%).
+  const terminal = beats.filter((b) => b.isTerminal).reduce((s, b) => s + b.durationSec, 0);
+  const maxFrac = spec.maxTerminalFraction ?? DEFAULT_MAX_TERMINAL_FRACTION;
+  if (total > 0 && terminal / total > maxFrac + 1e-9) {
+    throw new Error(
+      `intro-recipe R7: terminal/tool beats are ${((terminal / total) * 100).toFixed(1)}% of the ${total}s ` +
+        `runtime (> ${(maxFrac * 100).toFixed(0)}% allowed). An intro should be product, not terminal screens.`,
+    );
+  }
+
+  // R8 — total runtime inside the intro band, with a HARD CAP at the band maximum (default {30,40}, ≤40).
+  // The hard cap also rejects a spec that tries to WIDEN its own band past 40 (band.max > intro cap).
+  const introBand = VIDEO_TYPE_BAND.intro;
+  const band = spec.runtimeWindowSec ?? introBand;
+  if (band.max > introBand.max) {
+    throw new Error(
+      `intro-recipe R8: declared band max ${band.max}s exceeds the intro hard cap of ${introBand.max}s. An ` +
+        "intro may not widen its window past the 40s ceiling — keep it short for the reach playbook.",
+    );
+  }
+  if (total < band.min || total > band.max || total > introBand.max) {
+    throw new Error(
+      `intro-recipe R8: total runtime ${total}s is outside the ${band.min}–${band.max}s intro window ` +
+        `(hard cap ${introBand.max}s). Keep an intro a short ~30–40s reach clip.`,
+    );
+  }
+
+  // R9 — every on-screen text field is dev-token-clean + brand-clean + owner-clean.
+  try {
+    assertNoInternalDevTokens(allText, "intro-recipe on-screen copy");
+  } catch (err) {
+    throw new Error(`intro-recipe R9: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  for (const cmd of allCommands) {
+    const leak = ownerLeak(cmd);
+    if (leak) {
+      throw new Error(`intro-recipe R9: a shown command "${cmd}" would leak the OS owner/username (${leak}).`);
+    }
+  }
+  for (const t of allText) {
+    if (USERS_PATH_RE.test(t)) {
+      throw new Error(`intro-recipe R9: on-screen text "${t}" contains a literal /Users/<name> path.`);
+    }
+  }
+
+  // R10 — no placeholder/fake URL anywhere on screen.
+  try {
+    assertNoPlaceholderUrls(allText, "intro-recipe on-screen copy");
+  } catch (err) {
+    throw new Error(`intro-recipe R10: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // R11 — every beat layout is 4-side title-safe + fill + caption-band-clear (reuse fableLayout legs).
+  try {
+    assertFableBeatsSafeAndFilled(spec.beatLayouts);
+    assertNoCaptionMediaOverlap(spec.aspects);
+  } catch (err) {
+    throw new Error(`intro-recipe R11: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // R12 — captions mandatory for BOTH types (same provenance-bound rule as the demo path).
+  assertCaptionsRule(spec.captions, "intro-recipe");
+
+  // R13 — 9:16 phone full-screen aspect discipline (an intro may ship ONLY 9:16; R13 just requires a
+  // 1080×1920 9:16 exists and forbids taller-than-9:16, so a 9:16-only intro passes unchanged).
+  try {
+    assertPhoneFullScreenAspectDiscipline(spec.aspects);
+  } catch (err) {
+    throw new Error(`intro-recipe R13: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // ── NEW reach rules R14–R17 (intro only) — each both-ends checkable ───────────────────────────────--
+
+  // R14 — frame-1 hook: the first beat is a SHORT hook whose text renders from frame 1.
+  if (
+    !first ||
+    first.kind !== "hook" ||
+    first.frameOneHook !== true ||
+    !first.onScreenText.some((t) => typeof t === "string" && t.trim().length > 0) ||
+    !(first.durationSec <= INTRO_HOOK_MAX_SEC)
+  ) {
+    throw new Error(
+      `intro-recipe R14: the first beat must be a HOOK that renders its on-screen text FROM FRAME 1 ` +
+        `(kind==="hook", frameOneHook===true, non-empty onScreenText, durationSec ≤ ${INTRO_HOOK_MAX_SEC}s). ` +
+        "A YouTube-reach intro shows the hook on the very first frame — no fade-in dwell.",
+    );
+  }
+
+  // R15 — keyword-early: the focus keyword appears in beat-1's on-screen text AND the VO opening line.
+  const keyword = (spec.focusKeyword ?? "").trim();
+  const firstText = first.onScreenText.join(" ").toLowerCase();
+  const opening = (spec.voOpeningLine ?? "").toLowerCase();
+  if (
+    keyword.length === 0 ||
+    !firstText.includes(keyword.toLowerCase()) ||
+    !opening.includes(keyword.toLowerCase())
+  ) {
+    throw new Error(
+      `intro-recipe R15: the focus keyword (${spec.focusKeyword ? `"${spec.focusKeyword}"` : "missing"}) must ` +
+        "be a non-empty case-insensitive substring of BOTH beat-1's on-screen text AND voOpeningLine (the " +
+        "first-5s proxy). Say the keyword early — on the first frame and in the opening line.",
+    );
+  }
+
+  // R16 — clean loop: the cut is declared to loop AND the last beat returns to the first beat's world.
+  if (spec.loops !== true || first.backgroundColor !== last.backgroundColor) {
+    throw new Error(
+      "intro-recipe R16: the intro must be authored to LOOP (spec.loops===true) AND the last beat must " +
+        `return to the first beat's background world (first "${first?.backgroundColor}" === last ` +
+        `"${last?.backgroundColor}"). A clean loop keeps the viewer watching past the end.`,
+    );
+  }
+
+  // R17 — subscribe CTA: the closing beat is a subscribe CTA AND a mid-video reminder lands in-window.
+  const reminder = spec.subscribeReminderAtSec;
+  const loWindow = 0.4 * total;
+  const hiWindow = 0.75 * total;
+  if (
+    !last ||
+    last.kind !== "cta" ||
+    last.subscribeCta !== true ||
+    reminder === undefined ||
+    !(Number.isFinite(reminder) && reminder >= loWindow && reminder <= hiWindow)
+  ) {
+    throw new Error(
+      `intro-recipe R17: the closing beat must be a subscribe CTA (kind==="cta", subscribeCta===true) AND ` +
+        `subscribeReminderAtSec (${reminder}) must land in [${loWindow.toFixed(1)}, ${hiWindow.toFixed(1)}]s ` +
+        "(0.4–0.75 of total — the playbook's mid-video subscribe nudge). Ask for the subscribe twice.",
+    );
   }
 }
 
@@ -610,10 +825,13 @@ function buildFableSpec(): DemoVideoSpec {
 
   return {
     task: 824,
+    videoType: "demo",
     beats,
     aspects: FABLE_ASPECTS,
     beatLayouts: FABLE_BEAT_LAYOUTS,
-    runtimeWindowSec: { ...DEFAULT_RUNTIME_BAND },
+    // fable predates the >=110s demo target — grandfathered. #1137: band-less demos now inherit
+    // VIDEO_TYPE_BAND.demo ({110,180}); fable's proven ~85s spine pins its own {85,92} to stay green.
+    runtimeWindowSec: { min: 85, max: 92 },
     maxTerminalFraction: DEFAULT_MAX_TERMINAL_FRACTION,
     captions: fableCaptions(),
   };

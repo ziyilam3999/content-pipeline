@@ -11,3 +11,6 @@ assets/forge-demo/*.html -text
 # can't drift the working-tree bytes (the gate already normalizes EOLs before
 # hashing, so this is defense-in-depth, not the sole guard).
 storyboards/** text eol=lf
+
+# Kanban demo board snapshot JSON (#1120) — byte-stable provenance; keep LF off Windows autocrlf.
+assets/kanban-demo/*.json -text
