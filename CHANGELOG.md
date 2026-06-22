@@ -1,3 +1,9 @@
+## [0.42.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.41.0...v0.42.0) (2026-06-23)
+
+### Features
+
+* **publish:** #1162 + #1163 two YouTube publish-safety guards (root-cause preventions from the #1120 demo publish). #1162 — Short-classification warning: when a `format: "regular"` post's hero is vertical-or-square AND ≤180s, the publish path WARNs that YouTube will auto-classify it a Short (which suppresses the custom thumbnail); escalate to a hard error with `YOUTUBE_SHORT_GUARD=fail`. #1163 — hero-staleness eyeball-ack gate: the LIVE upload path REFUSEs to upload a hero unless an #867 eyeball-ack exists for that exact file's sha-256 (dry-run WARNs); kill-switch `YOUTUBE_HERO_ACK_OFF=1`. New `publish/youtubeHeroGuards.ts` (reuses `sha256File`/`ackPath`, never references the upload op) + `probeVideoGeometry()` in `video/renderProbe.ts` (vendored Remotion ffmpeg) + wiring in `smoke/publish-youtube.ts` + 13 unit tests. (#166)
+
 ## [0.41.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.40.0...v0.41.0) (2026-06-23)
 
 ### Features
