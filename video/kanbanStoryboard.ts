@@ -386,6 +386,7 @@ function buildKanbanSpec(): DemoVideoSpec {
 
   return {
     task: 1046,
+    videoType: "demo", // #1137 — kanban is a demo-category video (its {74,84} band is untouched)
     beats,
     aspects: FABLE_ASPECTS,
     beatLayouts: KANBAN_BEAT_LAYOUTS,
