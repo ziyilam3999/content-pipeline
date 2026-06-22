@@ -331,6 +331,20 @@ export function probeMobileProxy(filePath: string): MobileProxyProbe {
   };
 }
 
+export interface VideoGeometry { width: number; height: number; durationSec: number; }
+/** Probe a video's frame WxH + duration in ONE vendored-ffmpeg `-i` call. Throws (never a silent
+ *  false value, per this module's design rule) if the file is missing or dims/duration are unparseable. */
+export function probeVideoGeometry(filePath: string): VideoGeometry {
+  if (!fs.existsSync(filePath)) throw new Error(`probeVideoGeometry: file does not exist: ${filePath}`);
+  const { bin, dir } = resolveVendoredFfmpeg();
+  const metaOut = runFfmpeg(["-hide_banner", "-i", filePath], dir, bin);
+  const dims = parseVideoDimensions(metaOut);
+  if (!dims) throw new Error(`probeVideoGeometry: could not parse video dimensions for ${filePath}. Tail: ${metaOut.slice(-400)}`);
+  const durationSec = parseDurationSec(metaOut);
+  if (!Number.isFinite(durationSec)) throw new Error(`probeVideoGeometry: could not parse a Duration for ${filePath}. Tail: ${metaOut.slice(-400)}`);
+  return { width: dims.width, height: dims.height, durationSec };
+}
+
 /** The enforced mobile-proxy caps (config SSOT — `CONFIG.demo.mobileProxy`). */
 export interface MobileProxyCaps {
   maxBytes: number;

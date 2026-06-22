@@ -30,6 +30,7 @@ import * as path from "path";
 import { YouTubeClient } from "../adapters/youtube";
 import {
   YOUTUBE_POST_ORDER,
+  YOUTUBE_POSTS,
   buildYouTubeMetadata,
   assertYouTubeMetadataValid,
   resolvePrivacyStatus,
@@ -38,6 +39,8 @@ import {
   tagsTotalChars,
   type YouTubeMetadata,
 } from "../publish/youtubePosts";
+import { enforceShortClassification, requireHeroEyeballAck } from "../publish/youtubeHeroGuards";
+import { probeVideoGeometry } from "../video/renderProbe";
 import type { PostSlug } from "../publish/publishAssets";
 
 interface ResolvedPost {
@@ -83,6 +86,25 @@ function assertValidatorRejectsTooLongTitle(): void {
   }
 }
 
+/**
+ * #1162 — for a present hero, probe its geometry and run the Short-classification guard. Probe failure
+ * is a WARN (never crashes the metadata dry-run). Runs in BOTH dry-run and live.
+ */
+function runShortClassificationGuard(p: ResolvedPost): void {
+  if (!p.videoExists) return;
+  let geo;
+  try {
+    geo = probeVideoGeometry(p.videoPath);
+  } catch (err) {
+    console.warn(
+      `⚠️  ${p.slug}: could not probe hero geometry for the Short-classification check ` +
+        `(${err instanceof Error ? err.message : String(err)}) — skipping that check.`,
+    );
+    return;
+  }
+  enforceShortClassification(p.slug, YOUTUBE_POSTS[p.slug].format, geo);
+}
+
 async function main() {
   const live = process.env.YOUTUBE_LIVE === "1";
   const privacy = resolvePrivacyStatus();
@@ -107,6 +129,8 @@ async function main() {
     console.log(`  tags:    ${p.meta.tags.length} tags, ${tagsTotalChars(p.meta.tags)} chars`);
     console.log(`  privacy: ${p.meta.privacyStatus}  madeForKids=${p.meta.selfDeclaredMadeForKids}`);
     console.log("");
+    // #1162 — warn (or fail on env) if a regular post's hero will be auto-classified as a Short.
+    runShortClassificationGuard(p);
   }
 
   if (missing.length) {
@@ -123,6 +147,11 @@ async function main() {
     const sample = resolved[0];
     console.log(`sample videos.insert resource (DRY-RUN — ${sample.slug}, no network):`);
     console.log(JSON.stringify(toInsertResource(sample.meta), null, 2));
+    // #1163 — dry-run: WARN for any present hero whose exact bytes have no eyeball-ack (live BLOCKS).
+    // No ackRoot → reads the real #867 ack root (<cwd>/.ai-workspace).
+    for (const p of resolved) {
+      if (p.videoExists) requireHeroEyeballAck(p.videoPath, { live: false, label: p.slug });
+    }
     console.log(
       `\nPUBLISH-YOUTUBE: mode=dry-run posts=${resolved.length} videos_present=${resolved.length - missing.length} ` +
         `videos_missing=${missing.length} privacy=${privacy}`,
@@ -173,6 +202,9 @@ async function main() {
       continue;
     }
     if (uploadDelayMs && i > 0) await new Promise((r) => setTimeout(r, uploadDelayMs));
+    // #1163 — LIVE: BLOCK the upload unless an eyeball-ack exists for THIS hero's exact bytes.
+    // No ackRoot → reads the real #867 ack root (<cwd>/.ai-workspace).
+    requireHeroEyeballAck(p.videoPath, { live: true, label: p.slug });
     const videoId = await client.uploadVideo({
       filePath: p.videoPath,
       metadata: toInsertResource(p.meta),
