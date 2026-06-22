@@ -19,6 +19,14 @@
  *
  * Pure data + jest/tsc-gated. NO Playwright / ffmpeg / network / paid call.
  *
+ * #1092 DOCTRINE: captured board/clip beats are CONTAIN-framed (asset-aspect ≤ device-aspect; dynamic
+ * clips exact-fit) — enforced for EVERY videoType by `assertContainRule` (R18), which runs BEFORE the
+ * demo/intro branch so intro videos are gated too. Paired with the capture-side `assertNoStripSlice`
+ * (`tools/captureSafety.ts`) the L/R edge-crop class is closed by construction. The eyeball is the LAST
+ * check, not the only one. See memory `feedback_board_edge_clip_needs_general_contain_scroll_gate_not_pointwise`
+ * (the L/R board-slice defect class: #1091 aspect/scale + #1120 stale 2-col scrollLeft, both previously
+ * caught by eyeball + fixed point-wise).
+ *
  * NOTE on R11 + island detection: the shipped fable layouts use the `fableLayout` 5%-margin model
  * (`assert4SideSafeArea` / `assertBeatFill`). `visualRedFlags.assertNoIslandLayout` models the OTHER
  * composition's horizontal band (`CONFIG.demo.safeAreaXFraction = 0.8`), under which the fable chat box
@@ -141,6 +149,13 @@ export interface DemoBeat {
   isHeroOutput: boolean;
   provenance?: DemoProvenance;
   /**
+   * #1092 CONTAIN-rule input. A captured asset INSET into this beat's device box (a still pan-zoom OR a
+   * dynamic clip). `w`/`h` = the asset's SOURCE pixel dims; `dynamic` = true for a video clip (stricter
+   * EXACT-fit). Absent ⇒ the beat insets no captured asset (title/chat/transition) and the contain rule
+   * (R18) no-ops for it. Populated by EVERY builder (kanban/forge/fable) so the gate is non-vacuous.
+   */
+  insetAsset?: { w: number; h: number; dynamic: boolean };
+  /**
    * #1137 INTRO (R14) — this beat's hook text is rendered FROM FRAME 1 (no fade-in dwell). The renderer
    * reads it; the recipe asserts the opening hook beat carries it. Optional (demo specs omit it).
    */
@@ -234,6 +249,10 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
   if (!Array.isArray(beats) || beats.length === 0) {
     throw new Error("demo-recipe R0: a demonstration-category spec must have at least one beat.");
   }
+
+  // #1092 R18 (contain) — runs for ALL videoTypes, BEFORE the demo/intro branch, so intro videos are
+  // gated too. Every beat that INSETS a captured asset must be CONTAIN-safe in its device box.
+  assertContainRule(spec);
 
   // #1137 — branch on videoType. An `intro` runs the SHARED geometry/caption/copy rules + the intro band
   // + the reach rules R14–R17, and SKIPS the demo-narrative rules R1–R6 (which a 35s intro doesn't carry).
@@ -442,6 +461,44 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
     assertPhoneFullScreenAspectDiscipline(spec.aspects);
   } catch (err) {
     throw new Error(`demo-recipe R13: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * #1092 R18 (contain) — every beat that INSETS a captured asset must be CONTAIN-safe in its device box:
+ *   (a) asset-aspect ≤ device-aspect + EPS  → a cover-fit can only crop VERTICALLY, never slice L/R (#1091).
+ *   (b) if the asset is a DYNAMIC clip, device-aspect == asset-aspect within EPS → exact contain-fit, the
+ *       clip is neither cropped nor pillarboxed (the #1120 drawer bug).
+ * Runs for ALL videoTypes (called at the TOP of `assertDemoCategoryRecipe`, before the demo/intro branch).
+ * A beat with NO `insetAsset` (title/chat/transition) is skipped. Pure aspect arithmetic — MECHANICAL.
+ */
+export function assertContainRule(spec: DemoVideoSpec): void {
+  const CONTAIN_EPS = 0.01;
+  for (const b of spec.beats) {
+    const a = b.insetAsset;
+    if (!a) continue;
+    const layout = spec.beatLayouts.find((l) => l.beat === b.n);
+    if (!layout) {
+      throw new Error(
+        `demo-recipe R18-contain: beat ${b.n} insets a captured asset but declares NO device box ` +
+          `(beatLayouts has no entry for beat ${b.n}). A contain check needs the device rect.`,
+      );
+    }
+    const da = (layout.content.right - layout.content.left) / (layout.content.bottom - layout.content.top);
+    const aa = a.w / a.h;
+    if (aa > da + CONTAIN_EPS) {
+      throw new Error(
+        `demo-recipe R18-contain: beat ${b.n} asset aspect ${aa.toFixed(3)} > device aspect ${da.toFixed(3)} — ` +
+          `a cover-fit would SLICE the asset L/R. Make the asset no wider (taller/portrait) than its device box.`,
+      );
+    }
+    if (a.dynamic && Math.abs(da - aa) > CONTAIN_EPS) {
+      throw new Error(
+        `demo-recipe R18-contain: beat ${b.n} DYNAMIC clip device aspect ${da.toFixed(3)} != clip aspect ` +
+          `${aa.toFixed(3)} — a video clip must be EXACTLY contain-fit (size the device to the clip aspect, ` +
+          `e.g. kanbanClipDeviceRect). A still pan-zoom may be looser (rule a only).`,
+      );
+    }
   }
 }
 
@@ -820,6 +877,12 @@ function buildFableSpec(): DemoVideoSpec {
       isTerminal: kind === "tool",
       isHeroOutput,
       ...(isHeroOutput ? { provenance: heroProvenance(HERO_SOURCE[b.n]) } : {}),
+      // #1092 — the viewer beats inset a 9:16 captured asset into the 9:16 OUTPUT_DEVICE (contain-fit by
+      // construction). beat 6 (viewer-video) is dynamic (exact-fit, rule b); beat 5 (viewer-card) is a
+      // still (rule a only). MANDATORY so R18 is non-vacuous for fable too.
+      ...(b.kind === "viewer-card" || b.kind === "viewer-video"
+        ? { insetAsset: { w: 9, h: 16, dynamic: b.kind === "viewer-video" } }
+        : {}),
     };
   });
 

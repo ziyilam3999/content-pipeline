@@ -328,3 +328,56 @@ describe("#873 R12 — captions required (real-voice-synced, provenance-bound)",
     expect(() => assertDemoCategoryRecipe(s)).toThrow(/demo-recipe R12/);
   });
 });
+
+// ── #1092 R18 — CONTAIN (no L/R slice), enforced for EVERY videoType through the shared rule ───────────
+// The recurring board edge-crop class (#1091 cover-aspect + #1120 stale-scroll), generalized: every beat
+// that insets a captured asset must be CONTAIN-safe in its device box. Both-ends: a landscape asset in a
+// portrait device FAILS (rule a); a dynamic clip not exactly contain-fit FAILS (rule b); the real
+// fable/forge/kanban specs PASS — and the NON-VACUOUSNESS assert proves each real spec actually FEEDS the
+// gate (≥1 insetAsset beat), so a future regression dropping insetAsset can't silently make R18 a no-op.
+describe("#1092 R18 — contain (no L/R slice)", () => {
+  test("FAILS (cover, rule a): a landscape asset in fable's portrait viewer device THROWS R18-contain", () => {
+    const s = clone(); // fable viewer device ≈ 0.5625 (9:16)
+    const board = s.beats.find((b) => b.kind === "output")!;
+    board.insetAsset = { w: 1280, h: 800, dynamic: false }; // landscape 1.6 > 0.5625 → L/R slice
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/R18-contain/);
+  });
+
+  test("FAILS (dynamic non-exact, rule b): a clip whose aspect != its device aspect THROWS R18-contain", () => {
+    const s = clone(kanbanSpec);
+    // beat 6 device is WIDE_BOARD_DEVICE (≈0.868); a 600×1066 (0.563) DYNAMIC clip there is the #1120 bug.
+    const beat6 = s.beats.find((b) => b.n === 6)!;
+    beat6.insetAsset = { w: 600, h: 1066, dynamic: true };
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/R18-contain/);
+  });
+
+  test("PASSES (contain): a contain-fit dynamic fixture in its exact device does NOT throw", () => {
+    const s = clone(kanbanSpec);
+    // beat 11's device IS kanbanClipDeviceRect(600,1066); a 600×1066 dynamic clip there is exact-fit.
+    const beat11 = s.beats.find((b) => b.n === 11)!;
+    beat11.insetAsset = { w: 600, h: 1066, dynamic: true };
+    expect(() => assertDemoCategoryRecipe(s)).not.toThrow();
+  });
+
+  test("PASSES (no asset): a title/chat beat with no insetAsset is skipped by R18", () => {
+    const s = clone();
+    // fable beat 1 (hook/title) carries no insetAsset → R18 no-ops for it; whole spec still passes.
+    expect(s.beats.find((b) => b.n === 1)!.insetAsset).toBeUndefined();
+    expect(() => assertDemoCategoryRecipe(s)).not.toThrow();
+  });
+
+  test("PASSES + NON-VACUOUS: the real fable/forge/kanban specs pass R18 AND each feeds it (≥1 insetAsset beat)", () => {
+    for (const [name, spec] of [["fable", fableSpec], ["forge", forgeSpec], ["kanban", kanbanSpec]] as const) {
+      expect(() => assertDemoCategoryRecipe(spec)).not.toThrow();
+      const insetCount = spec.beats.filter((b) => b.insetAsset).length;
+      // eslint-disable-next-line no-console
+      console.log(`[R18 non-vacuous] ${name}: ${insetCount} insetAsset beat(s) feed the contain rule`);
+      expect(insetCount).toBeGreaterThanOrEqual(1);
+    }
+    // The expected per-spec counts (regression anchor): fable viewer beats 5+6 = 2; forge heroes 6/7/8 = 3;
+    // kanban all 8 board beats 5–12 = 8.
+    expect(fableSpec.beats.filter((b) => b.insetAsset).length).toBe(2);
+    expect(forgeSpec.beats.filter((b) => b.insetAsset).length).toBe(3);
+    expect(kanbanSpec.beats.filter((b) => b.insetAsset).length).toBe(8);
+  });
+});

@@ -1,10 +1,10 @@
 /**
- * #1120 agent-kanban demo (v2 "feature tour") — the build's test ORACLE.
+ * #1120 agent-kanban demo (14-beat tool-demo) — the build's test ORACLE.
  *
- *  (1) RECIPE: the v2 kanban `DemoVideoSpec` passes the #870 demonstration-category recipe under the
- *      FEATURE-TOUR shape (R1/R2/R4/R6–R13); R3/R5 (chat/tool/transition) are carved out for this shape ONLY.
- *      BOTH-ENDS: toggling kanban back to the strict "tool-demo" shape FAILS on R3 (proves the carve-out is
- *      per-spec opt-in, not a gate weakening) — fableSpec/forgeSpec (strict) stay green in their own tests.
+ *  (1) RECIPE: the 14-beat kanban `DemoVideoSpec` passes the #870 demonstration-category recipe under the
+ *      STRICT tool-demo shape (R1–R13, `shape` unset) — chat (beat 2) + agent-interface tool (beat 3) +
+ *      transition (beat 4) are present so R3/R5 apply and PASS. BOTH-ENDS: stripping the chat beat FAILS on
+ *      R3 (proves R3/R5 are really enforced) — fableSpec/forgeSpec stay green in their own tests.
  *  (2) SAFE-AREA + FRAME-ECONOMY: every kanban beat layout is 4-side title-safe; the board-subject beats fill
  *      the frame.
  *  (3) PROVENANCE: the ONE committed hero still (beat 6) byte-for-byte matches its declared sha256 + bytes, and
@@ -38,7 +38,6 @@ import {
   KANBAN_BEAT_LAYOUTS,
   kanbanClipDeviceRect,
   KANBAN_CARD_CLIP,
-  KANBAN_DRAWER_CLIP,
   KANBAN_VO_SEG_SEC,
   KANBAN_TRANSITION_SEC,
   KANBAN_RUNTIME_SEC,
@@ -134,48 +133,16 @@ describe("#1120 kanban frame-economy gate", () => {
   });
 });
 
-// ── #1120 / #1092 CONTAIN-assert: no board beat can slice the board L/R ───────────────────────────────
-// The recurring left-edge "haircut" bug: a board asset COVER-framed in a device of a DIFFERENT aspect crops
-// sideways. The both-ends lock: (a) every board beat's asset aspect ≤ its device-box aspect (so a cover fit
-// only ever crops VERTICALLY, never L/R); (b) every DYNAMIC clip beat's device is the EXACT contain-fit of the
-// clip (kanbanClipDeviceRect) so device-aspect == clip-aspect — a cover-framed clip (the old beat-8 drawer in
-// WIDE_BOARD_DEVICE) FAILS by construction.
-describe("#1120 kanban CONTAIN-assert (no L/R board slice)", () => {
-  const EPS = 0.01;
-  const deviceAspect = (n: number): number => {
-    const l = KANBAN_BEAT_LAYOUTS.find((x) => x.beat === n)!;
-    return (l.content.right - l.content.left) / (l.content.bottom - l.content.top);
-  };
-  const boardBeats = KANBAN_BEATS.filter((b) => b.kind === "output");
-
-  test("every board beat's asset aspect ≤ its device-box aspect (cover crops only vertically, never L/R)", () => {
-    for (const b of boardBeats) {
-      const da = deviceAspect(b.n);
-      const assetAspect = b.clipSource
-        ? b.clipW! / b.clipH!
-        : (b.hero ?? b.still)!.srcW / (b.hero ?? b.still)!.srcH;
-      expect(assetAspect).toBeLessThanOrEqual(da + EPS);
-    }
-  });
-
-  test("every DYNAMIC clip board beat is CONTAIN-framed (device aspect == clip aspect — no L/R slice)", () => {
-    for (const b of boardBeats.filter((x) => x.clipSource)) {
-      const da = deviceAspect(b.n);
-      const ca = b.clipW! / b.clipH!;
-      expect(Math.abs(da - ca)).toBeLessThanOrEqual(EPS);
-    }
-  });
-
-  test("BOTH-ENDS: a clip COVER-framed in WIDE_BOARD_DEVICE FAILS; kanbanClipDeviceRect PASSES", () => {
-    const clipAspect = KANBAN_DRAWER_CLIP.w / KANBAN_DRAWER_CLIP.h;
-    // the OLD bug: drawer clip in the 90%-wide board device (a different, wider aspect) → cover-frame.
-    const wide = KANBAN_BEAT_LAYOUTS.find((x) => x.beat === 6)!.content; // WIDE_BOARD_DEVICE-shaped panzoom box
-    const wideAspect = (wide.right - wide.left) / (wide.bottom - wide.top);
-    expect(Math.abs(wideAspect - clipAspect)).toBeGreaterThan(EPS); // FAILS the contain check
-    // the FIX: a device sized to the clip's exact aspect.
-    const fit = kanbanClipDeviceRect(KANBAN_DRAWER_CLIP.w, KANBAN_DRAWER_CLIP.h);
-    const fitAspect = (fit.right - fit.left) / (fit.bottom - fit.top);
-    expect(Math.abs(fitAspect - clipAspect)).toBeLessThanOrEqual(EPS); // PASSES
+// ── #1092 CONTAIN routing — the kanban L/R-slice guard now lives in the SHARED recipe rule (R18) ───────
+// The kanban-scoped CONTAIN describe (asset-aspect ≤ device-aspect; dynamic clips exact-fit) was LIFTED into
+// `assertContainRule` (demoCategoryRecipe.ts), which `buildKanbanSpec` feeds via every board beat's mandatory
+// `insetAsset`. Coverage now lives in demoCategoryRecipe.test.ts (the both-ends fixtures + the non-vacuousness
+// assert proving the real kanban spec actually FEEDS the gate). The single routing test below confirms kanban
+// is wired through the shared recipe; the "kanbanSpec PASSES the strict tool-demo recipe" test above already
+// runs the full validator (R18 included) over the real spec.
+describe("#1092 kanban routes through the shared CONTAIN rule (R18)", () => {
+  test("buildKanbanSpec() passes the shared recipe (R18-contain included) with no L/R slice", () => {
+    expect(() => assertDemoCategoryRecipe(kanbanSpec)).not.toThrow();
   });
 });
 
