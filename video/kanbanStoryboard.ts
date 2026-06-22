@@ -180,24 +180,31 @@ export interface KanbanBeat {
 // so the re-lock can't shrink them below their motion); until then they ride the storyboard's design targets.
 // 14-beat tool-demo (#1120 extended cut → 140s). Beat 4 is the SILENT tool→board transition (its VO line is
 // the empty string; the silence-gate keeps the splice ≤1.5s). Every OTHER beat's clipSec == its VO segment.
-// #1120 — RE-LOCKED via fitBeatsToVo against the paid audio-only preview (kanban-vo-preview.json): each beat's
-// budget now tracks the MEASURED Adam VO so neither pads (dead-air) nor heavy-stretches, holding total === 140.
-// Clip beats keep ≥ their motion floor (animMinSec) so the move/landing is never trimmed (card-move lands ~13s).
+// #1120 NATURAL ORDER (VO-first, operator-directed 2026-06-22): storyboard → script → VO → build the video to
+// the VO's length. These per-beat budgets are DERIVED by fitBeatsToVo from the MEASURED Adam VO
+// (kanban-vo-preview.json) with breath=0 — i.e. clipSec == the beat's measured audio-segment length EXACTLY
+// (clamped up to each clip beat's animMinSec motion floor). Why breath=0: the synthesized TTS segment ALREADY
+// carries the speaker's natural trailing pause, so adding an extra breath DOUBLE-PADS and re-introduces the very
+// dead-air we're avoiding (verified: breath 0.7 → 1.66–2.18s gaps; breath 0 → all gaps < 1.5s). The video TOTAL
+// therefore FOLLOWS the voice (VO length + the 1s transition ≈ 141s ∈ demo band 110–180), instead of pinning the
+// video to a fixed length and squeezing the VO in (the old video-first order that fought TTS jitter → dead-air).
+// Regenerate after any script/VO change: paid preview → fitBeatsToVo(breath 0) → paste here → re-render spine →
+// free-reuse the synth.
 export const KANBAN_VO_SEG_SEC: Readonly<Record<number, number>> = {
-  1: 8,
-  2: 7,
-  3: 8,
+  1: 7.71,
+  2: 7.16,
+  3: 9.03,
   4: 1,
-  5: 12,
-  6: 13,
-  7: 12,
-  8: 12,
-  9: 12,
-  10: 8,
-  11: 13,
-  12: 18,
-  13: 10,
-  14: 6,
+  5: 12.31,
+  6: 13.22,
+  7: 11.85,
+  8: 12.46,
+  9: 11.59,
+  10: 7.67,
+  11: 13.21,
+  12: 17.75,
+  13: 10.73,
+  14: 5.69,
 };
 /** The silent transition beat length (seconds). Beat 4 is a 1s tool→board handoff (board emerges, no VO). */
 export const KANBAN_TRANSITION_SEC = 1;
@@ -218,20 +225,20 @@ const VERDICT_STILL = "out/capture/kanban/drawer-verdicts.png"; // beat 12 — o
 export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   // 1 — HOOK (synth, no board).
   {
-    n: 1, kind: "hook", stepLabel: "", clipSec: 8, commands: [],
+    n: 1, kind: "hook", stepLabel: "", clipSec: 7.71, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_TOOL,
     headline: "Watch your AI agent work.",
     sub: "It plans, codes, and reviews itself. Can you SEE it — and trust it?",
   },
   // 2 — CHAT. The HUMAN's interface: plain English to Claude Code; the agent picks up the task (R3 reframe).
   {
-    n: 2, kind: "chat", stepLabel: "you → Claude Code · plain English", clipSec: 7, commands: [],
+    n: 2, kind: "chat", stepLabel: "you → Claude Code · plain English", clipSec: 7.16, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_CHAT,
     chatRequest: "Plan and ship the board update — and show me every step.",
   },
   // 3 — TOOL. The agent's real pipeline (planner → plan-review → executor → exec-review) on the dark tool world.
   {
-    n: 3, kind: "tool", stepLabel: "agent-kanban — the agent's interface, not yours", clipSec: 8,
+    n: 3, kind: "tool", stepLabel: "agent-kanban — the agent's interface, not yours", clipSec: 9.03,
     commands: ["claude  plan and ship the board update", "show the run on agent-kanban"],
     isTerminal: true, isHeroOutput: false, backgroundColor: BG_TOOL,
   },
@@ -242,7 +249,7 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   },
   // 5 — BOARD: SESSION PICKER (DYNAMIC clip, cols 2–3 → open the picker dropdown → filter between sessions).
   {
-    n: 5, kind: "output", stepLabel: "the live board · agent-kanban", clipSec: 12, commands: [],
+    n: 5, kind: "output", stepLabel: "the live board · agent-kanban", clipSec: 12.31, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     clipSource: "out/capture/kanban/clip-session-picker.mp4",
     clipW: KANBAN_PICKER_CLIP.w, clipH: KANBAN_PICKER_CLIP.h, animMinSec: 8,
@@ -254,7 +261,7 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   // the top In-Review card's ◆ REVIEW · PASS phase line). The ONLY committed, provenance-hashed frame — the
   // both-ends AC anchor (the extracted-frame ◆ REVIEW glyph probe runs on these bytes).
   {
-    n: 6, kind: "output", stepLabel: "every card says where it is", clipSec: 13, commands: [],
+    n: 6, kind: "output", stepLabel: "every card says where it is", clipSec: 13.22, commands: [],
     isTerminal: false, isHeroOutput: true, backgroundColor: BG_OUTPUT_A,
     hero: {
       source: COMMITTED_STILL,
@@ -275,7 +282,7 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   // 7 — THE LIVE HEARTBEAT (DYNAMIC clip, cols 2–3; push-in on the pulsing ▶ WORKING card). The pulse + push-in
   // IS the highlight — a STATIC ring would not track the zooming clip underneath it.
   {
-    n: 7, kind: "output", stepLabel: "working right now", clipSec: 12, commands: [],
+    n: 7, kind: "output", stepLabel: "working right now", clipSec: 11.85, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     clipSource: "out/capture/kanban/clip-heartbeat.mp4",
     clipW: KANBAN_HEARTBEAT_CLIP.w, clipH: KANBAN_HEARTBEAT_CLIP.h, animMinSec: 6,
@@ -285,7 +292,7 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   },
   // 8 — NAMES THE ROLE (gitignored cols-2–3 still onto the ▶ EXECUTOR card in In Progress; settled ring).
   {
-    n: 8, kind: "output", stepLabel: "the exact role on the job", clipSec: 12, commands: [],
+    n: 8, kind: "output", stepLabel: "the exact role on the job", clipSec: 12.46, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     still: {
       source: COMMITTED_STILL, srcW: 2700, srcH: 3150, holdSec: 1.2,
@@ -300,7 +307,7 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   // 9 — CAUSAL MOVE (DYNAMIC clip, cols 2–3; card LIFTS from In Progress, crosses, LANDS in In Review; the phase
   // line flips ▶ WORKING → ◆ REVIEW · PASS on land — the verdict appears CAUSALLY as the card arrives).
   {
-    n: 9, kind: "output", stepLabel: "lift · land · explained", clipSec: 12, commands: [],
+    n: 9, kind: "output", stepLabel: "lift · land · explained", clipSec: 11.59, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     clipSource: "out/capture/kanban/clip-card-move.mp4",
     clipW: KANBAN_CARD_CLIP.w, clipH: KANBAN_CARD_CLIP.h, animMinSec: 8,
@@ -311,7 +318,7 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   },
   // 10 — PARENT / EPIC CHIP (gitignored cols-2–3 still; settled ring on the "↳ #NNNN" parent chip).
   {
-    n: 10, kind: "output", stepLabel: "rolls up to its parent epic", clipSec: 8, commands: [],
+    n: 10, kind: "output", stepLabel: "rolls up to its parent epic", clipSec: 7.67, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     still: {
       source: COMMITTED_STILL, srcW: 2700, srcH: 3150, holdSec: 1.0,
@@ -326,14 +333,14 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   // 11 — DEPTH ON TAP (DYNAMIC drawer clip — tap the card → timeline drawer SLIDES OPEN → settle on the role
   // ledger rows + verdict pills + elapsed).
   {
-    n: 11, kind: "output", stepLabel: "tap for the full timeline", clipSec: 13, commands: [],
+    n: 11, kind: "output", stepLabel: "tap for the full timeline", clipSec: 13.21, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     clipSource: "out/capture/kanban/clip-drawer-open.mp4",
     clipW: KANBAN_DRAWER_CLIP.w, clipH: KANBAN_DRAWER_CLIP.h, animMinSec: 7,
   },
   // 12 — THE VERDICTS (gitignored open-drawer still; settled ring on the MULTIPLE colored verdict pills + elapsed).
   {
-    n: 12, kind: "output", stepLabel: "every step's verdict — passed, with-notes, blocked", clipSec: 18, commands: [],
+    n: 12, kind: "output", stepLabel: "every step's verdict — passed, with-notes, blocked", clipSec: 17.75, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_OUTPUT_A,
     still: {
       source: VERDICT_STILL, srcW: 1200, srcH: 2132, holdSec: 1.4,
@@ -347,14 +354,14 @@ export const KANBAN_BEATS: ReadonlyArray<KanbanBeat> = [
   },
   // 13 — PAYOFF (synth title, board pull-back read in the line).
   {
-    n: 13, kind: "payoff", stepLabel: "", clipSec: 10, commands: [],
+    n: 13, kind: "payoff", stepLabel: "", clipSec: 10.73, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_TOOL,
     headline: "Your AI agent — finally legible.",
     sub: "Every move, every verdict — right on the board, not in a black box.",
   },
   // 14 — CTA (synth, no board).
   {
-    n: 14, kind: "cta", stepLabel: "", clipSec: 6, commands: [],
+    n: 14, kind: "cta", stepLabel: "", clipSec: 5.69, commands: [],
     isTerminal: false, isHeroOutput: false, backgroundColor: BG_TOOL,
     headline: "agent-kanban",
     sub: "open-source · MIT · see your agent work",
@@ -402,7 +409,7 @@ export const KANBAN_VO_LINES: ReadonlyArray<string> = [
 
 // ── The DemoVideoSpec instance (fed to assertDemoCategoryRecipe — the build's test oracle) ─────────--
 
-const RUNTIME_BAND = { min: 130, max: 150 } as const; // #1120 extended cut ≈ 140s (∈ demo {110,180}); re-locked via fitBeatsToVo post-preview
+const RUNTIME_BAND = { min: 130, max: 165 } as const; // #1120 NATURAL ORDER: length FOLLOWS the VO (~150s ∈ demo {110,180}); KANBAN_VO_SEG_SEC is fitBeatsToVo-derived, not pinned
 const MAX_TERMINAL_FRACTION = 0.3;
 
 export const KANBAN_VO_BUNDLE = "out/review/kanban/kanban-vo-sync.json";

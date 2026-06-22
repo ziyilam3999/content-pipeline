@@ -80,13 +80,16 @@ describe("#1120 kanban demo-category recipe (14-beat tool-demo)", () => {
     for (const n of [5, 7, 9, 11]) expect(KANBAN_BEATS.find((b) => b.n === n)!.clipSource).toBeDefined();
   });
 
-  test("runtime is in the 130–150s band and terminal share is the single tool beat (≤30%)", () => {
+  test("runtime FOLLOWS the VO (∈ demo band) and terminal share is the single tool beat (≤30%)", () => {
+    // #1120 NATURAL ORDER: the video length is DERIVED from the VO (fitBeatsToVo), not pinned to a constant —
+    // so assert the demo-type BAND, not an exact second count. The recipe's VIDEO_TYPE_BAND demo {110,180} is
+    // the outer bound; this storyboard's RUNTIME_BAND {130,165} is the inner.
     const total = kanbanSpec.beats.reduce((s, b) => s + b.durationSec, 0);
-    expect(total).toBe(140);
     expect(total).toBeGreaterThanOrEqual(130);
-    expect(total).toBeLessThanOrEqual(150);
-    const terminal = kanbanSpec.beats.filter((b) => b.isTerminal).reduce((s, b) => s + b.durationSec, 0);
-    expect(terminal).toBe(8); // beat 3 only
+    expect(total).toBeLessThanOrEqual(165);
+    const terminalBeats = kanbanSpec.beats.filter((b) => b.isTerminal);
+    expect(terminalBeats.length).toBe(1); // beat 3 only (the tool/terminal shot)
+    const terminal = terminalBeats.reduce((s, b) => s + b.durationSec, 0);
     expect(terminal / total).toBeLessThanOrEqual(0.3);
   });
 
@@ -95,7 +98,9 @@ describe("#1120 kanban demo-category recipe (14-beat tool-demo)", () => {
     expect(c.present).toBe(true);
     expect(c.syncBoundToRealAudio).toBe(true);
     expect(c.audio.real).toBe(true);
-    expect(c.audio.durationSec).toBe(140);
+    // #1120 NATURAL ORDER: synced audio == the VO-derived spine length (demo band), not a fixed 140.
+    expect(c.audio.durationSec).toBeGreaterThanOrEqual(110);
+    expect(c.audio.durationSec).toBeLessThanOrEqual(180);
     expect(Math.abs(c.lastCueEndSec - c.audio.durationSec)).toBeLessThanOrEqual(0.5);
   });
 });
@@ -162,7 +167,9 @@ describe("#1120 kanban spine↔VO sync SSOT", () => {
   test("KANBAN_RUNTIME_SEC == the sum of every beat's VO segment (140s, transition included)", () => {
     const segTotal = Object.values(KANBAN_VO_SEG_SEC).reduce((s, v) => s + v, 0);
     expect(KANBAN_RUNTIME_SEC).toBe(segTotal);
-    expect(KANBAN_RUNTIME_SEC).toBe(140);
+    // #1120 NATURAL ORDER: runtime is VO-derived (fitBeatsToVo), so assert the band, not an exact 140.
+    expect(KANBAN_RUNTIME_SEC).toBeGreaterThanOrEqual(130);
+    expect(KANBAN_RUNTIME_SEC).toBeLessThanOrEqual(165);
   });
 });
 
