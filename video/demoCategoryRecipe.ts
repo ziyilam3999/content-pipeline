@@ -19,6 +19,21 @@
  *
  * Pure data + jest/tsc-gated. NO Playwright / ffmpeg / network / paid call.
  *
+ * #1148 VO-FIRST DOCTRINE (the supported DEFAULT order for every video post — forge, fable, intros, demos):
+ *   storyboard → script → synth the VO → DERIVE the video length from the MEASURED VO via
+ *   `fitBeatsToVo` (video/voiceFit.ts). Two defaults bake the proven timing (verified on the kanban cut by
+ *   rendering + ffmpeg silencedetect): breath defaults to 0 for TTS (the synth segment already carries the
+ *   speaker's trailing pause; an extra breath double-pads → dead-air), and the narrated beat immediately
+ *   before a silent transition gets NO breath (it would otherwise stack with the transition's deliberate
+ *   silence past the 1.5s dead-air gate). NEVER pin the video to a fixed length and squeeze the VO in.
+ *   Re-derive a post's per-beat durations after any VO change with `npm run fit-beats -- <slug>`.
+ *   Consequently, LENGTH tests assert the demonstration type-BAND (e.g. 92–100s for forge, 85–92s for
+ *   fable), NOT an exact second count — the exact spine↔VO single-sourcing is checked against the post's
+ *   measured-VO SSOT (e.g. FORGE_VO_SEG_SEC), not a magic number.
+ *   HONEST SCOPE: `fitBeatsToVo` currently has ZERO production callers (forge hard-codes FORGE_VO_SEG_SEC;
+ *   kanban uses planVoFit; fable hard-codes FABLE_BEATS.clipSec), so this establishes the DEFAULT VO-first
+ *   PATH (tool + CLI + doctrine) for NEW and RE-TIMED posts — it does not silently re-time existing posts.
+ *
  * #1092 DOCTRINE: captured board/clip beats are CONTAIN-framed (asset-aspect ≤ device-aspect; dynamic
  * clips exact-fit) — enforced for EVERY videoType by `assertContainRule` (R18), which runs BEFORE the
  * demo/intro branch so intro videos are gated too. Paired with the capture-side `assertNoStripSlice`

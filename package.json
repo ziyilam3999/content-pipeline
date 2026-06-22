@@ -7,6 +7,7 @@
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
+    "fit-beats": "tsx tools/fitBeats.ts",
     "smoke:copy": "tsx smoke/copy-smoke.ts",
     "smoke:image": "tsx smoke/image-smoke.ts",
     "smoke:video": "tsx smoke/video-smoke.ts",

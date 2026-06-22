@@ -142,6 +142,19 @@ export function planVoFit(params: {
 // constant (no dead-air) — clamped UP to a dynamic beat's animation minimum where the visual motion is
 // genuinely longer than the words. Because clipSec ≥ measured for every beat the voice never has to be
 // time-compressed (no stretch). PURE — unit-tested from a fixture of measured durations; no paid call.
+//
+// ── #1148 — this is the SUPPORTED DEFAULT VO-FIRST PATH for video posts ────────────────────────────
+// The proven natural order (verified on the kanban cut: rendered + ffmpeg silencedetect) is
+//   storyboard → script → synth the VO → DERIVE the video length from the MEASURED VO via this function,
+// never pin the video to a fixed length and squeeze the VO in. Two empirically-settled defaults bake that:
+//   (1) breath defaults to 0 — a TTS synth segment ALREADY carries the speaker's trailing pause, so an
+//       extra breath DOUBLE-PADS → dead-air (breath 0.7 → 1.66–2.18s gaps; breath 0 → all gaps < 1.5s).
+//   (2) the narrated beat IMMEDIATELY BEFORE a silent transition gets breath 0 regardless of breathSec —
+//       its breath would otherwise STACK with the transition's deliberate ~1s silence (> the 1.5s gate).
+// HONEST SCOPE: fitBeatsToVo currently has ZERO production callers (forge hard-codes FORGE_VO_SEG_SEC;
+// kanban uses planVoFit + hard-coded segment lengths; fable hard-codes FABLE_BEATS.clipSec). So flipping
+// the default re-times NO existing post today — it establishes the DEFAULT VO-first PATH (this tool + the
+// `npm run fit-beats -- <slug>` CLI + the doctrine in demoCategoryRecipe) for NEW and RE-TIMED posts.
 
 export interface BeatToFit {
   n: number;
@@ -177,12 +190,15 @@ export function fitBeatsToVo(params: {
   beats: BeatToFit[];
   /** narrated beat n -> measured spoken length (seconds), e.g. from the paid audio-only preview. */
   measuredSpokenSec: Record<number, number>;
-  /** Trailing breath added after each narrated beat's spoken words. Clamped to [0, MAX_BREATH_SEC]. Default 0.7. */
+  /** Trailing breath added after each narrated beat's spoken words. Clamped to [0, MAX_BREATH_SEC].
+   *  Default 0 (#1148 VO-first): a TTS synth segment already carries the speaker's trailing pause, so an
+   *  added breath double-pads → dead-air. (The pre-transition beat is ALSO forced to breath 0 below,
+   *  regardless of this value, because its breath would stack with the transition's deliberate silence.) */
   breathSec?: number;
   /** The silent transition beat's fixed length (also the silence voiceKanban splices at the seam). */
   transitionSec: number;
 }): BeatsToVoFit {
-  const breath = Math.min(MAX_BREATH_SEC, Math.max(0, params.breathSec ?? 0.7));
+  const breath = Math.min(MAX_BREATH_SEC, Math.max(0, params.breathSec ?? 0));
   const { beats, measuredSpokenSec, transitionSec } = params;
 
   const out: FittedBeatLen[] = [];
@@ -190,7 +206,8 @@ export function fitBeatsToVo(params: {
   let total = 0;
   let maxPad = 0;
 
-  for (const beat of beats) {
+  for (let i = 0; i < beats.length; i++) {
+    const beat = beats[i];
     if (beat.transition) {
       const clipSec = round2(transitionSec);
       out.push({ n: beat.n, clipSec, measuredSec: 0, padSec: 0, clampedToAnimMin: false });
@@ -210,7 +227,12 @@ export function fitBeatsToVo(params: {
     if (measured === undefined || !Number.isFinite(measured) || measured < 0) {
       throw new Error(`fitBeatsToVo: missing/invalid measured spoken length for narrated beat n=${beat.n} (got ${measured}). Run the paid audio-only preview so every narrated beat has a measured length.`);
     }
-    const base = round2(measured + breath);
+    // #1148 PRE-TRANSITION-NO-BREATH: if the NEXT beat is a silent transition, this beat's breath would
+    // STACK with the transition's deliberate silence → a gap past the 1.5s dead-air gate. Force breath 0
+    // here regardless of the breathSec arg (the animMin clamp below still applies).
+    const nextIsTransition = beats[i + 1]?.transition === true;
+    const effBreath = nextIsTransition ? 0 : breath;
+    const base = round2(measured + effBreath);
     const floor = round2(beat.animMinSec ?? 0);
     const clipSec = Math.max(base, floor);
     const clampedToAnimMin = floor > base + 1e-9;

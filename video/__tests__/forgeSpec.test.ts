@@ -44,7 +44,10 @@ describe("#871 forge demo-category recipe (R1–R12)", () => {
 
   test("runtime is in the 92–100s band and terminal share is ≤30%", () => {
     const total = forgeSpec.beats.reduce((s, b) => s + b.durationSec, 0);
-    expect(total).toBeCloseTo(93.882, 2); // #944: VO-locked spine (90.88s spoken + 3s silent transition)
+    // #1148 VO-FIRST: the runtime is DERIVED from the measured VO (90.88s spoken + 3s silent transition,
+    // currently ≈93.882s), so it is asserted as the demonstration type-BAND — NOT pinned to an exact second
+    // count that a future VO re-derive would break. (The exact spine↔VO single-sourcing is checked in the
+    // "#944 forge spine↔VO sync SSOT" block below against FORGE_VO_SEG_SEC, the SSOT, not a magic number.)
     expect(total).toBeGreaterThanOrEqual(92);
     expect(total).toBeLessThanOrEqual(100);
     const terminal = forgeSpec.beats.filter((b) => b.isTerminal).reduce((s, b) => s + b.durationSec, 0);
@@ -56,7 +59,10 @@ describe("#871 forge demo-category recipe (R1–R12)", () => {
     expect(c.present).toBe(true);
     expect(c.syncBoundToRealAudio).toBe(true);
     expect(c.audio.real).toBe(true);
-    expect(c.audio.durationSec).toBeCloseTo(93.882, 2);
+    // #1148 VO-FIRST: audio length is VO-derived → assert the type-BAND, not the exact ≈93.882s (a VO
+    // re-derive would shift it within the band). The caption↔audio sync is still pinned tight just below.
+    expect(c.audio.durationSec).toBeGreaterThanOrEqual(92);
+    expect(c.audio.durationSec).toBeLessThanOrEqual(100);
     expect(Math.abs(c.lastCueEndSec - c.audio.durationSec)).toBeLessThanOrEqual(0.5);
   });
 });
@@ -80,10 +86,15 @@ describe("#944 forge spine↔VO sync SSOT", () => {
     }
   });
 
-  test("FORGE_RUNTIME_SEC == the spoken total + the transition silence (≈ 93.882s)", () => {
+  test("FORGE_RUNTIME_SEC == the spoken total + the transition silence (in the demo band)", () => {
     const spoken = Object.values(FORGE_VO_SEG_SEC).reduce((s, v) => s + v, 0);
+    // The SSOT consistency check stays EXACT: runtime is single-sourced from FORGE_VO_SEG_SEC (the measured
+    // VO), so a stray clipSec edit still fails here.
     expect(FORGE_RUNTIME_SEC).toBeCloseTo(spoken + FORGE_TRANSITION_SEC, 6);
-    expect(FORGE_RUNTIME_SEC).toBeCloseTo(93.882, 2);
+    // #1148 VO-FIRST: the absolute length is VO-derived → assert the type-BAND, not the exact ≈93.882s,
+    // so a future VO re-derive of forge re-times the spine without breaking this regression test.
+    expect(FORGE_RUNTIME_SEC).toBeGreaterThanOrEqual(92);
+    expect(FORGE_RUNTIME_SEC).toBeLessThanOrEqual(100);
   });
 });
 
