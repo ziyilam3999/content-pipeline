@@ -1,3 +1,10 @@
+## [0.40.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.39.0...v0.40.0) (2026-06-22)
+
+### Features
+
+* **demo:** #1120 re-do the agent-kanban demo through the pipeline — VO-first natural order (length follows the voice, 139s), result-first hook "Your AI agent is a black box. Not anymore." (off the "Watch an AI X" anti-pattern), dead-air clean. (#161)
+* **publish:** #1153 YouTube metadata convention — per-post `title` override (verbatim, no "(open source)" suffix) + `format: short|regular` with format-aware hashtags/tags (regular drops #Shorts) + a subscribe-CTA line; the agent-kanban-demo entry flipped to the result-first title; corrected the channel handle SSOT to @AnsonAndAI. Sets up the #1130 7-Shorts rewrite. (#162)
+
 ## [0.39.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.38.0...v0.39.0) (2026-06-22)
 
 ### Features
