@@ -32,19 +32,23 @@ import {
 } from "remotion";
 
 import { artBackgroundTransform } from "../video/artBackgroundMotion";
+import { FontPreload } from "./brandFont";
+// #1156 — FONT/MONO + the dark palette are now the shared brand SSOT (video/brandTokens.ts),
+// so post3 / post5 / the future #1157 thumbnail never drift.
+import {
+  BG,
+  FONT,
+  MONO,
+  GREEN,
+  BLUE,
+  AMBER,
+  MUTED,
+  KICKER,
+  DIM_TILE,
+  DIM_BORDER,
+} from "../video/brandTokens";
 
 // ───────────────────────────── shared primitives ────────────────────────────
-
-const BG = "#0a0f1e";
-const FONT = "Inter, Helvetica, Arial, sans-serif";
-const MONO = "SFMono-Regular, Menlo, Consolas, monospace";
-const GREEN = "#34d399"; // the verified / pass accent
-const BLUE = "#60a5fa";
-const AMBER = "#fbbf24";
-const MUTED = "#94a3b8";
-const KICKER = "#64748b";
-const DIM_TILE = "#1e293b";
-const DIM_BORDER = "#334155";
 
 interface CaptionCue {
   text: string;
@@ -548,6 +552,8 @@ interface Post5Props extends SceneContent {
   backgroundSrc?: string;
   backgroundScrimOpacity?: number;
   backgroundBlurPx?: number;
+  /** #1156 — bundled Inter @font-face CSS (data URIs) from buildInterFontFaceCss(). */
+  fontFaceCss?: string;
 }
 
 const Post5DemoVideo: React.FC<Post5Props> = (props) => {
@@ -568,6 +574,8 @@ const Post5DemoVideo: React.FC<Post5Props> = (props) => {
   const blurPx = props.backgroundBlurPx ?? 0;
   return (
     <AbsoluteFill style={{ backgroundColor: BG }}>
+      {/* #1156 — load bundled Inter before the first frame; FAIL the render if it doesn't load. */}
+      <FontPreload fontFaceCss={props.fontFaceCss} />
       {hasAnimatedBg ? (
         <AnimatedArtBackground src={props.backgroundSrc!} scrimOpacity={scrimOpacity} blurPx={blurPx} />
       ) : null}
@@ -627,6 +635,7 @@ const Root: React.FC = () => (
       backgroundSrc: undefined,
       backgroundScrimOpacity: 0.72,
       backgroundBlurPx: 0,
+      fontFaceCss: undefined,
     }}
     calculateMetadata={({ props }) => ({
       durationInFrames: props.durationInFrames,

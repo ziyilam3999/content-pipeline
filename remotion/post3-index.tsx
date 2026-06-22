@@ -32,19 +32,22 @@ import {
 } from "remotion";
 
 import { artBackgroundTransform } from "../video/artBackgroundMotion";
+// #1156 — shared brand SSOT (FONT/MONO + dark palette). Values are byte-identical to the former
+// local consts. (Font-bundle wiring lands first on post5; post3 keeps the literals' SSOT here.)
+import {
+  BG,
+  FONT,
+  MONO,
+  GREEN,
+  BLUE,
+  AMBER,
+  MUTED,
+  KICKER,
+  DIM_TILE,
+  DIM_BORDER,
+} from "../video/brandTokens";
 
 // ───────────────────────────── shared primitives ────────────────────────────
-
-const BG = "#0a0f1e";
-const FONT = "Inter, Helvetica, Arial, sans-serif";
-const MONO = "SFMono-Regular, Menlo, Consolas, monospace";
-const GREEN = "#34d399"; // the lit / deterministic-pass accent
-const BLUE = "#60a5fa";
-const AMBER = "#fbbf24";
-const MUTED = "#94a3b8";
-const KICKER = "#64748b";
-const DIM_TILE = "#1e293b";
-const DIM_BORDER = "#334155";
 
 interface CaptionCue {
   text: string;

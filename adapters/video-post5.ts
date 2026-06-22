@@ -31,6 +31,7 @@ import {
 } from "../video/demoCaptions";
 import { assertAudioMatchesSync } from "../video/audioDuration";
 import { ASPECTS, type Aspect } from "../video/renderSpec";
+import { buildInterFontFaceCss } from "../video/brandFonts";
 import { type ContentSpec } from "../inputs/contentspec";
 
 export interface RenderPost5Opts {
@@ -171,6 +172,10 @@ export async function renderPost5DemoVideo(spec: ContentSpec, opts?: RenderPost5
     backgroundSrc: opts?.backgroundImagePath ? toDataUri(opts.backgroundImagePath) : undefined,
     backgroundScrimOpacity: opts?.backgroundScrimOpacity,
     backgroundBlurPx: opts?.backgroundBlurPx,
+    // #1156 — embed the bundled Inter weights so headless Chromium has the brand font BEFORE the
+    // first frame (else it silently falls back to Helvetica). The render-side FontPreload gate FAILS
+    // the render if this CSS is missing/broken.
+    fontFaceCss: buildInterFontFaceCss(),
   };
 
   const outDir = opts?.outDir ?? path.join(process.cwd(), "out", "video");

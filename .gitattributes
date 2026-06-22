@@ -14,3 +14,10 @@ storyboards/** text eol=lf
 
 # Kanban demo board snapshot JSON (#1120) — byte-stable provenance; keep LF off Windows autocrlf.
 assets/kanban-demo/*.json -text
+
+# Bundled Inter font binaries (#1156) — pure binary; never apply EOL conversion (a Windows CRLF
+# checkout would corrupt the woff2 bytes). buildInterFontFaceCss reads these bytes verbatim.
+assets/fonts/Inter/*.woff2 -text
+# The SIL OFL license text must travel with the fonts; pin it -text so the #871 assets/ EOL guard
+# (gitattributesEolPin.test.ts) is satisfied and a Windows checkout can't CRLF-mangle it.
+assets/fonts/Inter/*.txt -text

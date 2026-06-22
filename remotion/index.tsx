@@ -29,6 +29,8 @@ import {
 // #807 — the background motion curve is a pure, unit-tested helper in the tsc/jest gate (this file
 // is outside it), so an imperceptibly-slow background can never ship again.
 import { artBackgroundTransform } from "../video/artBackgroundMotion";
+// #1156 — shared brand SSOT for the BG canvas + FONT stack (byte-identical to the former local consts).
+import { BG, FONT } from "../video/brandTokens";
 
 // ───────────────────────────── launch (existing) ────────────────────────────
 
@@ -194,8 +196,7 @@ interface DemoProps {
   durationInFrames: number;
 }
 
-const BG = "#0a0f1e";
-const FONT = "Inter, Helvetica, Arial, sans-serif";
+// BG + FONT now imported from the brand SSOT (video/brandTokens.ts) — see top-of-file import.
 const LANE_COLOR: Record<Lane, string> = {
   local: "#34d399", // green — runs free on your laptop
   cloud: "#60a5fa", // blue — cloud
