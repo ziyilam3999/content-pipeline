@@ -53,18 +53,86 @@ describe("buildYouTubeMetadata + assertYouTubeMetadataValid — PASS end for eve
     expect(meta.title.length).toBeLessThanOrEqual(YT_TITLE_MAX);
     expect(meta.description.length).toBeLessThanOrEqual(YT_DESCRIPTION_MAX);
     expect(tagsTotalChars(meta.tags)).toBeLessThanOrEqual(YT_TAGS_TOTAL_MAX);
-    expect(meta.title).toContain("(open source)");
+    // Format-aware: shorts keep the default "(open source)" suffix; the regular demo uses its override title.
+    if (YOUTUBE_POSTS[slug].format === "short") {
+      expect(meta.title).toContain("(open source)");
+    } else {
+      expect(meta.title).toBe("Your AI agent is a black box — this open-source board fixes it");
+    }
   });
 
-  it.each(ALL_SLUGS)("description for %s carries the repo URL + all 3 social links + #Shorts", (slug) => {
-    const desc = buildDescription(YOUTUBE_POSTS[slug]);
-    expect(desc).toContain(YOUTUBE_POSTS[slug].repoUrl);
+  it.each(ALL_SLUGS)("description for %s carries the repo URL + all 3 social links + format-correct hashtags", (slug) => {
+    const spec = YOUTUBE_POSTS[slug];
+    const desc = buildDescription(spec);
+    const meta = buildYouTubeMetadata(slug);
+    expect(desc).toContain(spec.repoUrl);
     expect(desc).toContain(SOCIAL_LINKS.github);
     expect(desc).toContain(SOCIAL_LINKS.x);
     expect(desc).toContain(SOCIAL_LINKS.threads);
-    expect(desc).toContain("#Shorts");
+    // Format-aware hashtags + tags (both directions).
+    if (spec.format === "short") {
+      expect(desc).toContain("#Shorts");
+      expect(meta.tags).toContain("Shorts");
+    } else {
+      expect(desc).not.toContain("#Shorts");
+      expect(meta.tags).not.toContain("Shorts");
+    }
     // LinkedIn intentionally omitted.
     expect(desc.toLowerCase()).not.toContain("linkedin");
+  });
+});
+
+describe("#1153 — metadata convention (per-post title override + format-aware hashtags/tags + subscribe CTA)", () => {
+  // AC1 — the regular demo uses the operator-approved result-first title verbatim (NO "(open source)").
+  it("AC1: agent-kanban-demo title is the exact override (no '(open source)' suffix)", () => {
+    const meta = buildYouTubeMetadata("agent-kanban-demo");
+    expect(meta.title).toBe("Your AI agent is a black box — this open-source board fixes it");
+    expect(meta.title).not.toContain("(open source)");
+    expect(meta.title.length).toBeLessThanOrEqual(YT_TITLE_MAX);
+  });
+
+  // AC2 — every short post's title still ends with the default "(open source)" suffix.
+  it("AC2: all 7 short posts keep the default '<hook> (open source)' title", () => {
+    const shorts = (Object.keys(YOUTUBE_POSTS) as PostSlug[]).filter(
+      (s) => YOUTUBE_POSTS[s].format === "short",
+    );
+    expect(shorts.length).toBe(7);
+    for (const slug of shorts) {
+      const meta = buildYouTubeMetadata(slug);
+      expect(meta.title).toBe(`${YOUTUBE_POSTS[slug].hook} (open source)`);
+      expect(meta.title.endsWith("(open source)")).toBe(true);
+    }
+  });
+
+  // AC3 — both directions: short carries #Shorts + a "Shorts" tag; regular carries neither.
+  it("AC3 (short): a short post has #Shorts in its description AND a 'Shorts' tag", () => {
+    const meta = buildYouTubeMetadata("lfah-post1");
+    const desc = buildDescription(YOUTUBE_POSTS["lfah-post1"]);
+    expect(desc).toContain("#Shorts");
+    expect(desc).toContain("#opensource #devtools");
+    expect(meta.tags).toContain("Shorts");
+  });
+
+  it("AC3 (regular): agent-kanban-demo has NO #Shorts in description and NO 'Shorts' tag", () => {
+    const meta = buildYouTubeMetadata("agent-kanban-demo");
+    const desc = buildDescription(YOUTUBE_POSTS["agent-kanban-demo"]);
+    expect(desc).not.toContain("#Shorts");
+    expect(desc).toContain("#AIcoding #opensource #AnsonAndAI");
+    expect(meta.tags).not.toContain("Shorts");
+  });
+
+  // AC5 — the demo description carries the literal subscribe-CTA prefix + the GitHub repo line.
+  it("AC5: agent-kanban-demo description carries the subscribe CTA + the ⭐ GitHub repo link", () => {
+    const desc = buildDescription(YOUTUBE_POSTS["agent-kanban-demo"]);
+    expect(desc).toContain("▶ Subscribe for more:");
+    expect(desc).toContain("https://www.youtube.com/@ansonlam9488");
+    expect(desc).toContain("⭐ GitHub: https://github.com/ziyilam3999/agent-kanban");
+  });
+
+  // CTA applies to ALL formats (short posts get it too).
+  it("the subscribe CTA renders on a short post as well", () => {
+    const desc = buildDescription(YOUTUBE_POSTS["lfah-post1"]);
+    expect(desc).toContain("▶ Subscribe for more: https://www.youtube.com/@ansonlam9488");
   });
 });
 

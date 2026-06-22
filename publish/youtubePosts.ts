@@ -20,7 +20,7 @@
 import * as path from "path";
 
 import { POST_ASSETS, type PostSlug } from "./publishAssets";
-import { SOCIAL_LINKS } from "../config/socialLinks";
+import { SOCIAL_LINKS, YOUTUBE_CHANNEL } from "../config/socialLinks";
 import type { VideoInsertResource } from "../adapters/youtube";
 
 // ── Social links ────────────────────────────────────────────────────────
@@ -30,6 +30,9 @@ export const GITHUB_PROFILE_URL = SOCIAL_LINKS.github;
 export const X_PROFILE_URL = SOCIAL_LINKS.x;
 export const THREADS_PROFILE_URL = SOCIAL_LINKS.threads;
 // LinkedIn intentionally omitted from public YouTube links — held per operator (employer visibility).
+
+/** The full clickable channel URL, built from the @handle SSOT (YOUTUBE_CHANNEL = "@ansonlam9488"). */
+export const YOUTUBE_CHANNEL_URL = `https://www.youtube.com/${YOUTUBE_CHANNEL.replace(/^@?/, "@")}`;
 
 // ── YouTube metadata limits (YouTube Data API v3) ───────────────────────
 
@@ -44,8 +47,16 @@ export interface YouTubePostSpec {
   slug: PostSlug;
   /** The repository this post is about (rendered as the headline ⭐ GitHub link). */
   repoUrl: string;
-  /** A short, hooky phrase. The title is `"{hook} (open source)"`. */
+  /**
+   * The video FORMAT. Drives the trailing hashtags + the shared-tag set:
+   *   "short"   → `#Shorts #opensource #devtools` + the `Shorts` tag (a vertical YouTube Short).
+   *   "regular" → `#AIcoding #opensource #AnsonAndAI` (NO `#Shorts`, no `Shorts` tag) for a long-form video.
+   */
+  format: "short" | "regular";
+  /** A short, hooky phrase. The title defaults to `"{hook} (open source)"` unless `title` overrides it. */
   hook: string;
+  /** Optional verbatim title override. When present it is used as-is (no `(open source)` suffix). */
+  title?: string;
   /** 1-2 sentence value prop — the opening paragraph of the description. */
   valueProp: string;
   /** Per-post tags (merged with the shared tags; combined chars must stay ≤500). */
@@ -54,6 +65,11 @@ export interface YouTubePostSpec {
 
 /** Shared tags appended to every post (kept short so the per-post + shared total stays ≤500 chars). */
 const SHARED_TAGS = ["open source", "developer tools", "AI agents", "Claude Code", "Shorts"];
+
+/** The shared tags for a given format: shorts keep `Shorts`; regular videos drop it. */
+function sharedTagsFor(format: "short" | "regular"): string[] {
+  return format === "short" ? SHARED_TAGS : SHARED_TAGS.filter((t) => t !== "Shorts");
+}
 
 /**
  * The 8 launch posts → their repo + hook + value prop. repoUrl per the operator's mapping:
@@ -68,6 +84,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
   "lfah-post1": {
     slug: "lfah-post1",
     repoUrl: "https://github.com/ziyilam3999/local-first-agent-harness",
+    format: "short",
     hook: "An AI coding agent that runs on your own machine",
     valueProp:
       "A local-first agent harness that runs a red-test → green-code loop entirely on your own machine — your tests are the oracle that decides when the work is done.",
@@ -76,6 +93,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
   "lfah-post2": {
     slug: "lfah-post2",
     repoUrl: "https://github.com/ziyilam3999/local-first-agent-harness",
+    format: "short",
     hook: "Watch a local AI agent build a feature from a failing test",
     valueProp:
       "The builder side of the local-first agent harness: hand it a failing test and watch it write the code, run the suite, and iterate until everything passes — no cloud round-trip required.",
@@ -84,6 +102,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
   "forge-harness-post3": {
     slug: "forge-harness-post3",
     repoUrl: "https://github.com/ziyilam3999/forge-harness",
+    format: "short",
     hook: "Your tests decide what ships, not the AI",
     valueProp:
       "forge-harness drives AI story implementation where your real tests — not the model's self-assessment — are the gate that decides what is actually done.",
@@ -92,6 +111,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
   "content-pipeline-demo-post4": {
     slug: "content-pipeline-demo-post4",
     repoUrl: "https://github.com/ziyilam3999/content-pipeline",
+    format: "short",
     hook: "One ask turns into a whole launch post",
     valueProp:
       "content-pipeline turns a single launch announcement into ready-to-post social content — copy, an image card, a voiceover, and the video — with a built-in fact-checker, run by an agent instead of a person.",
@@ -100,6 +120,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
   "three-role-model-post5": {
     slug: "three-role-model-post5",
     repoUrl: "https://github.com/ziyilam3999/three-role-model",
+    format: "short",
     hook: "Four AI roles, and nobody grades their own homework",
     valueProp:
       "A development model where four AI subagents — planner, plan-reviewer, executor, execution-reviewer — split the work so nothing ships on self-review. Two simple knobs pick the shape per task.",
@@ -108,6 +129,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
   "forge-demo-871": {
     slug: "forge-demo-871",
     repoUrl: "https://github.com/ziyilam3999/forge-harness",
+    format: "short",
     hook: "Watch an AI harness retry a story until the tests pass",
     valueProp:
       "A live look at forge-harness: eight blocks, only one of them calls the model, and your tests decide what counts as done — watch a story go from Retry to Done on the real dashboard.",
@@ -116,6 +138,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
   "ui-evolve": {
     slug: "ui-evolve",
     repoUrl: "https://github.com/ziyilam3999/ui-evolve",
+    format: "short",
     hook: "I caught my AI design tool rewarding empty pages",
     valueProp:
       "I built an AI tool to redesign my site, then caught its own taste-judge scoring a nearly-blank page higher than a clean one. Here's how I rebuilt the judge and proved the fix blind — 6 for 6.",
@@ -127,9 +150,11 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
     // links to (smoke/publish-typefully-kanban-demo.ts → github.com/ziyilam3999/agent-kanban), NOT
     // content-pipeline. Keep the YouTube link consistent with the post's other surfaces.
     repoUrl: "https://github.com/ziyilam3999/agent-kanban",
+    format: "regular",
     hook: "Watch your AI coding agent work live on a kanban board",
+    title: "Your AI agent is a black box — this open-source board fixes it",
     valueProp:
-      "agent-kanban gives your AI coding agent a real kanban board — watch tickets move from To Do to In Progress to Done in real time as the agent works, so its invisible work finally shows up on a board you can see.",
+      "Your AI coding agent is a black box — you can't see what it's planning, reviewing, or shipping. agent-kanban makes every move legible: an open-source, real-time board where each ticket shows its plan, its review verdict, and where it is right now. See it — and trust it.",
     tags: ["agent-kanban", "kanban", "AI agents", "dashboard", "developer tools"],
   },
 };
@@ -164,12 +189,15 @@ export function tagsTotalChars(tags: string[]): number {
  *
  *   ⭐ GitHub: {repoUrl}
  *
+ *   ⭐ GitHub: {repoUrl}
+ *   ▶ Subscribe for more: {channelUrl}
+ *
  *   — Links —
  *   GitHub: …
  *   X: …
  *   Threads: …          (LinkedIn intentionally omitted — held per operator)
  *
- *   #Shorts #opensource #devtools
+ *   {hashtags}           (#Shorts #opensource #devtools for shorts; #AIcoding #opensource #AnsonAndAI for regular)
  */
 export function buildDescription(spec: YouTubePostSpec): string {
   const links = [
@@ -178,7 +206,15 @@ export function buildDescription(spec: YouTubePostSpec): string {
     `X: ${X_PROFILE_URL}`,
     `Threads: ${THREADS_PROFILE_URL}`,
   ].join("\n");
-  return `${spec.valueProp}\n\n⭐ GitHub: ${spec.repoUrl}\n\n${links}\n\n#Shorts #opensource #devtools`;
+  const hashtags =
+    spec.format === "short" ? "#Shorts #opensource #devtools" : "#AIcoding #opensource #AnsonAndAI";
+  return (
+    `${spec.valueProp}\n\n` +
+    `⭐ GitHub: ${spec.repoUrl}\n` +
+    `▶ Subscribe for more: ${YOUTUBE_CHANNEL_URL}\n\n` +
+    `${links}\n\n` +
+    hashtags
+  );
 }
 
 /** Assemble (but do NOT validate) the flat metadata for a post. */
@@ -186,9 +222,9 @@ export function buildYouTubeMetadata(slug: PostSlug): YouTubeMetadata {
   const spec = YOUTUBE_POSTS[slug];
   if (!spec) throw new Error(`no YouTube post spec for slug "${slug}"`);
   return {
-    title: `${spec.hook} (open source)`,
+    title: spec.title ?? `${spec.hook} (open source)`,
     description: buildDescription(spec),
-    tags: [...spec.tags, ...SHARED_TAGS],
+    tags: [...spec.tags, ...sharedTagsFor(spec.format)],
     categoryId: "28", // Science & Technology
     defaultLanguage: "en",
     privacyStatus: resolvePrivacyStatus(),
