@@ -31,7 +31,7 @@ export const X_PROFILE_URL = SOCIAL_LINKS.x;
 export const THREADS_PROFILE_URL = SOCIAL_LINKS.threads;
 // LinkedIn intentionally omitted from public YouTube links — held per operator (employer visibility).
 
-/** The full clickable channel URL, built from the @handle SSOT (YOUTUBE_CHANNEL = "@ansonlam9488"). */
+/** The full clickable channel URL, built from the @handle SSOT (YOUTUBE_CHANNEL = "@AnsonAndAI"). */
 export const YOUTUBE_CHANNEL_URL = `https://www.youtube.com/${YOUTUBE_CHANNEL.replace(/^@?/, "@")}`;
 
 // ── YouTube metadata limits (YouTube Data API v3) ───────────────────────
@@ -224,7 +224,7 @@ export function buildYouTubeMetadata(slug: PostSlug): YouTubeMetadata {
   return {
     title: spec.title ?? `${spec.hook} (open source)`,
     description: buildDescription(spec),
-    tags: [...spec.tags, ...sharedTagsFor(spec.format)],
+    tags: [...new Set([...spec.tags, ...sharedTagsFor(spec.format)])], // dedupe per-post vs shared overlap
     categoryId: "28", // Science & Technology
     defaultLanguage: "en",
     privacyStatus: resolvePrivacyStatus(),
