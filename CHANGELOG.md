@@ -1,3 +1,9 @@
+## [0.42.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.42.0...v0.42.1) (2026-06-23)
+
+### Features
+
+* **video:** #1164 enforce aspect ratio per `videoType` BY CONSTRUCTION. Operator policy — a DEMO renders 16:9 (a regular YouTube video whose hand-made custom thumbnail drives clicks; a 9:16 demo gets auto-filed as a Short and the thumbnail is suppressed, the #1162 bug), an INTRO renders 9:16 (the vertical reach Short). New config SSOT `videoTypeAspects` `{ demo:"16:9", intro:"9:16" }`; `VIDEO_TYPE_ASPECT` + `dimensionsForVideoType` (`video/demoCategoryRecipe.ts`) + `renderAspectForVideoType` (`video/renderSpec.ts`) DERIVE output dimensions from the videoType's declared aspect (demo→1920×1080, intro→1080×1920) so a demo can never accidentally render 9:16. The #1162 publish guard is now FAIL-CLOSED — `enforceDemoAspectByConstruction` hard-throws (no kill-switch) when a DEMO-type post's hero is not 16:9 — and `YouTubePostSpec` carries a required `videoType` (agent-kanban-demo=demo, the 7 Shorts=intro). Additive: the existing 9:16 demo specs and R13 phone-fullscreen discipline are unchanged. Unblocks #1173/#1120/#1145. (#168)
+
 ## [0.42.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.41.0...v0.42.0) (2026-06-23)
 
 ### Features
