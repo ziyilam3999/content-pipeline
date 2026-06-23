@@ -31,6 +31,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 import { sha256File, ackPath } from "../video/eyeballAck";
+import type { VideoType } from "../video/demoCategoryRecipe";
 
 // ── GUARD #1162 — Short-classification warning ─────────────────────────────────────────────────────
 
@@ -89,6 +90,36 @@ export function enforceShortClassification(
   }
   (opts?.log ?? console.warn)(msg);
   return msg;
+}
+
+// ── GUARD #1164 — DEMO must render 16:9 (fail-closed, no kill-switch) ─────────────────────────────────
+
+/** True iff the hero geometry is landscape 16:9 within tolerance (the required shape for a DEMO). */
+export function isSixteenByNine(geo: HeroGeometry): boolean {
+  return Math.abs(geo.width / geo.height - 16 / 9) < 0.02;
+}
+
+/**
+ * #1164 — FAIL-CLOSED demo-aspect gate. Operator policy: a DEMO-type post MUST render 16:9 (a regular
+ * YouTube video whose custom thumbnail drives the click). A 9:16/square demo gets auto-filed as a Short
+ * (#1162) AND violates the render policy -> it must NOT publish. Unlike the #1162 warn/fail-by-env guard,
+ * this is an UNCONDITIONAL hard throw (NO kill-switch) for videoType==="demo" + not-16:9. No-op for an
+ * intro (it is SUPPOSED to be 9:16) and for a 16:9 demo.
+ */
+export function enforceDemoAspectByConstruction(
+  slug: string,
+  videoType: VideoType,
+  geo: HeroGeometry,
+): void {
+  if (videoType !== "demo") return;
+  if (isSixteenByNine(geo)) return;
+  throw new Error(
+    `#1164 DEMO-ASPECT FAIL-CLOSED — ${slug}: a DEMO must render 16:9, but its hero is ` +
+      `${geo.width}x${geo.height} (ratio ${(geo.width / geo.height).toFixed(3)}, want ` +
+      `${(16 / 9).toFixed(3)}). A non-16:9 demo gets auto-filed as a YouTube Short (custom thumbnail ` +
+      `suppressed) and violates the demo render policy — re-render 16:9 (1920x1080). This gate has NO ` +
+      `kill-switch.`,
+  );
 }
 
 // ── GUARD #1163 — hero eyeball-ack (live=block, dry=warn) ───────────────────────────────────────────
