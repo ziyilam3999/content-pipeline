@@ -7,6 +7,8 @@
  * functions, no network / API.
  */
 
+import { CONFIG } from "../config";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -22,6 +24,21 @@ export const ASPECTS: Aspect[] = [
   { name: "9:16", width: 1080, height: 1920 },
   { name: "4:5", width: 1080, height: 1350 },
 ];
+
+/**
+ * #1164 — DERIVE the render `Aspect` (name + pixel dims) from a videoType BY CONSTRUCTION. videoType ->
+ * its canonical aspect name (config SSOT) -> that aspect's dims. A renderer that sizes from this can
+ * never accidentally render a demo as 9:16: `renderAspectForVideoType("demo")` is always 1920x1080 and
+ * `renderAspectForVideoType("intro")` is always 1080x1920. Pass it to `buildRenderSpecs` via
+ * `{ aspects: [renderAspectForVideoType(vt)] }`. (Additive — existing multi-aspect callers untouched.)
+ */
+export function renderAspectForVideoType(
+  videoType: keyof typeof CONFIG.videoTypeAspects = "demo",
+): Aspect {
+  const name = CONFIG.videoTypeAspects[videoType];
+  const { width, height } = CONFIG.aspects[name];
+  return { name, width, height };
+}
 
 export const CAPTION_BAND_Y = 0.78;
 

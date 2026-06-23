@@ -11,6 +11,16 @@ export const CONFIG = {
     "4:5":   { width: 1080, height: 1350 },
   } as const,
   defaultAspects: ["1:1", "9:16", "4:5"] as const,
+  // #1164 — CANONICAL output aspect per videoType (operator policy 2026-06-23). A DEMO renders 16:9
+  // (a regular YouTube video whose hand-made custom thumbnail drives clicks; a 9:16 demo gets auto-filed
+  // as a Short and the thumbnail is suppressed — the #1162 bug). An INTRO renders 9:16 (the vertical
+  // reach Short). Output dimensions DERIVE from this map by construction (video/demoCategoryRecipe
+  // `dimensionsForVideoType` + video/renderSpec `renderAspectForVideoType`), so a demo can never
+  // accidentally render 9:16. Keys MUST match the VideoType union in video/demoCategoryRecipe.ts.
+  videoTypeAspects: {
+    demo: "16:9",
+    intro: "9:16",
+  } as const,
   image: {
     generativeBackgroundDefault: false,
   },

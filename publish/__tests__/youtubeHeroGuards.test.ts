@@ -15,6 +15,8 @@ import {
   resolveShortGuardLevel,
   heroAckStatus,
   requireHeroEyeballAck,
+  isSixteenByNine,
+  enforceDemoAspectByConstruction,
 } from "../youtubeHeroGuards";
 import { ackPath } from "../../video/eyeballAck";
 
@@ -104,6 +106,45 @@ describe("#1162 short-classification guard", () => {
     expect(resolveShortGuardLevel({ YOUTUBE_SHORT_GUARD: "fail" })).toBe("fail");
     expect(resolveShortGuardLevel({ YOUTUBE_SHORT_GUARD: "FAIL" })).toBe("fail");
     expect(resolveShortGuardLevel({})).toBe("warn");
+  });
+});
+
+describe("#1164 demo-aspect fail-closed guard", () => {
+  it("isSixteenByNine: true for 1920x1080, false for 1080x1920 and 1080x1080", () => {
+    expect(isSixteenByNine({ width: 1920, height: 1080, durationSec: 140 })).toBe(true);
+    expect(isSixteenByNine({ width: 1280, height: 720, durationSec: 30 })).toBe(true);
+    expect(isSixteenByNine({ width: 1080, height: 1920, durationSec: 140 })).toBe(false);
+    expect(isSixteenByNine({ width: 1080, height: 1080, durationSec: 60 })).toBe(false);
+  });
+
+  it("demo + non-16:9 hero THROWS unconditionally (no env, no kill-switch)", () => {
+    expect(() =>
+      enforceDemoAspectByConstruction("agent-kanban-demo", "demo", {
+        width: 1080,
+        height: 1920,
+        durationSec: 140,
+      }),
+    ).toThrow(/DEMO-ASPECT FAIL-CLOSED/);
+  });
+
+  it("demo + 16:9 hero is a no-op (does not throw)", () => {
+    expect(() =>
+      enforceDemoAspectByConstruction("agent-kanban-demo", "demo", {
+        width: 1920,
+        height: 1080,
+        durationSec: 140,
+      }),
+    ).not.toThrow();
+  });
+
+  it("intro + 9:16 hero is a no-op (an intro is SUPPOSED to be 9:16)", () => {
+    expect(() =>
+      enforceDemoAspectByConstruction("some-intro", "intro", {
+        width: 1080,
+        height: 1920,
+        durationSec: 35,
+      }),
+    ).not.toThrow();
   });
 });
 

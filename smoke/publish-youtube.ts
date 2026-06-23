@@ -39,7 +39,7 @@ import {
   tagsTotalChars,
   type YouTubeMetadata,
 } from "../publish/youtubePosts";
-import { enforceShortClassification, requireHeroEyeballAck } from "../publish/youtubeHeroGuards";
+import { enforceShortClassification, requireHeroEyeballAck, enforceDemoAspectByConstruction } from "../publish/youtubeHeroGuards";
 import { probeVideoGeometry } from "../video/renderProbe";
 import type { PostSlug } from "../publish/publishAssets";
 
@@ -103,6 +103,8 @@ function runShortClassificationGuard(p: ResolvedPost): void {
     return;
   }
   enforceShortClassification(p.slug, YOUTUBE_POSTS[p.slug].format, geo);
+  // #1164 — fail-closed: a DEMO-type post whose hero is not 16:9 must NOT publish (no kill-switch).
+  enforceDemoAspectByConstruction(p.slug, YOUTUBE_POSTS[p.slug].videoType, geo);
 }
 
 async function main() {

@@ -20,6 +20,7 @@
 import * as path from "path";
 
 import { POST_ASSETS, type PostSlug } from "./publishAssets";
+import type { VideoType } from "../video/demoCategoryRecipe";
 import { SOCIAL_LINKS, YOUTUBE_CHANNEL } from "../config/socialLinks";
 import type { VideoInsertResource } from "../adapters/youtube";
 
@@ -53,6 +54,14 @@ export interface YouTubePostSpec {
    *   "regular" → `#AIcoding #opensource #AnsonAndAI` (NO `#Shorts`, no `Shorts` tag) for a long-form video.
    */
   format: "short" | "regular";
+  /**
+   * #1164 — the PUBLISH-ASPECT class: "demo" renders 16:9 (regular video), "intro" renders 9:16 (Short).
+   * Feeds the fail-closed `enforceDemoAspectByConstruction` guard. This is DELIBERATELY DECOUPLED from the
+   * #1137 30-40s intro CONTENT-band (which lives on DemoVideoSpec, not here): `forge-demo-871` and
+   * `content-pipeline-demo-post4` are demo-CONTENT intentionally shipped as 9:16 Shorts, so they are
+   * "intro" HERE (= "renders 9:16") regardless of their walk-through length.
+   */
+  videoType: VideoType;
   /** A short, hooky phrase. The title defaults to `"{hook} (open source)"` unless `title` overrides it. */
   hook: string;
   /** Optional verbatim title override. When present it is used as-is (no `(open source)` suffix). */
@@ -85,6 +94,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
     slug: "lfah-post1",
     repoUrl: "https://github.com/ziyilam3999/local-first-agent-harness",
     format: "short",
+    videoType: "intro",
     hook: "An AI coding agent that runs on your own machine",
     valueProp:
       "A local-first agent harness that runs a red-test → green-code loop entirely on your own machine — your tests are the oracle that decides when the work is done.",
@@ -94,6 +104,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
     slug: "lfah-post2",
     repoUrl: "https://github.com/ziyilam3999/local-first-agent-harness",
     format: "short",
+    videoType: "intro",
     hook: "Watch a local AI agent build a feature from a failing test",
     valueProp:
       "The builder side of the local-first agent harness: hand it a failing test and watch it write the code, run the suite, and iterate until everything passes — no cloud round-trip required.",
@@ -103,6 +114,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
     slug: "forge-harness-post3",
     repoUrl: "https://github.com/ziyilam3999/forge-harness",
     format: "short",
+    videoType: "intro",
     hook: "Your tests decide what ships, not the AI",
     valueProp:
       "forge-harness drives AI story implementation where your real tests — not the model's self-assessment — are the gate that decides what is actually done.",
@@ -112,6 +124,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
     slug: "content-pipeline-demo-post4",
     repoUrl: "https://github.com/ziyilam3999/content-pipeline",
     format: "short",
+    videoType: "intro",
     hook: "One ask turns into a whole launch post",
     valueProp:
       "content-pipeline turns a single launch announcement into ready-to-post social content — copy, an image card, a voiceover, and the video — with a built-in fact-checker, run by an agent instead of a person.",
@@ -121,6 +134,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
     slug: "three-role-model-post5",
     repoUrl: "https://github.com/ziyilam3999/three-role-model",
     format: "short",
+    videoType: "intro",
     hook: "Four AI roles, and nobody grades their own homework",
     valueProp:
       "A development model where four AI subagents — planner, plan-reviewer, executor, execution-reviewer — split the work so nothing ships on self-review. Two simple knobs pick the shape per task.",
@@ -130,6 +144,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
     slug: "forge-demo-871",
     repoUrl: "https://github.com/ziyilam3999/forge-harness",
     format: "short",
+    videoType: "intro",
     hook: "Watch an AI harness retry a story until the tests pass",
     valueProp:
       "A live look at forge-harness: eight blocks, only one of them calls the model, and your tests decide what counts as done — watch a story go from Retry to Done on the real dashboard.",
@@ -139,6 +154,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
     slug: "ui-evolve",
     repoUrl: "https://github.com/ziyilam3999/ui-evolve",
     format: "short",
+    videoType: "intro",
     hook: "I caught my AI design tool rewarding empty pages",
     valueProp:
       "I built an AI tool to redesign my site, then caught its own taste-judge scoring a nearly-blank page higher than a clean one. Here's how I rebuilt the judge and proved the fix blind — 6 for 6.",
@@ -151,6 +167,7 @@ export const YOUTUBE_POSTS: Record<PostSlug, YouTubePostSpec> = {
     // content-pipeline. Keep the YouTube link consistent with the post's other surfaces.
     repoUrl: "https://github.com/ziyilam3999/agent-kanban",
     format: "regular",
+    videoType: "demo",
     hook: "Watch your AI coding agent work live on a kanban board",
     title: "Your AI agent is a black box — this open-source board fixes it",
     valueProp:

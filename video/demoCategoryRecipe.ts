@@ -73,6 +73,7 @@ import {
   BG_CHAT,
   ownerLeak,
 } from "./fableStoryboard";
+import { CONFIG, type AspectRatio } from "../config";
 
 // ── The generalized demonstration-category video spec ──────────────────────────────────────────────
 
@@ -237,6 +238,35 @@ export interface DemoVideoSpec {
  * kanban {74,84}), so `{110,180}` binds only NEW band-less demos.
  */
 export const VIDEO_TYPE_BAND = { demo: { min: 110, max: 180 }, intro: { min: 30, max: 40 } } as const;
+
+/**
+ * #1164 — the CANONICAL output ASPECT per videoType (operator policy 2026-06-23), the SSOT-typed mirror
+ * of VIDEO_TYPE_BAND. DEMO -> "16:9" (landscape regular video), INTRO -> "9:16" (vertical reach Short).
+ * The values live in config (CONFIG.videoTypeAspects); typed here against VideoType so adding a videoType
+ * without declaring its aspect won't compile.
+ */
+export const VIDEO_TYPE_ASPECT: Record<VideoType, AspectRatio> = CONFIG.videoTypeAspects;
+
+/** #1164 — pixel dimensions of an output frame. */
+export interface VideoDimensions {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** #1164 — a videoType's declared output aspect name (demo -> "16:9", intro -> "9:16"). */
+export function aspectForVideoType(videoType: VideoType = "demo"): AspectRatio {
+  return VIDEO_TYPE_ASPECT[videoType];
+}
+
+/**
+ * #1164 — DERIVE a videoType's output pixel dimensions BY CONSTRUCTION: videoType -> its declared aspect
+ * -> that aspect's dims (config SSOT). A demo can therefore NEVER resolve to 9:16 (demo -> 16:9 ->
+ * 1920x1080; intro -> 9:16 -> 1080x1920). Renderers/specs size from here, never a hand-passed dimension
+ * that could drift.
+ */
+export function dimensionsForVideoType(videoType: VideoType = "demo"): VideoDimensions {
+  return CONFIG.aspects[aspectForVideoType(videoType)];
+}
 /** #1137 INTRO (R14) — the opening hook beat must be SHORT (a scroll-stopper, not a long dwell). */
 const INTRO_HOOK_MAX_SEC = 6;
 const DEFAULT_MAX_TERMINAL_FRACTION = 0.3; // terminal/tool ≲30% of runtime
