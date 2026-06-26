@@ -342,6 +342,11 @@ export function assertFableBeatsSafeAndFilled(layouts: ReadonlyArray<FableBeatLa
     const label = `beat ${l.beat} (${l.kind})`;
     assert4SideSafeArea({ content: l.content, label });
     if (l.fill) assertBeatFill({ content: l.content, label });
+    // #1071 frame-economy FLOOR — a device/board-subject beat must fill a clear majority of the safe-area
+    // height (the ceiling/assert4SideSafeArea above already runs per beat). Folding the floor here means
+    // EVERY demo videoType (fable/forge/kanban + any future) inherits it through the shared path BY
+    // CONSTRUCTION — not just the kanban capture preflight that used to call assertFrameEconomy directly.
+    if (isDeviceSubjectBeat(l.kind)) assertSubjectFillFloor({ content: l.content, label });
     // The chat beat needs two cross-checks the container box is blind to: (1) its conversation must FILL
     // the panel interior (no dead middle band), not just its border be full-bleed; (2) its bottom rows
     // must clear the lower-third caption band the global synced caption is composited into later.
@@ -390,12 +395,56 @@ export function isDeviceSubjectBeat(kind: string): boolean {
 }
 
 /**
+ * #1071 FRAME-ECONOMY FLOOR (per-beat, floor-only — the SINGLE source of the min-fill inequality).
+ *
+ * A device/board-subject beat's framed surface must fill ≥ `minFillHeightFraction` of the SAFE-AREA HEIGHT
+ * (not a thin strip in empty cream). This is the floor HALF of the band; the CEILING (assert4SideSafeArea —
+ * nothing crosses the safe edge) is owned by the CALLER (`assertFrameEconomy` runs it standalone; the shared
+ * `assertFableBeatsSafeAndFilled` loop already runs it per beat). This helper does NOT run the ceiling and
+ * does NOT loop — it is one beat. The #1071 frame-economy throw string lives ONLY here, so both
+ * the public gate and the shared aggregator delegate to ONE floor implementation (no duplicated math).
+ * Defaults width/height/margin/minFill to `CAP_W` / `CAP_H` / `FILL_SAFE_MARGIN` /
+ * `MIN_SUBJECT_FILL_HEIGHT_FRACTION` so behavior is byte-identical to the prior inline floor.
+ */
+export function assertSubjectFillFloor(args: {
+  content: Rect;
+  width?: number;
+  height?: number;
+  margin?: number;
+  minFillHeightFraction?: number;
+  label?: string;
+}): void {
+  const width = args.width ?? CAP_W;
+  const height = args.height ?? CAP_H;
+  const margin = args.margin ?? FILL_SAFE_MARGIN;
+  const minFill = args.minFillHeightFraction ?? MIN_SUBJECT_FILL_HEIGHT_FRACTION;
+  const label = args.label ?? "beat";
+  if (!(minFill > 0 && minFill < 1)) throw new Error(`assertSubjectFillFloor: minFillHeightFraction must be in (0,1) (got ${minFill})`);
+  const safe = safeAreaBox(width, height, margin);
+  const safeH = safe.bottom - safe.top;
+  const EPS = 1e-4;
+  // FLOOR — the framed surface must fill a clear majority of the safe-area HEIGHT (not a thin strip).
+  const subjectH = Math.max(0, args.content.bottom - args.content.top);
+  const fillH = subjectH / safeH;
+  if (fillH < minFill - EPS) {
+    throw new Error(
+      `#1071 frame-economy violated for "${label}": the board subject fills only ${(fillH * 100).toFixed(1)}% ` +
+        `of the title-safe height (< ${(minFill * 100).toFixed(0)}% required). The product reads as a thin strip ` +
+        `in empty cream bands — frame the board PORTRAIT so it fills the frame, not a landscape strip scaled into 9:16.`,
+    );
+  }
+}
+
+/**
  * #1071 FRAME-ECONOMY invariant — every device/board-subject beat's framed surface must sit inside a BAND:
  *   • FLOOR — it fills ≥ `minFillHeightFraction` of the SAFE-AREA HEIGHT (not a thin strip in empty cream).
  *   • CEILING — it stays inside the 4-side title-safe box (assert4SideSafeArea — nothing crops the frame).
  * Title / terminal / chat beats carry no device subject → skipped. This is the mechanical prevention for
  * the operator's "the product is too small" feedback: a landscape board clip scaled into 9:16 fills only
  * ~⅓ of the height and reads as a strip. Pass a synthetic layout list to exercise the failing end.
+ *
+ * The floor inequality is NOT inlined here — it delegates to `assertSubjectFillFloor` (the single source),
+ * so the same min-fill math also runs inside the shared `assertFableBeatsSafeAndFilled` aggregator.
  */
 export function assertFrameEconomy(
   layouts: ReadonlyArray<FableBeatLayout>,
@@ -405,25 +454,13 @@ export function assertFrameEconomy(
   const height = opts?.height ?? CAP_H;
   const margin = opts?.margin ?? FILL_SAFE_MARGIN;
   const minFill = opts?.minFillHeightFraction ?? MIN_SUBJECT_FILL_HEIGHT_FRACTION;
-  if (!(minFill > 0 && minFill < 1)) throw new Error(`assertFrameEconomy: minFillHeightFraction must be in (0,1) (got ${minFill})`);
-  const safe = safeAreaBox(width, height, margin);
-  const safeH = safe.bottom - safe.top;
-  const EPS = 1e-4;
   for (const l of layouts) {
     if (!isDeviceSubjectBeat(l.kind)) continue; // only device/board-subject beats are economy-checked
     const label = `beat ${l.beat} (${l.kind})`;
     // CEILING — the framed surface must not cross the 4-side title-safe edge (nothing crops).
     assert4SideSafeArea({ content: l.content, width, height, margin, label });
-    // FLOOR — the framed surface must fill a clear majority of the safe-area HEIGHT (not a thin strip).
-    const subjectH = Math.max(0, l.content.bottom - l.content.top);
-    const fillH = subjectH / safeH;
-    if (fillH < minFill - EPS) {
-      throw new Error(
-        `#1071 frame-economy violated for "${label}": the board subject fills only ${(fillH * 100).toFixed(1)}% ` +
-          `of the title-safe height (< ${(minFill * 100).toFixed(0)}% required). The product reads as a thin strip ` +
-          `in empty cream bands — frame the board PORTRAIT so it fills the frame, not a landscape strip scaled into 9:16.`,
-      );
-    }
+    // FLOOR — delegated to the single floor implementation.
+    assertSubjectFillFloor({ content: l.content, width, height, margin, minFillHeightFraction: minFill, label });
   }
 }
 
