@@ -1,3 +1,9 @@
+## [0.43.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.43.0...v0.43.1) (2026-06-26)
+
+### Bug Fixes
+
+* **publish:** #1253 the #1063/#1068 hand-roll publish guards now enumerate scanned files via `git ls-files` (tracked/committed source only) instead of a raw filesystem `walk()`. The old walk scanned gitignored scratch dirs (`tmp/`, `.ai-workspace/`), so an untracked local file referencing `createDraft`/`uploadMedia`/`uploadVideo` false-FAILED `npm test` locally while clean-checkout CI stayed green. Switching to `git ls-files` makes local == CI and matches each guard's stated "committed source" property; ALLOW allowlists, PATTERN regexes, and `expect(offenders).toEqual([])` are unchanged. Both-ends proven: a tracked non-allowlisted fixture still FAILS each guard; an untracked `tmp/` scratch file no longer does. (#1253)
+
 ## [0.43.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.42.1...v0.43.0) (2026-06-26)
 
 ### Features

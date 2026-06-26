@@ -14,12 +14,11 @@
  * Both ends are objective: the recurrence-condition (a reference outside the allowlist) and the
  * fix-landed signal (no such reference) are pure greps over committed source — Rule-17 mechanical.
  */
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-// Scan the WHOLE repo minus build/vendor noise (and nested worktrees under .claude/).
-const SKIP = /(^|[/\\])(node_modules|\.next|out|dist|coverage|\.git|\.claude)([/\\]|$)/;
 const ALLOW = [
   /adapters[/\\]youtube\.ts$/, // defines uploadVideo (the resumable videos.insert upload)
   /(^|[/\\])smoke[/\\]publish-youtube.*\.ts$/, // the sanctioned YouTube publish runbook(s)
@@ -28,27 +27,27 @@ const ALLOW = [
 ];
 const PATTERN = /\buploadVideo\b/;
 
-function walk(dir: string, acc: string[]): void {
-  if (!fs.existsSync(dir)) return;
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    // Test SKIP against the path RELATIVE to the repo root — else the repo's OWN location
-    // (e.g. a worktree under .claude/) would match SKIP and silently skip the whole tree (false pass).
-    if (SKIP.test(path.relative(REPO_ROOT, p))) continue;
-    if (e.isDirectory()) walk(p, acc);
-    else if (e.name.endsWith(".ts") || e.name.endsWith(".tsx")) acc.push(p);
-  }
+function git(args: string[]): string {
+  return execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" });
+}
+
+// Enumerate only TRACKED source via `git ls-files` (respects .gitignore → never scans untracked
+// scratch like tmp/ or .ai-workspace/). This matches the guard's "committed source" property and
+// makes local == CI. Paths are repo-root-relative POSIX (forward slashes) on every OS.
+function trackedSourceFiles(): string[] {
+  return git(["ls-files"])
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((p) => p.endsWith(".ts") || p.endsWith(".tsx"));
 }
 
 describe("#1068 hand-rolled-youtube-publish guard", () => {
   it("uploadVideo is referenced ONLY from the adapter, the YouTube smoke, and tests", () => {
-    const files: string[] = [];
-    walk(REPO_ROOT, files);
     const offenders: string[] = [];
-    for (const f of files) {
-      const rel = path.relative(REPO_ROOT, f);
+    for (const rel of trackedSourceFiles()) {
       if (ALLOW.some((re) => re.test(rel))) continue;
-      if (PATTERN.test(fs.readFileSync(f, "utf8"))) offenders.push(rel);
+      if (PATTERN.test(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"))) offenders.push(rel);
     }
     // A NEW file calling the YouTube upload op (a hand-rolled upload) lands here → FAIL.
     // Fix: route the upload through smoke/publish-youtube.ts (YOUTUBE_LIVE=1) instead.
