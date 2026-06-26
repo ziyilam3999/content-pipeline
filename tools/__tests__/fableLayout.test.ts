@@ -35,7 +35,11 @@ import {
   assertChatBeatInteriorFill,
   assertChatContentClearsCaptionBand,
   heroCaptionBandTopSpinePx,
+  MIN_SUBJECT_FILL_HEIGHT_FRACTION,
+  isDeviceSubjectBeat,
+  type FableBeatLayout,
 } from "../../video/fableLayout";
+import { FORGE_BEAT_LAYOUTS } from "../../video/forgeStoryboard";
 
 describe("#824 fableLayout — the SHIPPED layout has NO caption/media overlap (the PASS end)", () => {
   it("the inset output device clears the caption band on EVERY aspect", () => {
@@ -214,5 +218,63 @@ describe("#824 fableLayout — rectsIntersect primitive (both ends)", () => {
   it("returns false for separated rects (and for merely touching edges — strict)", () => {
     expect(rectsIntersect(base, { top: 200, bottom: 300, left: 0, right: 100 })).toBe(false);
     expect(rectsIntersect(base, { top: 100, bottom: 200, left: 0, right: 100 })).toBe(false); // touching, not overlapping
+  });
+});
+
+// ── #1071 frame-economy FLOOR generalized into the SHARED aggregator (board subjects fill the frame) ──────
+// The #1071 thin-strip floor used to run ONLY via the kanban capture preflight's direct assertFrameEconomy
+// call. It is now folded into assertFableBeatsSafeAndFilled — the aggregator assertDemoCategoryRecipe runs at
+// R11 for EVERY demo videoType — so fable/forge/kanban inherit the floor BY CONSTRUCTION. These both-ends
+// tests route through the AGGREGATOR (NOT assertFrameEconomy directly) — that is the path the fold changed.
+//
+// NON-VACUITY: a 4-side-safe thin-strip viewer beat passes assert4SideSafeArea (ceiling) and is fill:false so
+// assertBeatFill is waived — on origin/master assertFableBeatsSafeAndFilled had NO floor, so this exact shape
+// SILENTLY PASSED there (the planning-time gap-proof: "GAP CONFIRMED: thin-strip viewer-video PASSES
+// assertFableBeatsSafeAndFilled (floor bypassed)"). After the fold ONLY the new floor can throw, so a
+// toThrow(/#1071 frame-economy/) here is attributable to the floor alone — non-vacuous.
+describe("#1071 frame-economy floor — generalized to FABLE via the shared aggregator (both ends)", () => {
+  const safe = safeAreaBox();
+  const SAFE_H = safe.bottom - safe.top;
+
+  test("a synthetic FABLE-shaped thin-strip viewer beat (< 60% fill) THROWS via assertFableBeatsSafeAndFilled", () => {
+    // A 4-side-safe device beat that fills only a sliver of the safe height (a landscape strip scaled into 9:16).
+    const strip: Rect = { left: 120, top: 600, right: CAP_W - 120, bottom: 1100 };
+    const stripFill = (strip.bottom - strip.top) / SAFE_H;
+    expect(stripFill).toBeLessThan(MIN_SUBJECT_FILL_HEIGHT_FRACTION);
+    const stripLayout: FableBeatLayout = { beat: 6, kind: "viewer-video", content: strip, fill: false };
+    expect(isDeviceSubjectBeat(stripLayout.kind)).toBe(true);
+    // Embed it in an otherwise-FABLE-shaped list (title + the strip) — the strip alone must hard-fail.
+    const fableShaped: FableBeatLayout[] = [
+      { beat: 1, kind: "title", content: { left: 120, top: 560, right: CAP_W - 120, bottom: 1360 }, fill: false },
+      stripLayout,
+    ];
+    expect(() => assertFableBeatsSafeAndFilled(fableShaped)).toThrow(/#1071 frame-economy/);
+  });
+
+  test("the real shipped FABLE_BEAT_LAYOUTS still PASS the aggregator (floor preserved, 0.6 unchanged)", () => {
+    expect(() => assertFableBeatsSafeAndFilled(FABLE_BEAT_LAYOUTS)).not.toThrow();
+    expect(() => assertFableBeatsSafeAndFilled()).not.toThrow(); // default arg = FABLE_BEAT_LAYOUTS
+  });
+});
+
+describe("#1071 frame-economy floor — generalized to FORGE via the shared aggregator (both ends)", () => {
+  const safe = safeAreaBox();
+  const SAFE_H = safe.bottom - safe.top;
+
+  test("a synthetic FORGE-shaped thin-strip viewer-panzoom beat (< 60% fill) THROWS via assertFableBeatsSafeAndFilled", () => {
+    const strip: Rect = { left: 54, top: 650, right: CAP_W - 54, bottom: 1150 };
+    const stripFill = (strip.bottom - strip.top) / SAFE_H;
+    expect(stripFill).toBeLessThan(MIN_SUBJECT_FILL_HEIGHT_FRACTION);
+    const stripLayout: FableBeatLayout = { beat: 6, kind: "viewer-panzoom", content: strip, fill: false };
+    expect(isDeviceSubjectBeat(stripLayout.kind)).toBe(true);
+    const forgeShaped: FableBeatLayout[] = [
+      { beat: 1, kind: "title", content: { left: 120, top: 520, right: CAP_W - 120, bottom: 1400 }, fill: false },
+      stripLayout,
+    ];
+    expect(() => assertFableBeatsSafeAndFilled(forgeShaped)).toThrow(/#1071 frame-economy/);
+  });
+
+  test("the real shipped FORGE_BEAT_LAYOUTS still PASS the aggregator", () => {
+    expect(() => assertFableBeatsSafeAndFilled(FORGE_BEAT_LAYOUTS)).not.toThrow();
   });
 });

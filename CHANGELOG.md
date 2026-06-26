@@ -1,3 +1,9 @@
+## [0.43.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.42.1...v0.43.0) (2026-06-26)
+
+### Features
+
+* **video:** #1071 generalize the frame-economy min-fill FLOOR into the shared `assertFableBeatsSafeAndFilled` aggregator so ALL demo videoTypes (fable/forge/kanban + any future) enforce it BY CONSTRUCTION. The #1071 thin-strip floor (a device/board-subject beat must fill ≥60% of the title-safe height) was previously wired only on the kanban capture preflight's direct `assertFrameEconomy` call; fable/forge inherited the ceiling (`assert4SideSafeArea`) through the shared aggregator but BYPASSED the floor. Extracted a single per-beat floor-only helper `assertSubjectFillFloor` (the `#1071 frame-economy violated` math now lives in exactly ONE place); both the public `assertFrameEconomy` gate (signature unchanged) and the shared aggregator delegate to it. Removed the now-redundant kanban-only `assertFrameEconomy(KANBAN_BEAT_LAYOUTS)` call (kanban keeps the floor through the shared path). Both-ends tests prove synthetic fable + forge thin-strip beats now hard-fail via the aggregator (they silently passed before) while all three shipped storyboards still pass; `MIN_SUBJECT_FILL_HEIGHT_FRACTION` unchanged at 0.6. No shipped content changes. (#1071)
+
 ## [0.42.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.42.0...v0.42.1) (2026-06-23)
 
 ### Features

@@ -44,7 +44,7 @@ import { assertCaptureCommandsFree, assertCaptureBrandClean } from "./captureDem
 import { BG_CHAT, BG_OUTPUT_A, BG_OUTPUT_B, ownerLeak } from "../video/fableStoryboard";
 import { assertBrandClean } from "../inputs/frames";
 import { assertNoInternalDevTokens, assertNoPlaceholderUrls } from "../video/visualRedFlags";
-import { assertFableBeatsSafeAndFilled, assertFrameEconomy, assertNoCaptionMediaOverlap, FABLE_ASPECTS, FILL_SAFE_MARGIN, type Rect } from "../video/fableLayout";
+import { assertFableBeatsSafeAndFilled, assertNoCaptionMediaOverlap, FABLE_ASPECTS, FILL_SAFE_MARGIN, type Rect } from "../video/fableLayout";
 import { assertDemoCategoryRecipe } from "../video/demoCategoryRecipe";
 import {
   KANBAN_BEATS,
@@ -386,8 +386,7 @@ function concatBeats(beatMp4s: string[], outMp4: string): void {
 // ── Gates (also run in --dry-run) ───────────────────────────────────────────────────────────────────
 function assertKanbanBeatsClean(): void {
   assertDemoCategoryRecipe(kanbanSpec); // #870 recipe R1–R13 (the build's test oracle)
-  assertFableBeatsSafeAndFilled(KANBAN_BEAT_LAYOUTS); // 4-side safe + fill
-  assertFrameEconomy(KANBAN_BEAT_LAYOUTS); // #1071 — board-subject beats fill the frame (no thin strip)
+  assertFableBeatsSafeAndFilled(KANBAN_BEAT_LAYOUTS); // 4-side safe + fill + #1071 frame-economy FLOOR (folded into the shared aggregator)
   assertNoCaptionMediaOverlap(FABLE_ASPECTS); // cross-layer caption/media band clearance
   // paid-free + brand-clean + owner-clean over the terminal commands.
   const shaped = KANBAN_BEATS.map((b) => ({ commands: b.commands, stepLabel: b.stepLabel }));
