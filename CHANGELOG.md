@@ -1,3 +1,11 @@
+## [0.44.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.43.1...v0.44.0) (2026-06-28)
+
+### Features
+
+* **storyboard:** add local-biz automation-pitch storyboard arc (#1243) (#172)
+* **video:** add proof-first videoType + Constraint→KPI→Proof script template (#1285) (#173)
+* **#1319:** standardize render/publish format targets (9:16 master / 1:1 X-feed / 4:5 static default) (#174)
+
 ## [0.43.1](https://github.com/ziyilam3999/content-pipeline/compare/v0.43.0...v0.43.1) (2026-06-26)
 
 ### Bug Fixes
