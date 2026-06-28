@@ -1,3 +1,9 @@
+## [0.45.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.44.0...v0.45.0) (2026-06-28)
+
+### Features
+
+* **#1149:** hook-effectiveness assert — flag "watch an AI X" tool-centric opener + require result-first proof hook (#175)
+
 ## [0.44.0](https://github.com/ziyilam3999/content-pipeline/compare/v0.43.1...v0.44.0) (2026-06-28)
 
 ### Features
