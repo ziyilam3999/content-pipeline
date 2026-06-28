@@ -45,6 +45,16 @@ export interface RenderImageOpts {
   overlays?: ArtMaskOverlay[];
 }
 
+/**
+ * #1319 — resolve the STATIC promo-graphic aspect. The OMITTED-aspect default reads the
+ * `CONFIG.formatTargets.staticDefault` SSOT (4:5, the 2026 X+IG feed portrait standard) instead of a
+ * hard-coded literal; an EXPLICIT aspect passes through UNCHANGED. Pure + exported so the default
+ * resolution is unit-testable without launching Chromium (the seam the static-default contract asserts).
+ */
+export function staticAspect(explicit?: AspectRatio): AspectRatio {
+  return explicit ?? CONFIG.formatTargets.staticDefault;
+}
+
 /** Decode a `data:<mime>;base64,<bytes>` URI to a Buffer. */
 function dataUriToBuffer(dataUri: string): Buffer {
   const comma = dataUri.indexOf(",");
@@ -52,8 +62,10 @@ function dataUriToBuffer(dataUri: string): Buffer {
 }
 
 /**
- * Render a result card to a PNG and return its absolute path. Defaults to a 1:1 card written
- * under `<cwd>/out/image`. The `copy` arg is part of the injected slot's contract; the card
+ * Render a result card to a PNG and return its absolute path. With no explicit `opts.aspect` the
+ * static default resolves from `CONFIG.formatTargets.staticDefault` via `staticAspect()` (#1319 — 4:5
+ * 1080x1350, default filename `card-4x5.png`), written under `<cwd>/out/image`. An explicit `opts.aspect`
+ * passes through unchanged. The `copy` arg is part of the injected slot's contract; the card
  * itself is spec-driven (the proven `buildCardHtml` path).
  *
  * With `generative: true` the background is a real nano-banana creative image (primary-only — a
@@ -64,7 +76,7 @@ export async function renderImage(
   args: { spec: ContentSpec; copy: CopyResult },
   opts?: RenderImageOpts,
 ): Promise<string> {
-  const aspect: AspectRatio = opts?.aspect ?? "1:1";
+  const aspect: AspectRatio = staticAspect(opts?.aspect);
   const dims = CONFIG.aspects[aspect];
 
   const generative = opts?.generative ?? CONFIG.image.generativeBackgroundDefault;

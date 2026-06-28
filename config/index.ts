@@ -26,6 +26,27 @@ export const CONFIG = {
     // by giving the proof format its OWN named type that resolves to 9:16 by construction.
     proof: "9:16",
   } as const,
+  // #1319 — CANONICAL render/publish FORMAT TARGETS (surface→shape SSOT). Each value is an existing
+  // AspectRatio key, so pixel dims always DERIVE from `CONFIG.aspects` (no magic numbers). Surfaces read
+  // this map instead of hard-coding a shape per render/publish leg (the #794/#1164 wrong-aspect-hero
+  // failure class — shape lived in code, not a checked SSOT). ADDITIVE: `videoTypeAspects`,
+  // `heroVideoAspect`, and `defaultAspects` are unchanged.
+  formatTargets: {
+    // The MASTER cut — Shorts / TikTok / Reels all take it, and it is the hero everywhere.
+    // Asserted to agree with `publish.heroVideoAspect` so the two SSOTs can never drift.
+    videoMaster: "9:16", // 1080x1920
+    // The X-feed video variant, cut from the SAME audio/caption bundle. It IS a member of the
+    // always-produced `defaultAspects` set (so "always produced", not produced-on-demand).
+    xFeedVideo: "1:1", // 1080x1080
+    // The default shape for STATIC promo graphics (the 2026 X+IG feed portrait standard). Wired into
+    // `adapters/image.ts` via the pure `staticAspect()` seam: a no-aspect `renderImage` comes out 4:5.
+    staticDefault: "4:5", // 1080x1350
+  } as const,
+  // Keep critical STATIC content within this center band fraction — IG's profile GRID crops a 4:5 still
+  // down to a square/3:4 thumbnail (trimming top & bottom), so center-anchored content survives the crop.
+  // Mirrors the existing `demo.safeAreaXFraction = 0.8` precedent. The SIZE wiring ships here; a LAYOUT
+  // assertion that fails an off-center static is the separate tracked follow-up (#1326).
+  staticCenterSafeFraction: 0.8,
   image: {
     generativeBackgroundDefault: false,
   },
@@ -152,3 +173,15 @@ export const CONFIG = {
     outputFormat: "mp3_44100_128",
   },
 } as const;
+
+/**
+ * #1319 — DERIVE the pixel dims for a named format target BY CONSTRUCTION: target role -> its canonical
+ * aspect name (`CONFIG.formatTargets` SSOT) -> that aspect's dims (`CONFIG.aspects`). No magic numbers —
+ * mirrors the `renderAspectForVideoType` (#1164) pattern. A surface that sizes from this can never drift
+ * from the SSOT (e.g. `dimensionsForFormatTarget("videoMaster")` is always 1080x1920).
+ */
+export function dimensionsForFormatTarget(
+  target: keyof typeof CONFIG.formatTargets,
+): { width: number; height: number } {
+  return CONFIG.aspects[CONFIG.formatTargets[target]];
+}
