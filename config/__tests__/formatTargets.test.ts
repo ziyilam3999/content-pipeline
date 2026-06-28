@@ -55,6 +55,15 @@ describe("CONFIG.formatTargets (#1319 — surface→shape SSOT)", () => {
     expect(CONFIG.staticCenterSafeFraction).toBeLessThanOrEqual(1);
   });
 
+  // #1326 — center-safe layout config shape (the cited IG-grid 3:4 premise + inset knob)
+  it("staticSafeArea.aspectRatio is a positive number and insetFraction ∈ (0,1]", () => {
+    expect(typeof CONFIG.staticSafeArea.aspectRatio).toBe("number");
+    expect(CONFIG.staticSafeArea.aspectRatio).toBeGreaterThan(0);
+    expect(typeof CONFIG.staticSafeArea.insetFraction).toBe("number");
+    expect(CONFIG.staticSafeArea.insetFraction).toBeGreaterThan(0);
+    expect(CONFIG.staticSafeArea.insetFraction).toBeLessThanOrEqual(1);
+  });
+
   // AC-7 — no regression: existing videoType aspects unchanged
   it("does not regress the existing videoType aspect SSOT", () => {
     expect(CONFIG.videoTypeAspects).toEqual({ demo: "16:9", intro: "9:16", proof: "9:16" });

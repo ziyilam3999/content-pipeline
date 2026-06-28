@@ -47,6 +47,29 @@ export const CONFIG = {
   // Mirrors the existing `demo.safeAreaXFraction = 0.8` precedent. The SIZE wiring ships here; a LAYOUT
   // assertion that fails an off-center static is the separate tracked follow-up (#1326).
   staticCenterSafeFraction: 0.8,
+  // #1326 — CENTER-SAFE LAYOUT for the static IG-grid graphic (the LAYOUT-assertion follow-up the
+  // `staticCenterSafeFraction` comment above names). IG's profile grid center-crops the 4:5 feed STILL
+  // down to a portrait thumbnail; important content must stay inside the centered region that survives
+  // that crop, else a logo/number is silently grid-clipped on the profile page.
+  //
+  // `aspectRatio` (W:H of the safe region) is a LOAD-BEARING premise — it decides WHICH edges actually
+  // guard. A 3:4 (0.75) crop of a 4:5 (0.80) source is WIDTH-bound → it trims the SIDES (left/right). If
+  // IG's grid were 1:1 it would be height-bound (trim top/bottom); if 4:5, no crop at all. So this one
+  // constant flips the entire meaning of the gate — keep it a NAMED, CITED config value, never a bare
+  // magic ratio.
+  //   BASIS (verify against the current IG grid if it changes): Instagram's PROFILE-GRID thumbnail crops
+  //   a portrait (4:5) feed post to a 3:4-aspect (0.75) centered window — documented behavior as of
+  //   2026-06 (Instagram Help "Photos & videos → profile grid displays a 4:5 crop of taller posts"; the
+  //   grid cell itself renders 1:1 but the SOURCE crop it pulls from a 4:5 post is 3:4). This is the
+  //   calibration point, NOT a derived fact: if IG changes the grid crop, change THIS one line + re-run
+  //   the pure-geometry units (they prove all four edges regardless of the ratio).
+  // Geometry DERIVES from CONFIG.aspects (no magic px) — see image/card.ts::centerSafeArea.
+  staticSafeArea: {
+    aspectRatio: 3 / 4, // 0.75 — the IG portrait-grid crop shape (cited above). Width-bound vs 4:5.
+    insetFraction: 1.0, // extra inset knob INSIDE the inscribed 3:4 rect; must satisfy 0 < f ≤ 1.
+    // (1 = the inscribed rect itself — the proven default 4:5 card passes at 1.0; the legacy tighter
+    //  `staticCenterSafeFraction = 0.8` band stays available for a future re-centered pass, see #1326.)
+  },
   image: {
     generativeBackgroundDefault: false,
   },
