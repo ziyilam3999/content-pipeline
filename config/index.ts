@@ -20,6 +20,11 @@ export const CONFIG = {
   videoTypeAspects: {
     demo: "16:9",
     intro: "9:16",
+    // #1285 — PROOF (case-study) renders 9:16 (the phone-native vertical master with burned-in captions),
+    // exactly like an INTRO Short. A proof video opens on the RESULT a real small business got, then walks
+    // the fixed Constraint→KPI→Proof→CTA arc. Closes the #1243 TODO (a 9:16 short mislabeled videoType:"demo")
+    // by giving the proof format its OWN named type that resolves to 9:16 by construction.
+    proof: "9:16",
   } as const,
   image: {
     generativeBackgroundDefault: false,

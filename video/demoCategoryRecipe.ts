@@ -85,12 +85,15 @@ import { CONFIG, type AspectRatio } from "../config";
 export type DemoVehicle = "captured-footage" | "overlay" | "generative-video" | "composition";
 
 /**
- * #1137 — the TWO video types the recipe knows. `demo` is the long product walk-through (the proven
+ * #1137/#1285 — the video types the recipe knows. `demo` is the long product walk-through (the proven
  * R1–R13 narrative arc, ~110–180s); `intro` is the short YouTube-reach clip (~30–40s) that drops the
  * demo-narrative rules and instead bakes the reach playbook (frame-1 hook / keyword-early / clean loop /
- * subscribe CTA — R14–R17). A spec with NO `videoType` is treated as `"demo"` (backward-compat).
+ * subscribe CTA — R14–R17). `proof` (#1285) is the short CASE-STUDY clip (~30–60s) that opens on the
+ * RESULT a real small business got, then walks the fixed Constraint→KPI→Proof→CTA sales arc (it reuses
+ * the shared geometry/caption/copy legs + a `proof` band, and is checked by `assertProofRecipe`). A spec
+ * with NO `videoType` is treated as `"demo"` (backward-compat).
  */
-export type VideoType = "demo" | "intro";
+export type VideoType = "demo" | "intro" | "proof";
 
 /** The role a beat plays in the demonstration arc. */
 export type DemoBeatKind =
@@ -237,7 +240,13 @@ export interface DemoVideoSpec {
  * The three shipped demos pin their OWN sub-110 bands (fable {85,92} grandfathered, forge {92,100},
  * kanban {74,84}), so `{110,180}` binds only NEW band-less demos.
  */
-export const VIDEO_TYPE_BAND = { demo: { min: 110, max: 180 }, intro: { min: 30, max: 40 } } as const;
+export const VIDEO_TYPE_BAND = {
+  demo: { min: 110, max: 180 },
+  intro: { min: 30, max: 40 },
+  // #1285 — PROOF (case-study) band ~30–60s: long enough to land Constraint→KPI→Proof→CTA, short enough
+  // to stay a phone-native vertical clip. Read here (SSOT), never a magic constant in the storyboard.
+  proof: { min: 30, max: 60 },
+} as const;
 
 /**
  * #1164 — the CANONICAL output ASPECT per videoType (operator policy 2026-06-23), the SSOT-typed mirror
@@ -303,6 +312,14 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
   // + the reach rules R14–R17, and SKIPS the demo-narrative rules R1–R6 (which a 35s intro doesn't carry).
   if ((spec.videoType ?? "demo") === "intro") {
     assertIntroRecipe(spec);
+    return;
+  }
+
+  // #1285 — branch on `proof`. A proof case-study runs the SHARED geometry/caption/copy rules + the proof
+  // band + the proof-first invariants (hook-led, Constraint→KPI→Proof→CTA, a CTA beat carrying the business
+  // email), and SKIPS the demo-narrative rules R1–R6 (it is a sales case-study, not an agent-tool demo).
+  if (spec.videoType === "proof") {
+    assertProofRecipe(spec);
     return;
   }
 
@@ -750,6 +767,138 @@ export function assertIntroRecipe(spec: DemoVideoSpec): void {
       `intro-recipe R17: the closing beat must be a subscribe CTA (kind==="cta", subscribeCta===true) AND ` +
         `subscribeReminderAtSec (${reminder}) must land in [${loWindow.toFixed(1)}, ${hiWindow.toFixed(1)}]s ` +
         "(0.4–0.75 of total — the playbook's mid-video subscribe nudge). Ask for the subscribe twice.",
+    );
+  }
+}
+
+/**
+ * #1285 — the publishable BUSINESS CTA email every proof case-study books the custom build through. This
+ * is the OUTWARD business address (≠ the operator's personal email, which must never appear). Read here as
+ * the SSOT so the validator and the storyboard agree on the exact literal.
+ */
+export const PROOF_CTA_EMAIL = "AnsonAndAI@gmail.com";
+
+/**
+ * #1285 — the PROOF-category recipe (the short case-study clip, ~30–60s). Like the intro recipe it runs the
+ * SHARED geometry/caption/copy rules (R7 terminal share, R8 the PROOF band, R9 copy-clean, R10 no fake URLs,
+ * R11 layout-safe, R12 captions, R13 9:16 discipline) and SKIPS the demo-narrative rules R1–R6 (a sales
+ * case-study has no chat→tool→transition→output arc). It then asserts the PROOF-FIRST invariants the format
+ * exists to guarantee: the clip OPENS on a result hook (beat 1 is a `hook`), it CLOSES on a CTA beat, and
+ * that CTA beat carries the publishable business email so every proof video ends on "book a custom build."
+ * The FINE-GRAINED Constraint→KPI→Proof→CTA arc-role order is asserted on the storyboard SSOT
+ * (`PROOF_ARC_ORDER` / `assertProofArcOrder` in `video/proofStoryboard.ts`) — the coarse `DemoBeatKind`
+ * maps constraint/kpi/proof all to `output`, so it is too blunt to key the order on here (same reason
+ * localBiz keys its order on `arcRole`).
+ */
+export function assertProofRecipe(spec: DemoVideoSpec): void {
+  const beats = spec.beats;
+  const first = beats[0];
+  const last = beats[beats.length - 1];
+  const allText: string[] = beats.flatMap((b) =>
+    b.onScreenText.filter((t) => typeof t === "string" && t.length > 0),
+  );
+  const allCommands: string[] = beats.flatMap((b) => b.commands ?? []);
+  const total = beats.reduce((s, b) => s + b.durationSec, 0);
+
+  // ── SHARED rules (geometry / caption / copy — reused from the demo path) ──────────────────────────--
+
+  // R7 — terminal/tool beats are ≤ maxTerminalFraction of total runtime (a case-study is expected 0%).
+  const terminal = beats.filter((b) => b.isTerminal).reduce((s, b) => s + b.durationSec, 0);
+  const maxFrac = spec.maxTerminalFraction ?? DEFAULT_MAX_TERMINAL_FRACTION;
+  if (total > 0 && terminal / total > maxFrac + 1e-9) {
+    throw new Error(
+      `proof-recipe R7: terminal/tool beats are ${((terminal / total) * 100).toFixed(1)}% of the ${total}s ` +
+        `runtime (> ${(maxFrac * 100).toFixed(0)}% allowed). A proof case-study shows the result, not terminals.`,
+    );
+  }
+
+  // R8 — total runtime inside the proof band (default {30,60}), with a HARD CAP at the band maximum.
+  const proofBand = VIDEO_TYPE_BAND.proof;
+  const band = spec.runtimeWindowSec ?? proofBand;
+  if (band.max > proofBand.max) {
+    throw new Error(
+      `proof-recipe R8: declared band max ${band.max}s exceeds the proof hard cap of ${proofBand.max}s. A ` +
+        "proof case-study stays a short phone-native clip — keep it inside the ~30–60s window.",
+    );
+  }
+  if (total < band.min || total > band.max || total > proofBand.max) {
+    throw new Error(
+      `proof-recipe R8: total runtime ${total}s is outside the ${band.min}–${band.max}s proof window ` +
+        `(hard cap ${proofBand.max}s). Keep a proof a short ~30–60s case-study.`,
+    );
+  }
+
+  // R9 — every on-screen text field is dev-token-clean + brand-clean + owner-clean.
+  try {
+    assertNoInternalDevTokens(allText, "proof-recipe on-screen copy");
+  } catch (err) {
+    throw new Error(`proof-recipe R9: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  for (const cmd of allCommands) {
+    const leak = ownerLeak(cmd);
+    if (leak) {
+      throw new Error(`proof-recipe R9: a shown command "${cmd}" would leak the OS owner/username (${leak}).`);
+    }
+  }
+  for (const t of allText) {
+    if (USERS_PATH_RE.test(t)) {
+      throw new Error(`proof-recipe R9: on-screen text "${t}" contains a literal /Users/<name> path.`);
+    }
+  }
+
+  // R10 — no placeholder/fake URL anywhere on screen (the real business email is NOT a placeholder URL).
+  try {
+    assertNoPlaceholderUrls(allText, "proof-recipe on-screen copy");
+  } catch (err) {
+    throw new Error(`proof-recipe R10: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // R11 — every beat layout is 4-side title-safe + fill + caption-band-clear (reuse fableLayout legs).
+  try {
+    assertFableBeatsSafeAndFilled(spec.beatLayouts);
+    assertNoCaptionMediaOverlap(spec.aspects);
+  } catch (err) {
+    throw new Error(`proof-recipe R11: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // R12 — captions mandatory (same provenance-bound rule as the demo/intro paths).
+  assertCaptionsRule(spec.captions, "proof-recipe");
+
+  // R13 — 9:16 phone full-screen aspect discipline (a proof ships the 9:16 vertical master).
+  try {
+    assertPhoneFullScreenAspectDiscipline(spec.aspects);
+  } catch (err) {
+    throw new Error(`proof-recipe R13: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // ── PROOF-FIRST invariants (proof only) — each both-ends checkable ────────────────────────────────--
+
+  // P1 — proof-first lead: the first beat is a HOOK (it leads with the RESULT/KPI, not a generic opener).
+  if (!first || first.kind !== "hook") {
+    throw new Error(
+      "proof-recipe P1: the first beat must be a HOOK that leads with the result a real business got — a " +
+        "proof case-study opens on the OUTCOME in the first 1–2 seconds, never a generic 'watch an AI' opener.",
+    );
+  }
+
+  // P2 — the clip CLOSES on a CTA beat (book-the-custom-build payoff).
+  if (!last || last.kind !== "cta") {
+    throw new Error(
+      'proof-recipe P2: the last beat must be a CTA (kind==="cta"). Every proof case-study ends on the ' +
+        "call to book a custom build.",
+    );
+  }
+
+  // P3 — the CTA beat carries the publishable BUSINESS email (so the close is actionable, and the personal
+  // email is never the booking channel). Asserted on the literal SSOT so the storyboard can't drift.
+  const ctaBeats = beats.filter((b) => b.kind === "cta");
+  const ctaEmailPresent = ctaBeats.some((b) =>
+    b.onScreenText.some((t) => typeof t === "string" && t.includes(PROOF_CTA_EMAIL)),
+  );
+  if (!ctaEmailPresent) {
+    throw new Error(
+      `proof-recipe P3: a CTA beat must carry the business booking email "${PROOF_CTA_EMAIL}" in its ` +
+        "on-screen text — the proof close is the book-a-custom-build action.",
     );
   }
 }
