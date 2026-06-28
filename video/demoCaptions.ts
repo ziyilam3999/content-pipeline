@@ -18,7 +18,7 @@
  * to even-split so the track still covers the clip — the parity invariant still holds.
  */
 
-import { buildCaptionTrack, captionsHaveRealSync, type VoiceClipLike } from "./captions";
+import { buildCaptionTrack, type VoiceClipLike } from "./captions";
 import { type DemoLayout } from "./demoLayout";
 
 /**
@@ -83,7 +83,11 @@ export function buildDemoCaptionCues(script: string, clip: VoiceClipLike): DemoC
   // builder would SILENTLY fall back to an even-split estimate that ignores the voice — the exact
   // desync the operator caught on the kanban demo. A real alignment that misses real-sync is a build
   // defect, not a graceful degrade: fail loudly. (No alignment supplied → legit even-split, allowed.)
-  if (clip.charEndTimesSec && clip.charEndTimesSec.length > 0 && !captionsHaveRealSync(script, clip)) {
+  //
+  // buildCaptionTrack already computes realChunkEndTimes internally and exposes the result via
+  // track.hasRealSync — call it first so we avoid a redundant recomputation (#138).
+  const track = buildCaptionTrack(script, clip);
+  if (clip.charEndTimesSec && clip.charEndTimesSec.length > 0 && !track.hasRealSync) {
     throw new Error(
       "demo captions desync (#1046): a real per-character VO alignment was supplied but it does not line " +
         "up with the clip (its last char-time misses clip.durationSec by >1%, or span/word counts diverge), " +
@@ -92,7 +96,6 @@ export function buildDemoCaptionCues(script: string, clip: VoiceClipLike): DemoC
         "the spine) — do not ship even-split subtitles over a real voice.",
     );
   }
-  const track = buildCaptionTrack(script, clip);
   return track.captions.map((c) => ({ text: c.text, startSec: c.startSec, endSec: c.endSec }));
 }
 
