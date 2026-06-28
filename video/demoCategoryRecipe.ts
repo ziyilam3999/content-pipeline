@@ -65,6 +65,7 @@ import {
   type FableBeatLayout,
 } from "./fableLayout";
 import { assertNoInternalDevTokens, assertNoPlaceholderUrls } from "./visualRedFlags";
+import { flagToolCentricOpener, assertResultFirstHook } from "./hookEffectiveness";
 import {
   FABLE_BEATS,
   type FableBeat,
@@ -291,6 +292,28 @@ const CAPTION_SYNC_TOLERANCE_SEC = 0.5;
 const USERS_PATH_RE = /\/Users\/[^/\s"']+/i;
 const AGENT_INTERFACE_RE = /(the agent's interface|not yours)/i;
 
+// ── #1149 shared FLAG leg — used by demo R2, intro R14, proof P4 ────────────────────────────────────--
+
+/**
+ * #1149 — scans a hook beat's on-screen text (headline OR sub) for the "watch an AI" / tool-process
+ * anti-pattern and throws `<ruleId>: …anti-pattern…` on the FIRST offending line. `ruleId` is the arm's
+ * own id ("demo-recipe R2" / "intro-recipe R14" / "proof-recipe P4"). The shared `…anti-pattern…`
+ * substring lets a cross-cutting test match `/anti-pattern/` while each arm keeps its own rule id. Keys on
+ * the watch/process FRAME (never the bare token "AI"), so it has NO false-positive on the real shipped
+ * fable/forge/kanban openers nor on a reach-keyword intro hook.
+ */
+function assertHookNotToolCentric(hookText: ReadonlyArray<string>, ruleId: string): void {
+  for (const t of hookText) {
+    if (typeof t !== "string" || t.length === 0) continue;
+    const reason = flagToolCentricOpener(t);
+    if (reason) {
+      throw new Error(
+        `${ruleId}: hook text "${t}" is the "${reason}" anti-pattern — open on the RESULT, not "watch an AI".`,
+      );
+    }
+  }
+}
+
 // ── The ONE fail-closed validator (composes R1–R11) ────────────────────────────────────────────────
 
 /**
@@ -352,6 +375,10 @@ export function assertDemoCategoryRecipe(spec: DemoVideoSpec): void {
         `with a hook beat (the scroll-stopper), per the proven recipe.`,
     );
   }
+  // #1149 — the hook must NOT be the "watch an AI" / tool-process anti-pattern (the demo arm is the
+  // live-shipping arm — fable/forge/kanban capture+voice pre-flights run this). FLAG only (the REQUIRE
+  // result-first half is scoped to the proof arm); demo hooks legitimately lead with a problem framing.
+  assertHookNotToolCentric(beats[0].onScreenText, "demo-recipe R2");
 
   // #1120 — the FEATURE-TOUR shape (a captured-footage tour of a live product surface) has NO chat / tool /
   // transition beat, so R3 (chat + agent-interface tool) and R5 (explicit tool→output transition) do not
@@ -726,6 +753,9 @@ export function assertIntroRecipe(spec: DemoVideoSpec): void {
         "A YouTube-reach intro shows the hook on the very first frame — no fade-in dwell.",
     );
   }
+  // #1149 — the frame-1 hook must NOT be the "watch an AI" / tool-process anti-pattern. FLAG only (a
+  // reach-keyword intro hook legitimately is NOT result-first, so the REQUIRE half is NOT applied here).
+  assertHookNotToolCentric(first.onScreenText, "intro-recipe R14");
 
   // R15 — keyword-early: the focus keyword appears in beat-1's on-screen text AND the VO opening line.
   const keyword = (spec.focusKeyword ?? "").trim();
@@ -880,6 +910,17 @@ export function assertProofRecipe(spec: DemoVideoSpec): void {
         "proof case-study opens on the OUTCOME in the first 1–2 seconds, never a generic 'watch an AI' opener.",
     );
   }
+
+  // P4 — hook EFFECTIVENESS (#1149): a proof opener must LEAD WITH THE RESULT, never the "watch an AI"
+  // frame. Carries BOTH halves — FLAG (precedence) + REQUIRE result-first — on the lead on-screen line.
+  const opener = first.onScreenText.find((t) => typeof t === "string" && t.length > 0) ?? "";
+  try {
+    assertResultFirstHook(opener, "proof-recipe P4"); // FLAG (precedence) + REQUIRE result-first
+  } catch (err) {
+    throw new Error(`proof-recipe P4: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  // Also FLAG the anti-pattern anywhere in the hook beat's text (headline OR sub), matching demo/intro.
+  assertHookNotToolCentric(first.onScreenText, "proof-recipe P4");
 
   // P2 — the clip CLOSES on a CTA beat (book-the-custom-build payoff).
   if (!last || last.kind !== "cta") {

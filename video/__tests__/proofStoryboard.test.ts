@@ -138,6 +138,23 @@ describe("#1285 proof-first case-study — demo-category recipe (proof videoType
     for (const e of emails) expect(e).toBe(PROOF_CTA_EMAIL);
   });
 
+  // AC4 (#1149) — FLAG + REQUIRE WIRED into the PROOF arm, mutation-proven on the REAL shipped spec.
+  test("BOTH-ENDS: the real proofSpec opener PASSES P4; an anti-pattern mutant FAILS proof-recipe P4", () => {
+    // Clean end: the shipped result-hook opener "This bakery owner got back 6 hours a week." passes P4
+    // (result-first via figure + benefit verb, not the watch frame).
+    expect(() => assertDemoCategoryRecipe(proofSpec)).not.toThrow();
+    // Anti-pattern end: mutate the real opener (PROOF_BEATS[0].headline shape) to the "watch an AI" frame.
+    const mutated: DemoVideoSpec = {
+      ...proofSpec,
+      beats: proofSpec.beats.map((b, i) =>
+        i === 0
+          ? { ...b, onScreenText: ["Watch an AI retype your orders.", ...b.onScreenText.slice(1)] }
+          : b,
+      ),
+    };
+    expect(() => assertDemoCategoryRecipe(mutated)).toThrow(/proof-recipe P4/);
+  });
+
   // RUNTIME + SPINE — runtime in the declared band, terminal share 0%, 9:16 phone-full-screen discipline.
   test("runtime in band, terminal share 0%, 9:16 phone-full-screen discipline holds", () => {
     const total = proofSpec.beats.reduce((s, b) => s + b.durationSec, 0);

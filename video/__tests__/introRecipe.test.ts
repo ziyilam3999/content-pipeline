@@ -222,6 +222,23 @@ describe("#1137 R17 — subscribe CTA (closing CTA beat + a mid reminder in wind
   });
 });
 
+describe("#1149 intro R14 FLAG — the frame-1 hook must NOT be the 'watch an AI' anti-pattern", () => {
+  // AC6 + AC7 share ONE fixture (compliantIntro): clean PASSES (no-FP), the mutated hook FAILS — the
+  // clean-vs-mutated pairing proves the FLAG discriminates the anti-pattern from a valid reach hook.
+  test("AC7 no-FP: the reach-keyword hook ['forge','your tests decide what ships'] PASSES the FLAG", () => {
+    // No watch/process frame and no result figure — a legitimate reach hook. The FLAG must not fire, and
+    // the REQUIRE half is correctly NOT applied to the intro arm.
+    expect(() => assertDemoCategoryRecipe(compliantIntro())).not.toThrow();
+  });
+
+  test("AC6: mutating the hook on-screen text to include 'Watch an AI ship your tests.' THROWS (R14)", () => {
+    const s = clone();
+    // Keep "forge" so R15's keyword check still passes; the FLAG fires at the R14 position BEFORE R15.
+    s.beats[0].onScreenText = ["forge", "Watch an AI ship your tests."];
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/intro-recipe R14/);
+  });
+});
+
 describe("#1137 intro band {30,40} hard cap (R8)", () => {
   test("a ~50s intro FAILS the 40s hard cap (R8)", () => {
     const s = clone();

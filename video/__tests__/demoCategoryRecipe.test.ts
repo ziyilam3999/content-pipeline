@@ -77,6 +77,20 @@ describe("#870 R2 — opens with a HOOK beat", () => {
   });
 });
 
+describe("#1149 demo R2 FLAG — the hook must NOT be the 'watch an AI' anti-pattern (live-shipping arm)", () => {
+  test("the real fableSpec hook ('This tool has no buttons.') PASSES the FLAG (good end)", () => {
+    // The shipped fable opener carries no watch/process frame — proves the FLAG does not false-fire on
+    // the arm the fable/forge/kanban capture+voice pre-flights actually run.
+    expect(() => assertDemoCategoryRecipe(fableSpec)).not.toThrow();
+  });
+
+  test("mutating beats[0].onScreenText[0] to a 'watch an AI' opener THROWS (demo-recipe R2)", () => {
+    const s = clone();
+    s.beats[0].onScreenText[0] = "Watch an AI write your code.";
+    expect(() => assertDemoCategoryRecipe(s)).toThrow(/demo-recipe R2/);
+  });
+});
+
 describe("#870 R3 — agent-interface reframe (chat + 'the agent's interface, not yours' tool beat)", () => {
   test("a tool beat that drops the agent-interface label THROWS (R3)", () => {
     const s = clone();
