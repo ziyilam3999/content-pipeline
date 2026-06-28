@@ -12,7 +12,7 @@ import { chromium } from "playwright";
 
 import { type ContentSpec } from "../inputs/contentspec";
 import { type CopyResult } from "../pipeline/run";
-import { buildCardHtml, type ArtMaskOverlay } from "../image/card";
+import { buildCardHtml, assertCenterSafeLayout, type ArtMaskOverlay, type ContentBox } from "../image/card";
 import { CONFIG, type AspectRatio } from "../config";
 import { generateArt, type GenArtDeps, type GenArtOpts } from "./genart";
 
@@ -116,6 +116,16 @@ export async function renderImage(
     const fitScale = await fitCardToFrame(page);
     opts?.onFit?.(fitScale);
 
+    // #1326 — CENTER-SAFE LAYOUT gate. IG's profile grid center-crops the 4:5 feed STILL to a 3:4
+    // centered thumbnail; assert every drawn element stays inside that safe area so nothing important is
+    // grid-clipped. Runs AFTER fitCardToFrame converges (so it measures the FINAL fitted layout) and
+    // BEFORE the screenshot. Scoped to the static-default (4:5) surface IG grid-crops — the 1:1 / 9:16
+    // cards use near-full frame and are NOT IG profile-grid cropped, so the gate would false-fail them
+    // (the pure assertion in image/card.ts stays callable for any dims; only this render hook is scoped).
+    if (aspect === CONFIG.formatTargets.staticDefault) {
+      assertCenterSafeLayout(await measureContentBoxes(page), dims);
+    }
+
     await page.screenshot({ path: outPath });
   } finally {
     await browser.close();
@@ -175,6 +185,34 @@ export async function measureCardFit(page: import("playwright").Page): Promise<F
     });
 
     return { overflowingFacts, footerOverflows, innerBottom, worstBottom };
+  });
+}
+
+/**
+ * #1326 — Collect the REAL rendered bbox (card-space px) of every DRAWN element, named for the
+ * assertion message. Reads `getBoundingClientRect` (answers the cairn #871 "a DECLARED safe-area box is
+ * a fiction" lesson — we MEASURE the rendered layout, we do not declare it; `getBoundingClientRect` is
+ * unaffected by the body's `overflow:hidden` so it sees true, pre-clip coords). Feeds
+ * `assertCenterSafeLayout`. Sibling of `measureCardFit` (which only checks VERTICAL bottom-overflow).
+ *
+ * SELECTOR NOTE: `.name,.summary,.fact,.cta,.repo,.art-overlay` are the drawn elements of the gated 4:5
+ * DEFAULT layout. `.hero,.hero-value` are listed for completeness but only render in the tall (≥1.5)
+ * layout the gate never reaches (harmless / dead in the 4:5 path). The `.facts` WRAPPER is intentionally
+ * omitted — the finer-grained `.fact` tiles already bound it and the wrapper adds no margin beyond them
+ * (don't "fix" the apparent omission). `.label/.value/.scope` are normal-flow children of `.fact`,
+ * geometrically contained, so they need no separate entry.
+ */
+export async function measureContentBoxes(page: import("playwright").Page): Promise<ContentBox[]> {
+  return page.evaluate(() => {
+    const doc = (globalThis as unknown as { document: any }).document;
+    const SELECTORS = ".name, .summary, .fact, .hero, .hero-value, .cta, .repo, .art-overlay";
+    const boxes: ContentBox[] = [];
+    doc.querySelectorAll(SELECTORS).forEach((el: any, i: number) => {
+      const r = el.getBoundingClientRect();
+      const cls = (el.className || "el").toString().trim().split(/\s+/)[0];
+      boxes.push({ name: `${cls}#${i}`, left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+    });
+    return boxes;
   });
 }
 

@@ -1,4 +1,5 @@
 import { ContentSpec, Fact } from "../inputs/contentspec";
+import { CONFIG } from "../config";
 
 /**
  * An art-text MASK overlay (#824 mask-art-text). A nano-banana art base can bake GARBLED / MISSPELLED
@@ -295,4 +296,108 @@ ${factsHtml}
 <div class="repo">${esc(repoHost)}</div>
 </body>
 </html>`;
+}
+
+// ── #1326 CENTER-SAFE LAYOUT geometry + assertion ──────────────────────────────────────────────────
+//
+// The defect this prevents: IG's profile GRID center-crops a 4:5 (1080×1350) feed STILL down to a
+// centered 3:4 (0.75) portrait thumbnail (trimming the SIDES — width-bound vs the 0.80 source ratio).
+// Content laid too close to a card edge survives the full feed render but gets CLIPPED in the grid
+// thumbnail, and nobody notices until it is already public (the #790 silent-clip discipline, extended
+// from "below the bottom edge" to "outside the centered IG-grid safe area on all four sides").
+//
+// Mirrors the proven video/fableLayout.ts::assert4SideSafeArea style (EPS=0.5 sub-pixel slack, per-edge
+// detail, an actionable closing sentence) but kept self-contained in the image module — no cross-import
+// from video/. Geometry DERIVES from `dims` + `CONFIG.staticSafeArea` (no magic px). This is content
+// PLACEMENT within the card; it is DISTINCT from #1319's canvas SIZE (which 1080×1350 to render).
+
+export interface SafeRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+export interface ContentBox {
+  name: string;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+export interface SafeViolation {
+  name: string;
+  edge: "left" | "top" | "right" | "bottom";
+  overflowPx: number;
+}
+
+/**
+ * The largest CENTERED rectangle of width:height = `aspectRatio` that fits `dims`, optionally shrunk
+ * further by `insetFraction`. Defaults read `CONFIG.staticSafeArea` (the cited IG-grid 3:4 premise).
+ * Derived from `dims` — no magic px. For the static-default 4:5 canvas at the 3:4 default it is
+ * WIDTH-bound (the 3:4 region is narrower than the 4:5 canvas), so the rect spans the full canvas
+ * height and is inset symmetrically on the left/right by `(canvasW − canvasH·aspect)/2`.
+ */
+export function centerSafeArea(
+  dims: { width: number; height: number },
+  opts?: { aspectRatio?: number; insetFraction?: number },
+): SafeRect {
+  const aspect = opts?.aspectRatio ?? CONFIG.staticSafeArea.aspectRatio;
+  const fill = opts?.insetFraction ?? CONFIG.staticSafeArea.insetFraction;
+  if (!(dims.width > 0) || !(dims.height > 0))
+    throw new Error(`centerSafeArea: dims must be positive (${dims.width}x${dims.height})`);
+  if (!(aspect > 0)) throw new Error(`centerSafeArea: aspectRatio must be positive (got ${aspect})`);
+  if (!(fill > 0 && fill <= 1)) throw new Error(`centerSafeArea: insetFraction must be in (0,1] (got ${fill})`);
+  let w = Math.min(dims.width, dims.height * aspect); // width-bound vs height-bound, whichever fits
+  let h = w / aspect; // ≤ dims.height by construction
+  w *= fill;
+  h *= fill;
+  const left = (dims.width - w) / 2;
+  const top = (dims.height - h) / 2;
+  return { left, top, right: left + w, bottom: top + h, width: w, height: h };
+}
+
+/**
+ * Structured check (agent-first): returns the safe rect + EVERY violation; `ok` = no violations. The
+ * live 4:5 gate is effectively a LEFT/RIGHT (horizontal-crop) guard at the default insetFraction = 1.0
+ * (the safe rect spans the full canvas height, so top/bottom can only trip a negative-y / beyond-canvas
+ * box); the pure check still covers all FOUR edges for callers/tests at any inset.
+ */
+export function checkCenterSafeLayout(
+  boxes: ContentBox[],
+  dims: { width: number; height: number },
+  opts?: { aspectRatio?: number; insetFraction?: number },
+): { ok: boolean; safe: SafeRect; violations: SafeViolation[] } {
+  const safe = centerSafeArea(dims, opts);
+  const EPS = 0.5; // sub-pixel slack (rendered edges may be floored) — same as assert4SideSafeArea
+  const violations: SafeViolation[] = [];
+  for (const b of boxes) {
+    if (b.left < safe.left - EPS) violations.push({ name: b.name, edge: "left", overflowPx: safe.left - b.left });
+    if (b.top < safe.top - EPS) violations.push({ name: b.name, edge: "top", overflowPx: safe.top - b.top });
+    if (b.right > safe.right + EPS) violations.push({ name: b.name, edge: "right", overflowPx: b.right - safe.right });
+    if (b.bottom > safe.bottom + EPS) violations.push({ name: b.name, edge: "bottom", overflowPx: b.bottom - safe.bottom });
+  }
+  return { ok: violations.length === 0, safe, violations };
+}
+
+/**
+ * Loud-fail wrapper (the gate). Throws an Error naming WHICH element crossed WHICH edge by HOW MANY px,
+ * plus the safe rect + canvas dims. Returns void when every box is inside the safe rect (within 0.5px).
+ */
+export function assertCenterSafeLayout(
+  boxes: ContentBox[],
+  dims: { width: number; height: number },
+  opts?: { aspectRatio?: number; insetFraction?: number },
+): void {
+  const r = checkCenterSafeLayout(boxes, dims, opts);
+  if (r.ok) return;
+  const detail = r.violations
+    .map((v) => `"${v.name}" overflows the ${v.edge} safe edge by ${Math.round(v.overflowPx)}px`)
+    .join("; ");
+  throw new Error(
+    `#1326 center-safe layout violated: ${detail} ` +
+      `(safe area ${Math.round(r.safe.left)},${Math.round(r.safe.top)}..${Math.round(r.safe.right)},${Math.round(r.safe.bottom)} ` +
+      `centered in ${dims.width}x${dims.height}). Move content inside the 3:4 IG-grid safe area.`,
+  );
 }
