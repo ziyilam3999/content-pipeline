@@ -183,12 +183,16 @@ async function main(): Promise<void> {
   // still untouched (re-capturing it changes its sha256 → breaks the provenance test).
   const clipsOnly = process.argv.includes("--clips-only");
   const { chromium } = await import("playwright");
-  const recRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kanban-assets-"));
 
-  // Place the brand-safe demo board; restore the user's REAL board in the OUTER finally (byte-verified).
-  const realBoardBytes = placeDemoBoard();
+  // Declare restore-needed vars before the try so finally can always reference them.
+  let recRoot: string | null = null;
+  let realBoardBytes: Buffer | null = null;
 
   try {
+  // Place the brand-safe demo board inside the try block so the finally restore ALWAYS runs
+  // if the capture crashes mid-run (board is mutated before capture starts).
+  recRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kanban-assets-"));
+  realBoardBytes = placeDemoBoard();
   // ── 1. board-overview.png (committed hero, beats 5/6) — cols 2–3, ring ◆ REVIEW · PASS + ▶ EXECUTOR ──
   const OVERVIEW_CLIP = { x: 0, y: 0, width: VW, height: VH };
   if (!clipsOnly) {
@@ -461,7 +465,7 @@ async function main(): Promise<void> {
       fs.rmSync(BOARD_JSON, { force: true });
       console.log(`\n[restore] no prior board.json — demo board removed`);
     }
-    fs.rmSync(recRoot, { recursive: true, force: true });
+    if (recRoot) fs.rmSync(recRoot, { recursive: true, force: true });
   }
 
   console.log("\nKANBAN-ASSETS: done — 1 committed hero still + 1 wide still + 3 dynamic clips + motion strips.");
