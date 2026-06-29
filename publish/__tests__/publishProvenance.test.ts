@@ -174,6 +174,13 @@ describe("loadManifest", () => {
     expect(() => loadManifest("lfah-post1", tmp)).toThrow(/missing manifest/);
   });
 
+  it("HARD-FAILS with a friendly re-freeze hint when the manifest JSON is corrupt or truncated", () => {
+    const p = manifestPath("lfah-post1", tmp);
+    fs.writeFileSync(p, '{"postSlug":"lfah-post1","assets":{CORRUPT'); // truncated JSON
+    expect(() => loadManifest("lfah-post1", tmp)).toThrow(/corrupt or truncated/);
+    expect(() => loadManifest("lfah-post1", tmp)).toThrow(/publish:freeze-manifest/);
+  });
+
   it("HARD-FAILS when the on-disk manifest has zero assets", () => {
     const empty: PublishManifest = {
       postSlug: "lfah-post1",

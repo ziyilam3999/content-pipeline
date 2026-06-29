@@ -104,7 +104,17 @@ export function loadManifest(postSlug: PostSlug, dir: string = MANIFEST_DIR): Pu
         `approves the renders, then publish.`,
     );
   }
-  const manifest = JSON.parse(fs.readFileSync(p, "utf8")) as PublishManifest;
+  const raw = fs.readFileSync(p, "utf8");
+  let manifest: PublishManifest;
+  try {
+    manifest = JSON.parse(raw) as PublishManifest;
+  } catch (err) {
+    throw new Error(
+      `#810 provenance: manifest for ${postSlug} at ${p} is corrupt or truncated (cannot parse JSON). ` +
+        `Re-freeze it with \`npm run publish:freeze-manifest -- ${postSlug}\` to restore a valid manifest.\n` +
+        `Original error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   if (!manifest.assets || Object.keys(manifest.assets).length === 0) {
     throw new Error(
       `#810 provenance: manifest for ${postSlug} at ${p} is EMPTY (no assets). Re-freeze it with ` +
