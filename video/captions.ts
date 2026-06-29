@@ -33,6 +33,8 @@ export interface CaptionTrack {
   captions: Caption[];
   durationSec: number;
   pathLine: string;
+  /** True when real per-character voice sync was used; false when even-split fallback was used. */
+  hasRealSync: boolean;
 }
 
 // ── tokenize ────────────────────────────────────────────────────────────
@@ -164,14 +166,15 @@ function realChunkEndTimes(
 export function buildCaptions(
   script: string,
   clip: VoiceClipLike,
-  opts?: { maxWords?: number },
+  opts?: { maxWords?: number; _realEnds?: number[] | null },
 ): Caption[] {
   const chunks = splitCaptionText(script, opts?.maxWords);
   const totalWords = chunks.flatMap((c) => c.trim().split(/\s+/)).length;
   const secPerWord = clip.durationSec / totalWords;
 
   // Real voice timing when available; null → even-split fallback.
-  const realEnds = realChunkEndTimes(script, chunks, clip);
+  // Accept a pre-computed result via opts._realEnds to avoid redundant recomputation.
+  const realEnds = opts?._realEnds !== undefined ? opts._realEnds : realChunkEndTimes(script, chunks, clip);
 
   const captions: Caption[] = [];
   let cursorSec = 0;
@@ -265,7 +268,9 @@ export function buildCaptionTrack(
   clip: VoiceClipLike,
   opts?: { maxWords?: number },
 ): CaptionTrack {
-  const captions = buildCaptions(script, clip, opts);
+  const chunks = splitCaptionText(script, opts?.maxWords);
+  const realEnds = realChunkEndTimes(script, chunks, clip);
+  const captions = buildCaptions(script, clip, { ...opts, _realEnds: realEnds });
   const totalWords = captions.reduce((sum, c) => sum + c.wordCount, 0);
 
   let clean: "true" | "false" = NOT_CLEAN;
@@ -277,5 +282,5 @@ export function buildCaptionTrack(
   }
 
   const pathLine = `CAPTION-PATH: words=${totalWords} captions=${captions.length} dur=${clip.durationSec}s clean=${clean}`;
-  return { captions, durationSec: clip.durationSec, pathLine };
+  return { captions, durationSec: clip.durationSec, pathLine, hasRealSync: realEnds !== null };
 }
