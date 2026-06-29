@@ -456,6 +456,15 @@ async function main(): Promise<void> {
     const maxStretch = process.env.KANBAN_VO_FILL === "stretch" ? Number(process.env.KANBAN_VO_MAX_STRETCH || "1.4") : 1.0;
     const plan = planVoFit({ rawSegEndsSec: rawSceneEndTimesSec, charEndTimesSec, charRanges: narrationCharRanges(), beats, targetBeatSec: KANBAN_VO_SEG_SEC, transitionSec: KANBAN_TRANSITION_SEC, maxStretch });
     syncedAudioPath = assembleFittedVo(audioPath, plan, work);
+    // #136 — clamp the last char-end-time to the actual synced duration so a fast
+    // final read by Adam (last beat ends slightly before its ~4s slot) cannot exceed
+    // syncedDurationSec and trip the buildDemoCaptionCues desync gate.
+    if (plan.newCharEndTimesSec.length > 0) {
+      plan.newCharEndTimesSec[plan.newCharEndTimesSec.length - 1] = Math.min(
+        plan.newCharEndTimesSec[plan.newCharEndTimesSec.length - 1],
+        plan.totalSec
+      );
+    }
     syncedCharEndTimesSec = plan.newCharEndTimesSec;
     syncedDurationSec = plan.totalSec;
     // Scene (beat) boundaries come straight from the plan — each narrated beat ENDS at its
