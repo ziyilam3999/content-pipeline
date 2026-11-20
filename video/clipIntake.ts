@@ -1,20 +1,21 @@
 /**
  * Row A41-clip-intake — probe, sha256 and a personal-data CHECK LIST per recorded clip.
  *
- * Every capture tool in this repo films a web page; recorded phone clips had no checked
- * way in. This module takes clip FILES: it probes each one with the BUNDLED ffprobe (the
- * binary sitting next to the ffmpeg resolveVendoredFfmpeg returns — this module spawns
- * ffprobe only, never ffmpeg), hashes the bytes as a stream, and writes two files per
- * taken clip into --out: <sha256>.intake.json (the measured facts) and
- * <sha256>.checklist.json (15 personal-data lines a person answers by editing the file).
+ * The capture tools in this repo film a web page or a terminal; none takes a recorded
+ * clip file, so phone clips had no checked way in. This module takes clip FILES: it
+ * probes each one with the BUNDLED ffprobe (the binary sitting next to the ffmpeg
+ * resolveVendoredFfmpeg returns — this module spawns ffprobe only, not ffmpeg), hashes
+ * the bytes as a stream, and writes two files per taken clip into --out:
+ * <sha256>.intake.json (the measured facts) and <sha256>.checklist.json (the 15
+ * personal-data lines a person answers by editing the file).
  *
  * Fail closed: a bad clip is refused with a named reason code, nothing is written for it,
  * and the check verb refuses to call a clip ready while a line is open. The honest limit
  * (also in the help text): the tool proves that a person answered every line, not that
  * the answers are true — the look itself is done by a person, outside this tool.
  *
- * The tool writes nothing outside --out, and refuses --out / inputs that sit inside this
- * repo or any git work tree (the repo is public; anything personal stays outside it).
+ * The tool writes nothing outside --out; intake refuses --out / inputs inside this repo
+ * or any git work tree (the repo is public; anything personal stays outside it).
  */
 
 import { spawnSync } from "child_process";
@@ -196,7 +197,8 @@ function byteCompare(a: string, b: string): number {
   return Buffer.compare(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
 }
 
-/** Write a JSON file atomically (temp file in the same folder, then a rename) — a stopped run leaves no half-written file. */
+/** Write a JSON file atomically (temp file in the same folder, then a rename) — a stopped
+ *  run leaves no half-written <sha>.*.json (at worst a .tmp file). */
 function atomicWriteJson(dir: string, finalName: string, value: unknown): void {
   const tmp = path.join(dir, `${finalName}.tmp`);
   fs.writeFileSync(tmp, JSON.stringify(value) + "\n");
@@ -310,7 +312,8 @@ function parseFrac(s: unknown): { n: number; d: number } | null {
   return { n: Number(m[1]), d: Number(m[2]) };
 }
 
-/** vfr when r_frame_rate and avg_frame_rate differ AS FRACTIONS (30/1 vs 30000/1001 is cfr). */
+/** vfr when r_frame_rate and avg_frame_rate differ AS FRACTIONS
+ *  (30/1 vs 60/2 is cfr; 30/1 vs 30000/1001 is vfr). */
 function frameRateKindOf(rFrameRate: unknown, avgFrameRate: unknown): "cfr" | "vfr" {
   const r = parseFrac(rFrameRate);
   const a = parseFrac(avgFrameRate);
@@ -588,7 +591,8 @@ interface ParsedChecklist {
   lines: { kind: string; answer: string; note: string }[];
 }
 
-/** "does not parse as JSON of this shape" — any structural break is checklist-unreadable. */
+/** "does not parse as JSON of this shape" — a break in the checked shape is
+ *  checklist-unreadable. */
 function parseChecklistShape(raw: string): ParsedChecklist | null {
   let c: unknown;
   try {
@@ -682,8 +686,8 @@ function printUsage(): void {
   process.stderr.write(
     "usage: clipIntake intake --out <folder> <clip-or-folder> [<clip-or-folder> ...]\n" +
       "       clipIntake check --out <folder>\n" +
-      "The --out folder must already exist and must sit outside every repo (no .git entry and\n" +
-      "no content-pipeline package.json above it); the same rule refuses input clips inside a repo.\n" +
+      "The --out folder must already exist; intake refuses an --out folder or an input clip\n" +
+      "inside a repo (a .git entry or a content-pipeline package.json above it).\n" +
       "A check list is answered by editing the file outside every repo: each of the 15 lines is\n" +
       '"clear" (not on screen), "cut" (on frames, removed by the cut) or "present" (retake or drop),\n' +
       "and looked_by names who looked.\n" +

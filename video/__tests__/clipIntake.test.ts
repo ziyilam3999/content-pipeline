@@ -4,7 +4,7 @@
  * Every clip is MADE at test time with the bundled ffmpeg (as renderProbe.test.ts does) or
  * written as tiny bytes, in folders from os.tmpdir(), and removed afterwards; no recording,
  * clip or image is committed. The planted bad clips prove the tool FAILS CLOSED: each test
- * goes red if the tool takes the entry. The only skips are the five win32/root cases named
+ * goes red if the tool takes the entry. The only skips are the six win32/root tests named
  * in the criterion, each with its reason in the test name.
  */
 import { execFileSync } from "child_process";
@@ -222,26 +222,30 @@ interface RunResult {
   code: number;
   lines: Record<string, any>[];
   text: string;
+  errText: string;
 }
 
-/** Drive the module CLI in-process, capturing the stdout lines it writes. */
+/** Drive the module CLI in-process, capturing the stdout lines and the stderr text it writes. */
 function run(argv: string[], opts?: { probeBin?: string }): RunResult {
-  const chunks: string[] = [];
-  const spy = jest
-    .spyOn(process.stdout, "write")
-    .mockImplementation(((chunk: Uint8Array | string): boolean => {
-      chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+  const capture = (sink: string[]) =>
+    ((chunk: Uint8Array | string): boolean => {
+      sink.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
       return true;
-    }) as unknown as typeof process.stdout.write);
+    }) as unknown as typeof process.stdout.write;
+  const chunks: string[] = [];
+  const errChunks: string[] = [];
+  const outSpy = jest.spyOn(process.stdout, "write").mockImplementation(capture(chunks));
+  const errSpy = jest.spyOn(process.stderr, "write").mockImplementation(capture(errChunks));
   let code = -1;
   try {
     code = runCli(argv, opts);
   } finally {
-    spy.mockRestore();
+    outSpy.mockRestore();
+    errSpy.mockRestore();
   }
   const text = chunks.join("");
   const lines = text.split("\n").filter((l) => l.length > 0).map((l) => JSON.parse(l));
-  return { code, lines, text };
+  return { code, lines, text, errText: errChunks.join("") };
 }
 
 function shaOf(p: string): string {
@@ -370,7 +374,7 @@ describe("clip-intake intake — planted refusals", () => {
     expect(fs.readdirSync(outDir)).toEqual([]);
   });
 
-  test("B6 +faststart clip with its second half cut off -> refused incomplete-read", () => {
+  test("B6 +faststart clip with its tail cut off -> refused incomplete-read", () => {
     const { clipPath } = copyIn("b6", "fastCut.mp4", "clip.mp4");
     const outDir = tdir("b6out");
     const r = run(["intake", "--out", outDir, clipPath]);
@@ -569,6 +573,7 @@ describe("clip-intake intake — planted refusals", () => {
     const dumped = r.text + fs.readdirSync(outDir).map((n) => fs.readFileSync(path.join(outDir, n), "utf8")).join("");
     expect(dumped).not.toContain("1999");
     expect(dumped).not.toContain("ZZTAG9");
+    expect(dumped).not.toContain("zz-loc");
   });
 });
 
@@ -582,6 +587,7 @@ describe("clip-intake intake — run level", () => {
     fs.mkdirSync(outDir);
     const r = run(["intake", "--out", outDir, fixture("good.mp4")]);
     expect(r.code).toBe(2);
+    expect(r.errText).toContain("clip-intake: out-inside-repo");
     expect(r.text).toBe("");
     expect(fs.readdirSync(outDir)).toEqual([]);
   });
@@ -593,6 +599,7 @@ describe("clip-intake intake — run level", () => {
     fs.mkdirSync(outDir);
     const r = run(["intake", "--out", outDir, fixture("good.mp4")]);
     expect(r.code).toBe(2);
+    expect(r.errText).toContain("clip-intake: out-inside-repo");
     expect(r.text).toBe("");
     expect(fs.readdirSync(outDir)).toEqual([]);
   });
@@ -607,6 +614,7 @@ describe("clip-intake intake — run level", () => {
     fs.symlinkSync(target, link);
     const r = run(["intake", "--out", link, fixture("good.mp4")]);
     expect(r.code).toBe(2);
+    expect(r.errText).toContain("clip-intake: out-inside-repo");
     expect(r.text).toBe("");
     expect(fs.readdirSync(target)).toEqual([]);
   });
@@ -621,6 +629,7 @@ describe("clip-intake intake — run level", () => {
     const outDir = tdir("r5out");
     const r = run(["intake", "--out", outDir, fixture("good.mp4")], { probeBin: path.join(fixtureDir, "no-such-ffprobe") });
     expect(r.code).toBe(2);
+    expect(r.errText).toContain("clip-intake: ffprobe-missing");
     expect(r.text).toBe("");
     expect(fs.readdirSync(outDir)).toEqual([]);
   });
