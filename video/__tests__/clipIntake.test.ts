@@ -4,7 +4,7 @@
  * Every clip is MADE at test time with the bundled ffmpeg (as renderProbe.test.ts does) or
  * written as tiny bytes, in folders from os.tmpdir(), and removed afterwards; no recording,
  * clip or image is committed. The planted bad clips prove the tool FAILS CLOSED: each test
- * goes red if the tool takes the entry. The only skips are the six win32/root tests named
+ * goes red if the tool takes the entry. The only skips are the seven win32/root tests named
  * in the criterion, each with its reason in the test name.
  */
 import { execFileSync } from "child_process";
@@ -168,6 +168,14 @@ beforeAll(() => {
     extraOut: ["-deadline", "realtime", "-cpu-used", "8", "-strict", "experimental"],
   });
   encodeClip(fixture("hevc.mp4"), { w: 1080, h: 1920, frames: FRAMES, fps: FPS, codecs: ["hevc", "libx265"] });
+  // one frame at 1 fps: duration 1.0 s passes the duration rule, 1 packet breaks the packet rule
+  encodeClip(fixture("oneFrame1fps.mp4"), { w: 1080, h: 1920, frames: 1, fps: 1 });
+  // 8 packets at 30 fps: packets pass, duration 0.267 s breaks the duration rule
+  encodeClip(fixture("short8.mp4"), { w: 1080, h: 1920, frames: 8, fps: 30 });
+  // 720x1086: the raw pad height 1086*1080/720 = 1629 is ODD, so the even floor matters
+  encodeClip(fixture("tallOdd.mp4"), { w: 720, h: 1086, frames: FRAMES, fps: FPS });
+  // fragmented with an empty moov (no stsz): the stream carries no nb_frames
+  ffmpeg(["-i", fixture("good.mp4"), "-c", "copy", "-movflags", "+frag_keyframe+empty_moov", "-y", fixture("frag.mp4")]);
   // audio-only clip (no video stream)
   ffmpeg(["-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "aac", "-y", fixture("audioOnly.mp4")]);
   // variable frame rate: concat demuxer with per-image durations
@@ -225,8 +233,39 @@ interface RunResult {
   errText: string;
 }
 
-/** Drive the module CLI in-process, capturing the stdout lines and the stderr text it writes. */
+/** Drive the module CLI in-process, capturing the stdout lines and the stderr text it writes.
+ *  Each run works from a temporary working folder, and that folder and the input folder(s)
+ *  (an input file's parent; --out is not compared) must list the same before and after. */
 function run(argv: string[], opts?: { probeBin?: string }): RunResult {
+  const workDir = tdir("cwd");
+  const rest = argv.slice(1);
+  const inputPaths: string[] = [];
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === "--out") {
+      i++;
+      continue;
+    }
+    inputPaths.push(rest[i]);
+  }
+  const listedDirs = [workDir];
+  for (const p of inputPaths) {
+    let isDir = false;
+    try {
+      isDir = fs.statSync(p).isDirectory();
+    } catch {
+      isDir = false;
+    }
+    if (isDir) listedDirs.push(p);
+    else listedDirs.push(path.dirname(p));
+  }
+  const snap = (p: string): string => {
+    try {
+      return fs.readdirSync(p).sort().join("\n");
+    } catch {
+      return "<unreadable>";
+    }
+  };
+  const before = listedDirs.map(snap);
   const capture = (sink: string[]) =>
     ((chunk: Uint8Array | string): boolean => {
       sink.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
@@ -237,12 +276,18 @@ function run(argv: string[], opts?: { probeBin?: string }): RunResult {
   const outSpy = jest.spyOn(process.stdout, "write").mockImplementation(capture(chunks));
   const errSpy = jest.spyOn(process.stderr, "write").mockImplementation(capture(errChunks));
   let code = -1;
+  const prevCwd = process.cwd();
+  process.chdir(workDir);
   try {
     code = runCli(argv, opts);
   } finally {
     outSpy.mockRestore();
     errSpy.mockRestore();
+    process.chdir(prevCwd);
   }
+  listedDirs.forEach((p, i) => {
+    expect([p, snap(p)]).toEqual([p, before[i]]); // [folder, listing after] vs [folder, listing before]
+  });
   const text = chunks.join("");
   const lines = text.split("\n").filter((l) => l.length > 0).map((l) => JSON.parse(l));
   return { code, lines, text, errText: errChunks.join("") };
@@ -491,6 +536,29 @@ describe("clip-intake intake — planted refusals", () => {
     },
   );
 
+  (isWin || isRoot ? it.skip : it)(
+    "B10b an input folder with no read permission -> one refused unreadable line for the folder, counted, exit 1 (skipped on win32: chmod does not remove read rights on Windows; also skipped as root: chmod does not remove read rights for root)",
+    () => {
+      const { clipPath } = copyIn("b10b", "good.mp4", "clip.mp4");
+      const holder = tdir("b10block");
+      const locked = path.join(holder, "locked");
+      fs.mkdirSync(locked);
+      fs.copyFileSync(fixture("goodAudio.mp4"), path.join(locked, "inner.mp4"));
+      fs.chmodSync(locked, 0o000);
+      const outDir = tdir("b10bout");
+      try {
+        const r = run(["intake", "--out", outDir, clipPath, locked]);
+        expect(r.code).toBe(1);
+        expect(r.lines[0]).toMatchObject({ file: "clip.mp4", result: "taken" });
+        expect(r.lines[1]).toEqual({ file: "locked", result: "refused", reason: "unreadable", sha256: null, flags: [] });
+        expect(r.lines[2].summary).toEqual({ taken: 1, refused: 1, skipped: 0, reason: null });
+        expect(fs.readdirSync(outDir)).toHaveLength(2); // only the good clip's two files
+      } finally {
+        fs.chmodSync(locked, 0o755); // so afterAll can remove the holder
+      }
+    },
+  );
+
   test("B11 a 320x568 clip -> refused too-small", () => {
     const { clipPath } = copyIn("b11", "small.mp4", "clip.mp4");
     const outDir = tdir("b11out");
@@ -506,6 +574,33 @@ describe("clip-intake intake — planted refusals", () => {
     const r = run(["intake", "--out", outDir, clipPath]);
     expect(r.code).toBe(1);
     expect(r.lines[0]).toMatchObject({ file: "clip.mp4", result: "refused", reason: "too-short" });
+    expect(fs.readdirSync(outDir)).toEqual([]);
+  });
+
+  test("B12b one frame lasting 1 s (packets_read 1, duration 1.0) -> refused too-short by the packet rule alone", () => {
+    const { clipPath } = copyIn("b12b", "oneFrame1fps.mp4", "clip.mp4");
+    const outDir = tdir("b12bout");
+    const r = run(["intake", "--out", outDir, clipPath]);
+    expect(r.code).toBe(1);
+    expect(r.lines[0]).toMatchObject({ file: "clip.mp4", result: "refused", reason: "too-short" });
+    expect(fs.readdirSync(outDir)).toEqual([]);
+  });
+
+  test("B12c eight packets in 0.27 s (packets_read 8, duration under 1 s) -> refused too-short by the duration rule alone", () => {
+    const { clipPath } = copyIn("b12c", "short8.mp4", "clip.mp4");
+    const outDir = tdir("b12cout");
+    const r = run(["intake", "--out", outDir, clipPath]);
+    expect(r.code).toBe(1);
+    expect(r.lines[0]).toMatchObject({ file: "clip.mp4", result: "refused", reason: "too-short" });
+    expect(fs.readdirSync(outDir)).toEqual([]);
+  });
+
+  test("B6f a fragmented mp4, whose header carries no frame count -> refused incomplete-read", () => {
+    const { clipPath } = copyIn("b6f", "frag.mp4", "clip.mp4");
+    const outDir = tdir("b6fout");
+    const r = run(["intake", "--out", outDir, clipPath]);
+    expect(r.code).toBe(1);
+    expect(r.lines[0]).toMatchObject({ file: "clip.mp4", result: "refused", reason: "incomplete-read" });
     expect(fs.readdirSync(outDir)).toEqual([]);
   });
 
@@ -680,6 +775,13 @@ describe("clip-intake runCli", () => {
     expect(r2.lines[0].cut_tasks).toEqual([]);
     expect(r2.lines[1].summary).toEqual({ ready: 0, not_ready: 1, reason: null });
   });
+
+  test("check with an extra argument after --out <folder> -> exit 2", () => {
+    const outDir = tdir("c3out");
+    const r = run(["check", "--out", outDir, "stray.mp4"]);
+    expect(r.code).toBe(2);
+    expect(r.text).toBe("");
+  });
 });
 
 // ── shape of output ──────────────────────────────────────────────────────────────────────
@@ -742,6 +844,17 @@ describe("clip-intake — shape of output", () => {
     for (const n of outNames) {
       expect(n.endsWith(".intake.json") || n.endsWith(".checklist.json")).toBe(true);
     }
+  });
+
+  test("stdout lines are sorted by base name in byte order, not argument order and not locale order", () => {
+    const inDir = tdir("s5");
+    fs.copyFileSync(fixture("goodAudio.mp4"), path.join(inDir, "a.mp4"));
+    fs.copyFileSync(fixture("good.mp4"), path.join(inDir, "B.mp4"));
+    const outDir = tdir("s5out");
+    // given in the other order: collection order a, B; a locale sort also puts a.mp4 first
+    const r = run(["intake", "--out", outDir, path.join(inDir, "a.mp4"), path.join(inDir, "B.mp4")]);
+    expect(r.code).toBe(0);
+    expect(r.lines.map((l) => l.file)).toEqual(["B.mp4", "a.mp4"]); // 0x42 'B' < 0x61 'a'
   });
 
   test("a second intake run leaves both files byte-equal, and an answered check list keeps its answers", () => {
@@ -848,6 +961,19 @@ describe("clip-intake — good clips", () => {
     expect(r.code).toBe(0);
     const sha = shaOf(clipPath);
     expect(readJson(path.join(outDir, `${sha}.intake.json`)).video.codec).toBe("hevc");
+  });
+
+  test("720x1086 (raw pad height 1629, odd) -> the even floor gives 1628 with bars 146/146, crop 1272 with cuts 96/96", () => {
+    const { clipPath } = copyIn("g7", "tallOdd.mp4", "clip.mp4");
+    const outDir = tdir("g7out");
+    const r = run(["intake", "--out", outDir, clipPath]);
+    expect(r.code).toBe(0);
+    const sha = shaOf(clipPath);
+    const intake = readJson(path.join(outDir, `${sha}.intake.json`));
+    expect(intake.fit).toEqual({
+      pad: { scaled_width: 1080, scaled_height: 1628, bar_top: 146, bar_bottom: 146, bar_left: 0, bar_right: 0 },
+      crop: { scaled_width: 1272, scaled_height: 1920, cut_top: 0, cut_bottom: 0, cut_left: 96, cut_right: 96 },
+    });
   });
 });
 
@@ -967,6 +1093,15 @@ describe("clip-intake check — ready rules", () => {
     const r = run(["check", "--out", outDir]);
     expect(r.code).toBe(1);
     expect(r.lines[0].reasons).toEqual(["sha-mismatch"]);
+  });
+
+  test("an intake file with no check list next to it (a run stopped between the two writes) -> not ready, checklist-missing", () => {
+    const { outDir, sha } = setupTakenClip("k14");
+    fs.rmSync(path.join(outDir, `${sha}.checklist.json`));
+    const r = run(["check", "--out", outDir]);
+    expect(r.code).toBe(1);
+    expect(r.lines[0]).toEqual({ sha256: sha, ready: false, reasons: ["checklist-missing"], cut_tasks: [] });
+    expect(r.lines[1].summary).toEqual({ ready: 0, not_ready: 1, reason: null });
   });
 
   test("an empty folder -> exit 1, no-checklists", () => {

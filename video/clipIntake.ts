@@ -80,6 +80,7 @@ export type CheckReason =
   | "source-missing"
   | "intake-missing"
   | "checklist-unreadable"
+  | "checklist-missing"
   | "sha-mismatch";
 
 export interface ClipIntakeOpts {
@@ -346,9 +347,11 @@ type Outcome =
   | { entry: Entry; result: "refused"; reason: RefusalCode; sha: string | null }
   | { entry: Entry; result: "skipped-hidden" };
 
-/** Each input path is a clip file, or a folder whose TOP-LEVEL entries are taken (no recursion). */
-function collectEntries(inputPaths: string[]): Entry[] {
+/** Each input path is a clip file, or a folder whose TOP-LEVEL entries are taken (no recursion).
+ *  A folder whose listing cannot be read is kept apart: it becomes one refused line, not silence. */
+function collectEntries(inputPaths: string[]): { entries: Entry[]; unreadableFolders: Entry[] } {
   const entries: Entry[] = [];
+  const unreadableFolders: Entry[] = [];
   for (const p of inputPaths) {
     let isDir = false;
     try {
@@ -357,18 +360,19 @@ function collectEntries(inputPaths: string[]): Entry[] {
       isDir = false;
     }
     if (isDir) {
-      let dirents: fs.Dirent[] = [];
+      let dirents: fs.Dirent[];
       try {
         dirents = fs.readdirSync(p, { withFileTypes: true });
       } catch {
-        dirents = [];
+        unreadableFolders.push({ file: path.basename(p), absPath: p });
+        continue;
       }
       for (const d of dirents) entries.push({ file: d.name, absPath: path.join(p, d.name) });
     } else {
       entries.push({ file: path.basename(p), absPath: p });
     }
   }
-  return entries;
+  return { entries, unreadableFolders };
 }
 
 /** The per-entry fail-closed ladder; the FIRST reason that applies wins (this order is the contract). */
@@ -727,7 +731,14 @@ function resolveExistingDir(p: string): string | null {
 }
 
 function runIntake(realOut: string, inputPaths: string[], tool: ProbeTool): number {
-  const outcomes = collectEntries(inputPaths).map((e) => evaluateEntry(e, tool));
+  const collected = collectEntries(inputPaths);
+  const outcomes: Outcome[] = collected.unreadableFolders.map((e) => ({
+    entry: e,
+    result: "refused" as const,
+    reason: "unreadable" as RefusalCode,
+    sha: null,
+  }));
+  for (const e of collected.entries) outcomes.push(evaluateEntry(e, tool));
 
   // duplicate-sha256 is decided across the whole run: same bytes twice → ALL copies refused;
   // a sha already recorded in --out under another source_path → refused too.
@@ -810,21 +821,30 @@ function runCheck(realOut: string): number {
   } catch {
     names = [];
   }
-  const checklistNames = names
-    .filter((n) => n.endsWith(".checklist.json"))
-    .sort((a, b) => byteCompare(a, b));
+  const results: CheckResult[] = [];
+  for (const n of names) {
+    if (n.endsWith(".checklist.json")) results.push(evaluateChecklist(realOut, n));
+  }
+  // an intake file with no check list next to it (a run stopped between the two writes):
+  // the clip is not ready and check says so instead of passing over it in silence
+  for (const n of names) {
+    if (!n.endsWith(".intake.json")) continue;
+    const sha = n.slice(0, -".intake.json".length);
+    if (names.includes(`${sha}.checklist.json`)) continue;
+    results.push({ sha256: sha, ready: false, reasons: ["checklist-missing"], cut_tasks: [] });
+  }
+  results.sort((a, b) => byteCompare(a.sha256, b.sha256));
   let ready = 0;
   let notReady = 0;
-  for (const n of checklistNames) {
-    const r = evaluateChecklist(realOut, n);
+  for (const r of results) {
     if (r.ready) ready++;
     else notReady++;
     writeLine({ sha256: r.sha256, ready: r.ready, reasons: r.reasons, cut_tasks: r.cut_tasks });
   }
   writeLine({
-    summary: { ready, not_ready: notReady, reason: checklistNames.length === 0 ? "no-checklists" : null },
+    summary: { ready, not_ready: notReady, reason: results.length === 0 ? "no-checklists" : null },
   });
-  return checklistNames.length === 0 || notReady > 0 ? 1 : 0;
+  return results.length === 0 || notReady > 0 ? 1 : 0;
 }
 
 /** The clip-intake CLI. Returns the process exit code: 0 ok, 1 per-entry refusal / not ready, 2 run-level refusal. */
@@ -835,8 +855,8 @@ export function runCli(argv: string[], opts: ClipIntakeOpts = {}): number {
     return 2;
   }
   const parsed = parseArgs(argv.slice(1));
-  if (parsed.usageError) {
-    printUsage();
+  if (parsed.usageError || (verb === "check" && parsed.paths.length > 0)) {
+    printUsage(); // check takes no input path; a stray argument is a usage error
     return 2;
   }
   const realOut = resolveExistingDir(parsed.out as string);
