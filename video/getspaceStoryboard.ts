@@ -15,6 +15,8 @@
  *   - the storyboard asset is clip only; each beat clip is in the shot list and long enough.
  *   - the shot list holds the 15 check-list lines, the five fixed answers, at most 12 clips, both sides of a
  *     take, and a Hide cell that names blur and the fixed-list words for the facts a clip shows.
+ *   - an on-screen fact id is a fact the beat's clip shows; with all three storyboards present, each clip is
+ *     used by a beat.
  *
  * These rules tie ids, numbers, words and form. They cannot tell a sentence that is false in words they do
  * not name; a person reads the sentences against the facts (the prose review).
@@ -59,10 +61,24 @@ const FIXED_LINES: Record<string, string> = {
 
 // fixed per-id list of Hide words: the snapshot has no care text, so the words live here (ids only)
 const HIDE_WORDS: Record<string, string[]> = {
-  position: ["S-02", "S-07", "S-10", "S-11", "S-12", "S-13", "S-14", "H-10"],
+  position: [
+    "S-02", "S-03", "S-04", "S-05", "S-06", "S-07", "S-08", "S-09", "S-10", "S-11", "S-12", "S-13", "S-14",
+    "G-02", "G-03", "G-04", "G-05", "G-06", "G-07", "G-08", "G-09", "G-10", "G-11", "G-12", "G-14", "G-15",
+    "H-10", "H-11", "H-14", "H-15",
+  ],
+  "spot photos": [
+    "S-08", "S-09", "S-10", "S-11", "S-12", "S-13", "S-14",
+    "G-02", "G-03", "G-04", "G-05", "G-06", "G-07", "G-08", "G-09", "G-10", "G-11", "G-12", "G-14", "G-15",
+    "H-10", "H-11", "H-15",
+  ],
+  "other user details": [
+    "S-08", "S-09", "S-10", "S-11", "S-12", "S-13", "S-14", "S-15",
+    "G-10", "G-11", "G-12", "G-14", "G-15",
+    "H-01", "H-07", "H-09", "H-10", "H-13", "H-15",
+  ],
   id: [
     "S-10", "S-11", "S-12", "S-13", "S-14", "G-06", "G-07", "G-08", "G-09", "G-10", "G-11", "G-12", "G-14",
-    "G-15", "H-10", "H-11",
+    "G-15", "H-09", "H-10", "H-11",
   ],
   name: ["S-01", "G-01", "H-03", "H-06"],
   amount: ["S-01", "G-01", "H-03", "H-06", "H-02", "H-07", "H-08", "H-04", "H-05", "H-16", "S-14"],
@@ -341,6 +357,8 @@ function checkStoryboard(
   raw: string,
   facts: Facts,
   clips: Map<string, number> | null,
+  shownBy: Map<string, string[]>,
+  used: Set<string>,
   fails: string[],
 ): string[] {
   const sentences: string[] = [];
@@ -401,6 +419,7 @@ function checkStoryboard(
     else if (asset !== "clip") fails.push(`FAIL ${at}: Asset is not clip`);
     if (clips && !clips.has(clip)) fails.push(`FAIL ${at}: clip ${clip} is not in the shot list`);
     perClip.set(clip, (perClip.get(clip) ?? 0) + d);
+    used.add(clip);
 
     for (const [label, cell] of [["On-screen text", onScreen], ["Narration", narration]] as const) {
       const where = `${at} ${label}`;
@@ -423,6 +442,13 @@ function checkStoryboard(
             openings.set(o, (openings.get(o) ?? 0) + 1);
           }
         } else {
+          // on-screen text is text the clip shows
+          const shown = shownBy.get(clip);
+          if (shown) {
+            for (const id of g.ids) {
+              if (!shown.includes(id)) fails.push(`FAIL ${where}: on-screen id ${id} is not in Facts shown of ${clip}`);
+            }
+          }
           for (const dg of digits) {
             if (g.ids.some((id) => NO_NUMBER_IDS.includes(id))) {
               fails.push(`FAIL ${where}: number ${dg} with a borrowing, penalty or cancel fact`);
@@ -454,7 +480,13 @@ function checkStoryboard(
 
 // ---- shot list ----
 
-function checkShotList(name: string, raw: string, facts: Facts, fails: string[]): Map<string, number> | null {
+function checkShotList(
+  name: string,
+  raw: string,
+  facts: Facts,
+  shownBy: Map<string, string[]>,
+  fails: string[],
+): Map<string, number> | null {
   const lines = readLines(name, raw, fails);
   if (!lines) return null;
   const fixed = ["# Shot list - GetSpace how-to videos", "## Before every take", "## Clips"];
@@ -508,6 +540,7 @@ function checkShotList(name: string, raw: string, facts: Facts, fails: string[])
       continue;
     }
     const ids = shown.split(", ");
+    shownBy.set(clip, ids);
     let care = false;
     for (const id of ids) {
       const f = facts.get(id);
@@ -550,21 +583,29 @@ export function checkGetspaceStoryboards(opts?: GetspaceCheckOpts): string[] {
   }
 
   let clips: Map<string, number> | null = null;
+  const shownBy = new Map<string, string[]>();
+  const used = new Set<string>();
   if (!listing.includes(SHOT_LIST)) {
     fails.push(`FAIL ${SHOT_LIST}: missing`);
   } else {
-    clips = checkShotList(SHOT_LIST, fs.readFileSync(path.join(root, SHOT_LIST), "utf8"), facts, fails);
+    clips = checkShotList(SHOT_LIST, fs.readFileSync(path.join(root, SHOT_LIST), "utf8"), facts, shownBy, fails);
   }
 
   const present = GETSPACE_STORYBOARD_SLUGS.map((s) => `${s}.md`).filter((f) => listing.includes(f));
   if (present.length === 0) fails.push("FAIL storyboards: no GetSpace storyboard present");
   const seen = new Map<string, string>();
   for (const f of present) {
-    const sentences = checkStoryboard(f, fs.readFileSync(path.join(root, f), "utf8"), facts, clips, fails);
+    const sentences = checkStoryboard(f, fs.readFileSync(path.join(root, f), "utf8"), facts, clips, shownBy, used, fails);
     for (const s of sentences) {
       const prev = seen.get(s);
       if (prev !== undefined) fails.push(`FAIL same sentence in ${prev} and ${f}: '${s}'`);
       else seen.set(s, f);
+    }
+  }
+  // with all three storyboards present, a clip no beat uses is a FAIL
+  if (clips && present.length === GETSPACE_STORYBOARD_SLUGS.length) {
+    for (const clip of clips.keys()) {
+      if (!used.has(clip)) fails.push(`FAIL ${SHOT_LIST} ${clip}: used by no storyboard`);
     }
   }
   return fails;

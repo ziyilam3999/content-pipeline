@@ -80,8 +80,8 @@ ${keys}
 |------|------|------|------------|-----|-------------|------|
 | C-01 | seeker | T-1 | Hold on the home screen. | 20 | S-01 | blur: name, amount |
 | C-02 | seeker | T-1 | Hold on the map screen. | 20 | S-02 | blur: position |
-| C-03 | giver | T-1 | Hold on the matched screen. | 20 | S-10 | blur: position, id |
-| C-04 | seeker | T-2 | Hold on the next screen. | 20 | S-03 | blur |
+| C-03 | giver | T-1 | Hold on the matched screen. | 20 | S-10 | blur: position, id, spot photos, other user details |
+| C-04 | seeker | T-2 | Hold on the next screen. | 20 | S-03 | blur: position |
 `;
 }
 
@@ -151,7 +151,7 @@ const PLANTS: Plant[] = [
   ["unknown id", (f) => { f[SEEK] = rep(f[SEEK], "Pin [S-02]", "Pin [S-77]"); }, "unknown fact id"],
   ["never row in narration", (f) => { f[SEEK] = rep(f[SEEK], "today. [S-01] Blue", "today. [S-16] Blue"); }, "cites never row"],
   ["never row in Facts shown", (f) => { f[SHOT] = rep(f[SHOT], "| S-02 |", "| S-16 |"); }, "cites never row"],
-  ["care row with Hide without blur", (f) => { f[SHOT] = rep(f[SHOT], "| S-03 | blur |", "| S-03 | - |"); }, "does not name the blur"],
+  ["care row with Hide without blur", (f) => { f[SHOT] = rep(f[SHOT], "| S-03 | blur: position |", "| S-03 | - |"); }, "does not name the blur"],
   ["fixed-list yes row with Hide -", (f) => { f[SHOT] = rep(f[SHOT], "| S-01 | blur: name, amount |", "| S-01 | - |"); }, "does not name the blur"],
   ["S-01 Hide without amount", (f) => { f[SHOT] = rep(f[SHOT], "blur: name, amount", "blur: name"); }, "does not name the amount"],
   ["match clip without id", (f) => { f[SHOT] = rep(f[SHOT], "blur: position, id", "blur: position"); }, "does not name the id"],
@@ -222,6 +222,73 @@ describe("getspace storyboards - planted breaks", () => {
     expect(out.length).toBeGreaterThan(0);
     expect(out.every((l) => l.startsWith("FAIL"))).toBe(true);
     expect(out.some((l) => l.includes(expected))).toBe(true);
+  });
+});
+
+// ids of the widened Hide-word lists: the required words of each id, and the pairs the lists add
+const R = (a: string, from: number, to: number): string[] =>
+  Array.from({ length: to - from + 1 }, (_v, i) => `${a}-${String(from + i).padStart(2, "0")}`);
+
+const REQUIRED: Record<string, string[]> = {
+  position: [...R("S", 2, 14), ...R("G", 2, 12), "G-14", "G-15", "H-10", "H-11", "H-14", "H-15"],
+  "spot photos": [...R("S", 8, 14), ...R("G", 2, 12), "G-14", "G-15", "H-10", "H-11", "H-15"],
+  "other user details": [
+    ...R("S", 8, 15), "G-10", "G-11", "G-12", "G-14", "G-15", "H-01", "H-13", "H-09", "H-07", "H-10", "H-15",
+  ],
+  id: [...R("S", 10, 14), ...R("G", 6, 12), "G-14", "G-15", "H-09", "H-10", "H-11"],
+  name: ["S-01", "G-01", "H-03", "H-06"],
+  amount: ["S-01", "G-01", "H-03", "H-06", "H-02", "H-07", "H-08", "H-04", "H-05", "H-16", "S-14"],
+};
+
+const NEW_PAIRS: [string, string][] = [
+  ...[...R("S", 3, 6), "S-08", "S-09", ...R("G", 2, 12), "G-14", "G-15", "H-11", "H-14", "H-15"].map((id): [string, string] => ["position", id]),
+  ...REQUIRED["spot photos"].map((id): [string, string] => ["spot photos", id]),
+  ...REQUIRED["other user details"].map((id): [string, string] => ["other user details", id]),
+  ["id", "H-09"],
+];
+
+describe("getspace storyboards - widened Hide words and clip use", () => {
+  test("a clip showing a spot photos id without the spot photos word", () => {
+    const f = fixture();
+    f[SHOT] = rep(f[SHOT], ", spot photos", "");
+    expect(run(f).some((l) => l.includes("FAIL shot list C-03") && l.includes("does not name the spot photos"))).toBe(true);
+  });
+
+  test("a clip showing an other-user id without the other user details word", () => {
+    const f = fixture();
+    f[SHOT] = rep(f[SHOT], ", other user details", "");
+    expect(run(f).some((l) => l.includes("FAIL shot list C-03") && l.includes("does not name the other user details"))).toBe(true);
+  });
+
+  test("with three storyboards present, a clip no beat uses", () => {
+    const f = fixture();
+    f[SHOT] = rep(f[SHOT], "| C-04 | seeker", "| C-05 | seeker | T-2 | Hold on the spare screen. | 20 | S-01 | blur: name, amount |\n| C-04 | seeker");
+    expect(run(f).some((l) => l.includes("used by no storyboard"))).toBe(false);
+    f["getspace-give.md"] = rep(f[SEEK], "slug: getspace-seek", "slug: getspace-give");
+    f["getspace-helps.md"] = rep(f[SEEK], "slug: getspace-seek", "slug: getspace-helps");
+    expect(run(f)).toContain("FAIL getspace-shot-list.md C-05: used by no storyboard");
+  });
+
+  test("an on-screen id that is not in the clip's Facts shown", () => {
+    const f = fixture();
+    f[SEEK] = rep(f[SEEK], "Pin [S-02]", "Pin [S-03]");
+    expect(run(f)).toContain("FAIL getspace-seek.md beat 2 On-screen text: on-screen id S-03 is not in Facts shown of C-02");
+  });
+
+  test("each word-and-id pair the lists add is asked for", () => {
+    const snap = fs.readFileSync(path.join(__dirname, "..", "..", "storyboards", SNAP), "utf8");
+    expect(NEW_PAIRS.length).toBeGreaterThan(60);
+    for (const [word, id] of NEW_PAIRS) {
+      const others = Object.keys(REQUIRED).filter((w) => w !== word && REQUIRED[w].includes(id));
+      const f = fixture();
+      f[SNAP] = snap;
+      f[SHOT] = rep(f[SHOT], /\| C-01 .*\n/.exec(f[SHOT] as string)?.[0] ?? "", "");
+      f[SHOT] = (f[SHOT] as string).replace(/\| C-0[2-4] .*\n/g, "") + `| C-01 | seeker | T-1 | Hold on the screen. | 20 | ${id} | blur${others.length ? ": " + others.join(", ") : ""} |\n`;
+      const named = run(f).filter((l) => l.includes("does not name the"));
+      expect(named).toHaveLength(1);
+      expect(named[0]).toContain(`does not name the ${word}`);
+      expect(named[0].endsWith(`does not name the ${word}`)).toBe(true);
+    }
   });
 });
 
