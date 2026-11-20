@@ -22,7 +22,7 @@
 | Clip | Side | Take | What to do | Sec | Facts shown | Hide |
 |------|------|------|------------|-----|-------------|------|
 | C-01 | seeker | T-1 | On the home screen, hold on the Find Parking tile, then tap it. | 8 | S-01 | blur: own name, amount |
-| C-02 | seeker | T-1 | On the map screen, move the pin to the swap spot, then tap Choose this location. | 12 | S-02 | blur: position |
+| C-02 | seeker | T-1 | On the map screen, tap the swap spot, then tap Choose this location. | 12 | S-02 | blur: position |
 | C-03 | seeker | T-1 | On the Confirmation screen, hold on the deposit row and the Total row. | 12 | S-05, S-06 | blur: credit balance, position |
 | C-04 | seeker | T-1 | Hold on the searching screen with its Cancel button. | 6 | S-07 | blur: position |
 | C-05 | seeker | T-1 | On the proposed match, hold on the countdown, the distance, Choose This and Search Again. | 12 | S-08, S-09, H-15 | blur: other user details, position, spot photos |
