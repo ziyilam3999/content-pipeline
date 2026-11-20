@@ -8,7 +8,8 @@
  * eyeball-ack gate uses). Validates the slug is a known post AND the storyboard doc exists first.
  */
 
-import { isPostSlug, POST_ASSETS } from "../publish/publishAssets";
+import { POST_ASSETS } from "../publish/publishAssets";
+import { GETSPACE_STORYBOARD_SLUGS, isStoryboardSlug } from "../video/getspaceStoryboard";
 import { recordStoryboardApproval, storyboardDocPath } from "../video/storyboardGate";
 import * as fs from "fs";
 
@@ -24,10 +25,10 @@ function parseArgs(argv: string[]): { slug?: string; note?: string } {
 
 function main(): void {
   const { slug, note } = parseArgs(process.argv.slice(2));
-  if (!slug || !isPostSlug(slug)) {
+  if (!slug || !isStoryboardSlug(slug)) {
     console.error(
       `usage: npm run storyboard:approve -- <slug> [--note "<note>"]\n` +
-        `  <slug> must be a known post (${Object.keys(POST_ASSETS).join(" | ")}).`,
+        `  <slug> must be a known post (${[...Object.keys(POST_ASSETS), ...GETSPACE_STORYBOARD_SLUGS].join(" | ")}).`,
     );
     process.exit(2);
   }
