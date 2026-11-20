@@ -8,7 +8,7 @@
  *   - snapshot it cannot trust (missing, not JSON, wrong schema or keys, bad id, twice) -> THROWS "REFUSED".
  *   - no storyboard present, shot list missing, an unknown getspace-*.md file -> FAIL (decided by the listing,
  *     so a file name in another letter case is not the known name on any system).
- *   - parsing fails closed: BOM, lone CR, table shape, free text, bad fact id group -> FAIL, never a skip.
+ *   - parsing fails closed: BOM, lone CR, table shape, free text, bad fact id group -> FAIL, not a skip.
  *   - each narration / on-screen sentence cites fact ids; ids must be known, not open points, not never rows.
  *   - narration carries no digit and no number word (numbers go on screen only); on-screen digits must be
  *     numbers of the cited facts; borrowing, penalty and cancel facts carry no digit; no money, no banned word.
@@ -195,6 +195,11 @@ function parseRow(name: string, n: number, text: string, cols: number, fails: st
   return cells;
 }
 
+/** A square bracket in a cell that holds no fact id groups is a FAIL. */
+function noBrackets(where: string, cell: string, fails: string[]): void {
+  if (/[[\]]/.test(cell)) fails.push(`FAIL ${where}: bad fact id group (square bracket in the cell)`);
+}
+
 function separatorOk(text: string, cols: number): boolean {
   if (!(text.startsWith("|") && text.endsWith("|") && text.length > 1)) return false;
   const cells = text.slice(1, -1).split("|");
@@ -220,6 +225,8 @@ function scanBody(
     const n = i + 1;
     if (text === "") {
       if (state === "rows") state = "ended";
+      // a blank line between the header and the separator row is no table
+      if (state === "header") fails.push(`FAIL ${name} line ${n}: separator row is not the fixed form (blank line)`);
       continue;
     }
     if (text.startsWith("|")) {
@@ -383,6 +390,7 @@ function checkStoryboard(
   scan.rows.forEach((row, i) => {
     const [num, beat, dur, asset, clip, onScreen, narration] = row.cells;
     const at = `${name} beat ${i + 1}`;
+    for (const c of [num, beat, dur, asset, clip]) noBrackets(at, c, fails);
     if (num !== String(i + 1)) fails.push(`FAIL ${at}: beat number is ${num}`);
     textRules(`${at} Beat`, beat, fails, true);
     let d = 0;
@@ -481,6 +489,7 @@ function checkShotList(name: string, raw: string, facts: Facts, fails: string[])
   for (const row of scan.rows) {
     const [clip, side, take, todo, sec, shown, hide] = row.cells;
     const at = `${name} ${clip}`;
+    for (const c of row.cells) noBrackets(at, c, fails);
     if (!/^C-\d{2}$/.test(clip)) fails.push(`FAIL ${name} line ${row.n}: clip id ${clip} is not C-NN`);
     if (clips.has(clip)) fails.push(`FAIL ${at}: clip id twice`);
     if (side !== "seeker" && side !== "giver") fails.push(`FAIL ${at}: Side is not seeker or giver`);

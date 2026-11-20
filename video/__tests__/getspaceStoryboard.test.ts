@@ -2,7 +2,7 @@
  * Row A41-storyboards - tests of the GetSpace storyboard checker.
  *
  * (1) the real tree passes; (2) a small made-up fixture passes; (3) one test per planted break on its own
- * copy of the fixture; (4) three cases that must pass; (5) the slug helper. Every planted file is made in a
+ * copy of the fixture; (4) three cases that must pass; (5) the slug helper. Each planted file is made in a
  * folder from os.tmpdir() and removed afterwards; planted strings that would look like a service name, a
  * URL or a path are built from parts at run time.
  */
@@ -202,6 +202,9 @@ const PLANTS: Plant[] = [
   ["the shot list missing", (f) => { f[SHOT] = null; }, "getspace-shot-list.md: missing"],
   ["the table header changed", (f) => { f[SEEK] = rep(f[SEEK], "| # | Beat | Dur |", "| # | Beat | Length |"); }, "table header"],
   ["the separator row changed", (f) => { f[SEEK] = rep(f[SEEK], SEP, "|---|------|-----|-------|------|----------------|"); }, "separator row"],
+  ["a blank line between the header and the separator", (f) => { f[SEEK] = rep(f[SEEK], `Narration |\n${SEP}`, `Narration |\n\n${SEP}`); }, "separator row is not the fixed form"],
+  ["a square bracket in a storyboard Beat cell", (f) => { f[SEEK] = rep(f[SEEK], "| 1 | Home |", "| 1 | Ho[me] |"); }, "bad fact id group"],
+  ["a square bracket in a shot list Hide cell", (f) => { f[SHOT] = rep(f[SHOT], "| S-02 | blur: position |", "| S-02 | blur: [position] |"); }, "bad fact id group"],
   ["a row with a missing cell", (f) => { f[SEEK] = rep(f[SEEK], "| 1 | Home | 16 |", "| 1 | 16 |"); }, "cells, the header has"],
   ["an escaped bar", (f) => { f[SEEK] = rep(f[SEEK], "| 1 | Home |", "| 1 | Ho\\|me |"); }, "escaped bar"],
   ["a free prose line in a storyboard", (f) => { f[SEEK] += "\nSome free text.\n"; }, "text outside the fixed lines and the table"],
