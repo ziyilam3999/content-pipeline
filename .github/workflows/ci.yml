@@ -8,7 +8,9 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    # ubuntu-latest moved to 26.04, which Playwright 1.60 cannot install Chromium on; run on 24.04.
+    # The matrix value stays ubuntu-latest so the check name is unchanged.
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
 
     strategy:
       fail-fast: false
