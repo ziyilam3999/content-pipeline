@@ -289,8 +289,8 @@ function partBlur(c: Ctx, video: VideoSpec, runs: PieceRun[]): string {
 }
 
 /** Absence of the prove_absent window: no output frame may look like a native frame inside it.
- *  Fails closed: a cut without a window, a window with no native frame and an output read of the
- *  wrong length prove nothing. Only the sources this video plays are looked at. */
+ *  Fails closed: a cut without a window, a window with no native frame and a shorter output read
+ *  prove nothing (a longer read only adds frames to compare). Only the sources this video plays are looked at. */
 function partCut(c: Ctx, video: VideoSpec): string {
   const srcIds = [...new Set(video.beats.flatMap((b) => b.pieces.map((p) => p.src)))];
   const out = outContentFrames(c);
