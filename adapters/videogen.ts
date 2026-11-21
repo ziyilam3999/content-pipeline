@@ -23,6 +23,10 @@
  * one attempt line is appended to the ledger BEFORE the call, under an O_EXCL lock;
  * one run sends at most one generation call (a retry is a new run); the returned video
  * bytes are saved as received, so any provenance mark stays.
+ *
+ * Cap groups: the ceiling cap below is the AI video cap; the ledger total is read per
+ * cap group (this tool reads ai-video), so a paid-media line in the same record does
+ * not eat it.
  */
 
 import { randomUUID } from "crypto";
@@ -45,10 +49,26 @@ export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export const DEFAULT_TIMEOUT_SECONDS = 900;
 
-/** Standing cap on --ceiling-usd for paid media together. */
-export const CEILING_CAP_USD = 20;
+/** Cap on --ceiling-usd for AI video spend, the ai-video cap group. */
+export const AI_VIDEO_CEILING_CAP_USD = 25;
 
 const SERVICE = "gemini-omni";
+
+/** Cap groups the spend ledger reads apart: AI video against its own cap, other paid media together. */
+export type CapGroup = "ai-video" | "paid-media";
+
+/** Each known ledger service maps to the one cap group its lines count in; the voice tool writes elevenlabs. */
+export const SERVICE_CAP_GROUPS: Readonly<Record<string, CapGroup>> = Object.freeze({
+  "gemini-omni": "ai-video",
+  elevenlabs: "paid-media",
+});
+
+/** Exact, case-sensitive match on the table's own entries only: a prototype name such as constructor is not known. */
+function capGroupOfService(service: string): CapGroup | undefined {
+  return Object.prototype.hasOwnProperty.call(SERVICE_CAP_GROUPS, service)
+    ? (SERVICE_CAP_GROUPS[service] as CapGroup)
+    : undefined;
+}
 
 // ── refusal ────────────────────────────────────────────────────────────────────────────
 
@@ -84,6 +104,11 @@ export function usdToMicro(usd: number): number {
 /** Micro-USD to a USD string with 3 decimals, rounded up (70000 -> "0.070"). */
 export function formatUsdMicro(micro: number): string {
   return (Math.ceil(micro / 1000) / 1000).toFixed(3);
+}
+
+/** Micro-USD to a USD string with 3 decimals, rounded down (23739900 -> "23.739"), so the room left is not overstated. */
+export function formatUsdMicroDown(micro: number): string {
+  return (Math.floor(micro / 1000) / 1000).toFixed(3);
 }
 
 // ── network caller (one injected object behind each network step) ──────────────────────
@@ -241,8 +266,8 @@ export function realVideoCaller(): VideoCaller {
 
 // ── ledger (one spend record for paid media; JSON lines) ───────────────────────────
 
-/** Read the ledger and return the total spent in whole micro-USD. Only a missing file (ENOENT) is 0. */
-export function readLedgerTotal(ledger: string): number {
+/** Read the ledger total of one cap group in whole micro-USD. Only a missing file (ENOENT) is 0. */
+export function readLedgerTotal(ledger: string, group: CapGroup): number {
   let raw: Buffer;
   try {
     raw = fs.readFileSync(ledger);
@@ -270,7 +295,12 @@ export function readLedgerTotal(ledger: string): number {
     if (typeof c !== "number" || !Number.isFinite(c) || c < 0) {
       throw new Refusal("ledger-unreadable", `${ledger}: a line has no finite non-negative cost_usd`);
     }
-    total += usdToMicro(c);
+    const s = (obj as { service?: unknown }).service;
+    const lineGroup = typeof s === "string" ? capGroupOfService(s) : undefined;
+    if (lineGroup === undefined) {
+      throw new Refusal("ledger-unreadable", `${ledger}: a line has no known service`);
+    }
+    if (lineGroup === group) total += usdToMicro(c);
   }
   return total;
 }
@@ -325,8 +355,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (refs.length > 6) throw new Refusal("usage", `at most 6 --ref images, got ${refs.length}`);
   if (!CEILING_RE.test(vals["--ceiling-usd"])) throw new Refusal("usage", "--ceiling-usd must be a plain number");
   const ceilingUsd = Number(vals["--ceiling-usd"]);
-  if (!(ceilingUsd > 0) || ceilingUsd > CEILING_CAP_USD) {
-    throw new Refusal("usage", `--ceiling-usd must be above 0 and at most ${CEILING_CAP_USD}`);
+  if (!(ceilingUsd > 0) || ceilingUsd > AI_VIDEO_CEILING_CAP_USD) {
+    throw new Refusal("usage", `--ceiling-usd must be above 0 and at most ${AI_VIDEO_CEILING_CAP_USD}`);
   }
   let timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
   if (vals["--timeout-seconds"]) {
@@ -367,6 +397,8 @@ export interface Plan {
   images: ImageIn[];
   rateMicro: number;
   estimateMicro: number;
+  ceilingUsd: number;
+  spentMicro: number;
   outReal: string;
   ledgerReal: string;
   lockPath: string;
@@ -442,13 +474,13 @@ export function buildPlan(a: ParsedArgs): Plan {
     throw new Refusal("price-unknown", `no list price for model ${a.model} at ${a.resolution}`);
   }
 
-  const total = readLedgerTotal(ledgerReal);
+  const total = readLedgerTotal(ledgerReal, "ai-video"); // the ai-video cap group only
   if (fs.existsSync(lockPath)) throw new Refusal("ledger-busy", `lock file ${lockPath} exists`);
   const estimateMicro = a.seconds * rateMicro;
   if (total + estimateMicro > usdToMicro(a.ceilingUsd)) {
     throw new Refusal(
       "over-ceiling",
-      `spent ${formatUsdMicro(total)} plus estimate ${formatUsdMicro(estimateMicro)} is above ceiling ${a.ceilingUsd}`,
+      `ai-video spent ${formatUsdMicro(total)} plus estimate ${formatUsdMicro(estimateMicro)} is above ceiling ${a.ceilingUsd}`,
     );
   }
 
@@ -462,6 +494,8 @@ export function buildPlan(a: ParsedArgs): Plan {
     images,
     rateMicro,
     estimateMicro,
+    ceilingUsd: a.ceilingUsd,
+    spentMicro: total,
     outReal,
     ledgerReal,
     lockPath,
@@ -589,9 +623,9 @@ async function liveRun(a: ParsedArgs, plan: Plan, deps?: VideoGenDeps): Promise<
     throw new Refusal("ledger-busy", `lock file ${plan.lockPath} exists`);
   }
   try {
-    const total = readLedgerTotal(plan.ledgerReal); // re-read under the lock
+    const total = readLedgerTotal(plan.ledgerReal, "ai-video"); // re-read under the lock
     if (total + plan.estimateMicro > usdToMicro(a.ceilingUsd)) {
-      throw new Refusal("over-ceiling", `spent ${formatUsdMicro(total)} plus estimate ${formatUsdMicro(plan.estimateMicro)} is above ceiling ${a.ceilingUsd}`);
+      throw new Refusal("over-ceiling", `ai-video spent ${formatUsdMicro(total)} plus estimate ${formatUsdMicro(plan.estimateMicro)} is above ceiling ${a.ceilingUsd}`);
     }
     fs.appendFileSync(plan.ledgerReal, `${attemptLine}\n`); // BEFORE the call is sent
   } finally {
@@ -665,6 +699,7 @@ async function liveRun(a: ParsedArgs, plan: Plan, deps?: VideoGenDeps): Promise<
 }
 
 function dryRunOutput(plan: Plan): string {
+  const roomMicro = usdToMicro(plan.ceilingUsd) - plan.spentMicro;
   const lines = [
     "video-gen: dry-run (no request sent, no key read, nothing written)",
     `video-gen: would-send model=${plan.model} seconds=${plan.seconds} resolution=${plan.resolution} aspect=${plan.aspect}`,
@@ -673,6 +708,7 @@ function dryRunOutput(plan: Plan): string {
     plan.promptText,
     ...plan.images.map((i) => `video-gen: image role=${i.role} file=${i.name} bytes=${i.bytes.length} sha256=${i.sha}`),
     `video-gen: estimate usd=${formatUsdMicro(plan.estimateMicro)} model=${plan.model} seconds=${plan.seconds} resolution=${plan.resolution} rate=${formatUsdMicro(plan.rateMicro)} price-read=${PRICE_READ}`,
+    `video-gen: spend group=ai-video spent usd=${formatUsdMicro(plan.spentMicro)} ceiling=${plan.ceilingUsd} room usd=${formatUsdMicroDown(roomMicro)} room-after usd=${formatUsdMicroDown(roomMicro - plan.estimateMicro)}`,
   ];
   return `${lines.join("\n")}\n`;
 }
