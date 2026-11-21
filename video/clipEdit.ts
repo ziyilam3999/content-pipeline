@@ -802,7 +802,7 @@ export function applyEdit(opts: ApplyOpts): string[] {
     }
     for (const c of cuts) fs.renameSync(c.tmpMp4, c.finalMp4);
   } finally {
-    for (const c of cuts) removeFile(c.tmpMp4); // gone after a rename; a leftover only after a refusal
+    for (const c of cuts) removeFile(c.tmpMp4); // gone after a rename; a leftover only after a failure
   }
 
   const lines: string[] = [];

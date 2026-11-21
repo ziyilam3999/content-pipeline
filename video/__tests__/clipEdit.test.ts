@@ -246,6 +246,14 @@ describe("clip:edit", () => {
     fs.writeFileSync(widePath, JSON.stringify(wide));
     expectRefused(apply(f, [], { spec: widePath }), "shape-mismatch", f.outDir);
 
+    // source-missing: the spec names a file that is not in --clips
+    const missing = clone(f.spec);
+    missing.sources[0].file = "gone.mp4";
+    expect(validateSpec(missing)).toEqual([]);
+    const missingPath = path.join(f.root, "missing.json");
+    fs.writeFileSync(missingPath, JSON.stringify(missing));
+    expectRefused(apply(f, [], { spec: missingPath }), "source-missing", f.outDir);
+
     // source-changed: the spec sha256 differs from the file
     const changed = clone(f.spec);
     changed.sources[0].sha256 = SHA;
