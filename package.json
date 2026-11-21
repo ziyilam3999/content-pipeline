@@ -63,6 +63,7 @@
     "eyeball:sheet": "tsx tools/eyeball-sheet.ts",
     "eyeball:ack": "tsx tools/eyeball-ack.ts",
     "clip:edit": "tsx tools/clipEdit.ts",
+    "video:gen": "tsx tools/videogen.ts",
     "capture:demo": "tsx tools/captureDemo.ts",
     "capture:fable": "tsx tools/captureFable.ts",
     "capture:forge": "tsx tools/captureForge.ts",
