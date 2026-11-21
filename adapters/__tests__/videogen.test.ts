@@ -825,6 +825,77 @@ describe("14 ledger-unreadable", () => {
       expect(readBytes(ctx.ledger)).toEqual(before);
     });
   }
+
+  // only a missing file (ENOENT) counts as zero spent; other read errors refuse
+  const maybeIt = process.platform === "win32" ? it.skip : it;
+
+  maybeIt("refuses a ledger file that cannot be read (mode 0o200), zero calls (win32 has no modes)", async () => {
+    const ctx = makeCtx();
+    fs.writeFileSync(ctx.ledger, '{"cost_usd":19.9}\n');
+    fs.chmodSync(ctx.ledger, 0o200);
+    let readable = true;
+    try {
+      fs.readFileSync(ctx.ledger);
+    } catch {
+      readable = false;
+    }
+    if (readable) return; // the process can still read it (e.g. root): nothing to prove
+    try {
+      for (const extra of [[], ["--live"]]) {
+        const fake = new FakeCaller();
+        const r = await run(ctx.args({ ceiling: "1", extra }), fake);
+        expect(r.code).toBe(2);
+        expect(r.err.trim().split(/\s+/)[0]).toBe("ledger-unreadable");
+        expect(fake.calls.length).toBe(0);
+      }
+    } finally {
+      fs.chmodSync(ctx.ledger, 0o600);
+    }
+    expect(readBytes(ctx.ledger)?.toString("utf8")).toBe('{"cost_usd":19.9}\n');
+  });
+
+  it("refuses a folder given as --ledger, zero calls, dry run and live", async () => {
+    const ctx = makeCtx();
+    fs.mkdirSync(ctx.ledger);
+    for (const extra of [[], ["--live"]]) {
+      const fake = new FakeCaller();
+      const r = await run(ctx.args({ extra }), fake);
+      expect(r.code).toBe(2);
+      expect(r.err.trim().split(/\s+/)[0]).toBe("ledger-unreadable");
+      expect(fake.calls.length).toBe(0);
+    }
+    expect(fs.readdirSync(ctx.ledger).length).toBe(0);
+    expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false);
+  });
+
+  it("live: the re-read under the lock refuses the same way and sends no call", async () => {
+    const ctx = makeCtx();
+    fs.writeFileSync(ctx.ledger, '{"cost_usd":0.1}\n');
+    const fake = new FakeCaller();
+    fake.gen = async () => okReply();
+    // the plan-stage reads pass; right after its lock check the ledger turns into a folder
+    let swapped = false;
+    mockFsHooks.exists = (p, answer) => {
+      if (!swapped && p.endsWith(".lock") && !answer) {
+        swapped = true;
+        fs.unlinkSync(ctx.ledger);
+        fs.mkdirSync(ctx.ledger);
+      }
+    };
+    let r: CliResult;
+    try {
+      r = await run(live(ctx), fake);
+    } finally {
+      mockFsHooks.exists = null;
+    }
+    expect(swapped).toBe(true);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("ledger-unreadable");
+    expect(fake.calls.length).toBe(0);
+    expect(fs.statSync(ctx.ledger).isDirectory()).toBe(true);
+    expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false); // lock released
+    expect(fs.readdirSync(ctx.out).length).toBe(0);
+  });
 });
 
 // ── (15) ledger-busy and the lock ─────────────────────────────────────────────────────
@@ -1085,6 +1156,30 @@ describe("21 default caller", () => {
     expect(seen[3].headers["x-goog-api-key"]).toBe(KEY);
   });
 
+  it("a GET redirect to http on the same host is not followed, the key header is not sent there", async () => {
+    const ctx = makeCtx();
+    const seen: SeenFetch[] = [];
+    let r: CliResult | undefined;
+    const plainHttp = "http://generativelanguage.googleapis.com/v1beta/blob/made-up";
+    await withFetch(
+      (u) => {
+        if (u === `${API}/interactions`) return fakeRes(200, { json: reply([uriVideo(FILE_URI)]) });
+        if (u === `${API}/files/made-up-file-1:download?alt=media`) return fakeRes(302, { location: plainHttp });
+        return fakeRes(200, { json: { state: "ACTIVE" } });
+      },
+      seen,
+      async () => {
+        r = await vg.runVideoGen(live(ctx), { keyReader: () => KEY, pollIntervalMs: 1 });
+      },
+    );
+    expect(r?.code).toBe(1);
+    expect(seen.length).toBe(3); // generate, one status, the download that got the 302
+    expect(seen.some((s) => s.url.startsWith("http:"))).toBe(false);
+    expect(JSON.stringify(seen)).not.toContain(plainHttp);
+    expect(ledgerLines(ctx.ledger)[1].status).toBe("http-302");
+    expect(fs.readdirSync(ctx.out).length).toBe(0);
+  });
+
   it("a non-2xx reply through the default caller is an http-<code> outcome, called once", async () => {
     const ctx = makeCtx();
     const seen: SeenFetch[] = [];
@@ -1113,11 +1208,34 @@ describe("19 key containment", () => {
 
 describe("20 default dry run reads no key", () => {
   it("makes 0 execFileSync calls and reads no key env var", async () => {
-    const oldKey = process.env.GEMINI_API_KEY;
-    const oldSvc = process.env.GEMINI_KEYCHAIN_SERVICE;
-    delete process.env.GEMINI_API_KEY;
-    delete process.env.GEMINI_KEYCHAIN_SERVICE;
+    // a getter on process.env is refused by Node, so process.env is swapped for a
+    // counting proxy over the same values; a read of either name is counted
+    const realEnv = process.env;
+    const watched = new Set(["GEMINI_API_KEY", "GEMINI_KEYCHAIN_SERVICE"]);
+    const reads: string[] = [];
+    const note = (k: string | symbol): void => {
+      if (typeof k === "string" && watched.has(k)) reads.push(k);
+    };
+    const counting = new Proxy(realEnv, {
+      get(t, k, rcv) {
+        note(k);
+        return Reflect.get(t, k, rcv);
+      },
+      has(t, k) {
+        note(k);
+        return Reflect.has(t, k);
+      },
+      getOwnPropertyDescriptor(t, k) {
+        note(k);
+        return Reflect.getOwnPropertyDescriptor(t, k);
+      },
+    });
+    const oldKey = realEnv.GEMINI_API_KEY;
+    const oldSvc = realEnv.GEMINI_KEYCHAIN_SERVICE;
+    delete realEnv.GEMINI_API_KEY;
+    delete realEnv.GEMINI_KEYCHAIN_SERVICE;
     mockExecCalls.length = 0;
+    process.env = counting;
     try {
       const ctx = makeCtx(PROMPT_A_TEXT); // the hand dry run's prompt text
       // no deps: the CLI entry's default caller and default key reader
@@ -1128,13 +1246,32 @@ describe("20 default dry run reads no key", () => {
       expect(r.out + r.err).not.toContain("GEMINI");
       expect(r.err).toBe("");
       expect(mockExecCalls.length).toBe(0); // no Keychain lookup in a dry run
+      expect(reads).toEqual([]); // neither key env var was read
       expect(readBytes(ctx.ledger)).toBeNull(); // no ledger file created
     } finally {
+      process.env = realEnv;
       mockExecCalls.length = 0;
-      if (oldKey === undefined) delete process.env.GEMINI_API_KEY;
-      else process.env.GEMINI_API_KEY = oldKey;
-      if (oldSvc === undefined) delete process.env.GEMINI_KEYCHAIN_SERVICE;
-      else process.env.GEMINI_KEYCHAIN_SERVICE = oldSvc;
+      if (oldKey === undefined) delete realEnv.GEMINI_API_KEY;
+      else realEnv.GEMINI_API_KEY = oldKey;
+      if (oldSvc === undefined) delete realEnv.GEMINI_KEYCHAIN_SERVICE;
+      else realEnv.GEMINI_KEYCHAIN_SERVICE = oldSvc;
     }
+  });
+
+  it("the counting proxy sees a read of the key env var (so a read on the dry-run path turns the test red)", () => {
+    const realEnv = process.env;
+    const reads: string[] = [];
+    process.env = new Proxy(realEnv, {
+      get(t, k, rcv) {
+        if (k === "GEMINI_API_KEY") reads.push(String(k));
+        return Reflect.get(t, k, rcv);
+      },
+    });
+    try {
+      void process.env.GEMINI_API_KEY;
+    } finally {
+      process.env = realEnv;
+    }
+    expect(reads).toEqual(["GEMINI_API_KEY"]);
   });
 });

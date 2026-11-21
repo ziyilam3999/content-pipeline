@@ -241,13 +241,15 @@ export function realVideoCaller(): VideoCaller {
 
 // ── ledger (one spend record for paid media; JSON lines) ───────────────────────────
 
-/** Read the ledger and return the total spent in whole micro-USD. Missing file = 0. */
+/** Read the ledger and return the total spent in whole micro-USD. Only a missing file (ENOENT) is 0. */
 export function readLedgerTotal(ledger: string): number {
   let raw: Buffer;
   try {
     raw = fs.readFileSync(ledger);
-  } catch {
-    return 0; // a missing ledger counts as zero spent
+  } catch (e) {
+    // only ENOENT counts as zero spent; any other read error refuses
+    if ((e as { code?: unknown }).code === "ENOENT") return 0;
+    throw new Refusal("ledger-unreadable", `${ledger}: cannot be read`);
   }
   if (raw.length === 0) return 0;
   const text = raw.toString("utf8");
