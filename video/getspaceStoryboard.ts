@@ -543,10 +543,12 @@ function checkAiShots(name: string, raw: string, facts: Facts, fails: string[]):
   let state: "none" | "header" | "rows" | "ended" | "bad" = "none";
   const closeSection = (): void => {
     if (sec >= 0 && state === "none") fails.push(`FAIL ${name}: no table under ${headings[sec + 1]}`);
+    if (sec >= 0 && state === "header") fails.push(`FAIL ${name}: table under ${headings[sec + 1]} has no separator row`);
   };
   lines.forEach((text, i) => {
     const n = i + 1;
     if (text === "") {
+      if (hIdx === 0) fails.push(`FAIL ${name} line ${n}: line 1 is not the first heading (blank line)`);
       if (state === "rows") state = "ended";
       if (state === "header") fails.push(`FAIL ${name} line ${n}: separator row is not the fixed form (blank line)`);
       return;

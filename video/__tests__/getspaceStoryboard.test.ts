@@ -613,6 +613,7 @@ describe("getspace level3 - the list file", () => {
     ["a later clip", "last frame of AI-1", "last frame of AI-3"],
     ["its own id", "last frame of AI-1", "last frame of AI-2"],
     ["free text", "last frame of AI-1", "the old frame"],
+    ["AI-0", "last frame of AI-1", "last frame of AI-0"],
   ])("First frame holding %s", (_n, from, to) => {
     const f = fixture3();
     f[LIST] = rep(f[LIST], from, to);
@@ -681,6 +682,20 @@ describe("getspace level3 - the list file", () => {
     }, "FAIL getspace-ai-shots.md line 5: table header is not the fixed header"],
     ["a third table", (f) => { f[LIST] = `${f[LIST]}\n| Id | Shows | Facts shown |\n|----|-------|-------------|\n| SCR-2 | X | S-02 |\n`; }, "FAIL getspace-ai-shots.md line 16: bar line after the table ends"],
     ["a wrong first line", (f) => { f[LIST] = rep(f[LIST], "# AI shots - getspace-level3", "# AI shots - getspace-level4"); }, "FAIL getspace-ai-shots.md line 1: text outside the fixed lines and the tables"],
+    ["a blank line before line 1", (f) => { f[LIST] = `\n${f[LIST]}`; }, "FAIL getspace-ai-shots.md line 1: line 1 is not the first heading (blank line)"],
+    ["the AI clips header followed by the Screens heading", (f) => {
+      const [head, rest] = (f[LIST] as string).split("|----|-----|-------|-------------|--------|\n");
+      f[LIST] = head + rest.slice(rest.indexOf("## Screens"));
+    }, "FAIL getspace-ai-shots.md: table under ## AI clips has no separator row"],
+    ["the Screens header as the last line", (f) => {
+      f[LIST] = `${(f[LIST] as string).split("|----|-------|-------------|\n")[0]}`;
+    }, "FAIL getspace-ai-shots.md: table under ## Screens has no separator row"],
+    ["an AI clips separator with four dash cells", (f) => {
+      f[LIST] = rep(f[LIST], "|----|-----|-------|-------------|--------|", "|----|-----|-------|-------------|");
+    }, "FAIL getspace-ai-shots.md line 6: separator row is not the fixed form"],
+    ["a Screens separator with two dash cells", (f) => {
+      f[LIST] = rep(f[LIST], "|----|-------|-------------|", "|----|-------|");
+    }, "FAIL getspace-ai-shots.md line 13: separator row is not the fixed form"],
   ];
   test.each(failsClosed)("list file parsing fails closed: %s", (_n, edit, line) => {
     const f = fixture3();
