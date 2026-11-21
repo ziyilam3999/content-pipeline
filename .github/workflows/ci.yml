@@ -45,6 +45,20 @@ jobs:
             npx playwright install chromium chromium-headless-shell
           fi
 
+      # The clip edit tests run the system ffmpeg on a small generated clip. The step
+      # fails when one of the filters those tests use is missing from the package.
+      - name: Install ffmpeg (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -hide_banner -version | head -1
+          for f in gblur overlay pad fps loop setpts trim concat crop noise testsrc2; do
+            ffmpeg -hide_banner -filters | grep -qE "^ [A-Z.|]+ +$f " || { echo "ffmpeg filter missing: $f"; exit 1; }
+          done
+          echo "ffmpeg filters OK"
+
       - name: Typecheck (tsc --noEmit — strict, must exit 0)
         run: npm run typecheck
 
