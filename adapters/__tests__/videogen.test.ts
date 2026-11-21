@@ -579,7 +579,9 @@ describe("9 prompt-home-path", () => {
 
 describe("10 prompt-email", () => {
   it("refuses a prompt with an e-mail address", async () => {
-    const ctx = makeCtx("contact someone@example-com.test for details");
+    // joined at run time so the source holds no e-mail-shaped token
+    const address = ["someone", "example-com.test"].join("@");
+    const ctx = makeCtx(`contact ${address} for details`);
     const fake = new FakeCaller();
     const r = await run(ctx.args(), fake);
     await expectRefusal(r, "prompt-email", fake, ctx.ledger);

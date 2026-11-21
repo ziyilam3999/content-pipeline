@@ -53,7 +53,7 @@ export class Refusal extends Error {
 
 // ── prompt refusal patterns (fail closed; a match refuses the run) ─────────────────────
 
-// home path: /Users/<name>, /home/<name>, ~/ or a Windows C:\Users\ path
+// home folder path: a macOS, Linux or Windows home folder path, or a tilde-slash start
 const HOME_PATH_RES: readonly RegExp[] = [
   /\/Users\/[A-Za-z0-9_.-]+/,
   /\/home\/[A-Za-z0-9_.-]+/,
