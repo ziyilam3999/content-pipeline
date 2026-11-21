@@ -568,6 +568,41 @@ describe("getspace level3 - the list file", () => {
     expect(run(f)).toContain("FAIL getspace-ai-shots.md AI-1 Shows: digit");
   });
 
+  const home = ["/Use", "rs/zz", "qx/notes.txt"].join("");
+
+  test("a home path in the AI clips Shows and Prompt cells", () => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "A full level from above.", `A file at ${home} from above.`);
+    f[LIST] = rep(f[LIST], "Plain test words for the first shot.", `Plain words held at ${home}.`);
+    const out = run(f);
+    expect(out).toContain(A("AI-1 Shows", "home path"));
+    expect(out).toContain(A("AI-1 Prompt", "home path"));
+  });
+
+  test("a service name in the AI clips Shows and Prompt cells", () => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "A full level from above.", `The ${svc} level from above.`);
+    f[LIST] = rep(f[LIST], "Plain test words for the first shot.", `Plain words for the ${svc} shot.`);
+    const out = run(f);
+    expect(out).toContain(A("AI-1 Shows", "service name"));
+    expect(out).toContain(A("AI-1 Prompt", "service name"));
+  });
+
+  test.each([
+    ["a digit", "A made-up 4 match screen.", "digit"],
+    ["a slash", "A/B made-up match screen.", "slash"],
+    ["a backslash", "A\\B made-up match screen.", "backslash"],
+    ["a tilde", "A ~B made-up match screen.", "tilde"],
+    ["an at sign", `A ${["a", "b"].join("@")} match screen.`, "at sign"],
+    ["a web address", `A match screen at ${url}.`, "URL or web or file ending"],
+    ["a service name", `A ${svc} match screen.`, "service name"],
+    ["a home path", `A match screen at ${home}.`, "home path"],
+  ])("the Screens Shows cell holding %s", (_n, text, line) => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "A made-up match screen.", text);
+    expect(run(f)).toContain(A("SCR-1 Shows", line));
+  });
+
   test("a Prompt with everyday, one and ninety passes", () => {
     const f = fixture3();
     f[LIST] = rep(f[LIST], "Plain test words for the first shot.", "Everyday cars, one at a time, ninety degrees.");
