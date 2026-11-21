@@ -5,7 +5,7 @@
 - notification-banner: silence notifications before the take.
 - recorder-overlay: crop the status bar.
 - own-name: blur.
-- other-user-name-rating-photo: blur.
+- other-user-name-rating-photo: blur, except the made-up test name ethan and test plate ABC1234 of the other phone.
 - number-plate-vehicle: blur.
 - phone-number: blur.
 - email: blur.
@@ -31,5 +31,5 @@
 | C-08 | seeker | T-1 | On the rating screen, hold on the feedback box and Submit Rating. | 6 | S-15 | blur: other user details |
 | C-09 | giver | T-1 | On the giver phone, hold on the Give Parking tile, then on the parking details form with its Indoor and Outdoor tabs. | 20 | G-01, G-02, G-04 | blur: own name, amount, number plate, position, spot photos |
 | C-10 | giver | T-1 | On the giver phone, hold on the leave choices of the Confirmation screen, then on the matched screen. | 20 | G-06, G-10 | blur: id, other user details, position, spot photos |
-| C-11 | giver | T-1 | On the giver phone, hold on the message that the seeker is nearby, then on the Swap Successful screen. | 20 | G-11, G-12, G-13 | blur: position, id, other user details, spot photos, spot details |
-| C-12 | seeker | T-2 | On the seeker phone, hold on the Activity list with its statuses, then the Credits screen with its History tab and the borrow sheet, then Rewards, then the Premium page. | 30 | H-01, H-13, H-08, H-04, H-05, H-12, H-02 | blur: other user details, amount, credit balance, penalty per credit, borrow limit, borrow amount, Premium price |
+| C-11 | giver | T-1 | On the giver phone, hold on the Swap Successful screen. | 20 | G-12, G-13 | blur: position, id, other user details, spot photos, spot details |
+| C-12 | seeker | T-2 | On the seeker phone, hold on the Activity list with its statuses, then the Credits screen with its History tab and the borrow sheet, then the Premium page. | 30 | H-01, H-13, H-08, H-04, H-05, H-02 | blur: other user details, amount, credit balance, penalty per credit, borrow limit, borrow amount, Premium price |
