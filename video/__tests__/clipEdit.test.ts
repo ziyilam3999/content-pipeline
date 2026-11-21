@@ -233,6 +233,19 @@ describe("clip:edit", () => {
       expectRefused(apply(f, [], { out: link }), "inside-repo", inner);
     }
 
+    // --clips inside a git work tree (--out is outside, so the --out check is not what refuses)
+    const clipsIn = path.join(work, "c");
+    fs.mkdirSync(clipsIn);
+    expectRefused(apply(f, [], { clips: clipsIn }), "inside-repo", f.outDir);
+
+    // shape-mismatch: the spec source is wider than the probed clip
+    const wide = clone(f.spec);
+    wide.sources[0].width = 342;
+    expect(validateSpec(wide)).toEqual([]);
+    const widePath = path.join(f.root, "wide.json");
+    fs.writeFileSync(widePath, JSON.stringify(wide));
+    expectRefused(apply(f, [], { spec: widePath }), "shape-mismatch", f.outDir);
+
     // source-changed: the spec sha256 differs from the file
     const changed = clone(f.spec);
     changed.sources[0].sha256 = SHA;
@@ -250,6 +263,39 @@ describe("clip:edit", () => {
     const pastPath = path.join(f.root, "past.json");
     fs.writeFileSync(pastPath, JSON.stringify(past));
     expectRefused(apply(f, [], { spec: pastPath }), "piece-past-end", f.outDir);
+
+    // one frame past the end of the 4.000 s source: a piece to 4.03, a still at 4.0
+    const near = clone(f.spec);
+    near.videos[0].beats[1] = { n: 2, clip: "second", dur: 1, pieces: [{ src: "a", from: 3.03, to: 4.03 }] };
+    expect(validateSpec(near)).toEqual([]);
+    const nearPath = path.join(f.root, "near.json");
+    fs.writeFileSync(nearPath, JSON.stringify(near));
+    expectRefused(apply(f, [], { spec: nearPath }), "piece-past-end", f.outDir);
+
+    const still = clone(f.spec);
+    still.videos[0].beats[1] = { n: 2, clip: "second", dur: 0.5, pieces: [{ src: "a", still: 4, sec: 0.5 }] };
+    expect(validateSpec(still)).toEqual([]);
+    const stillPath = path.join(f.root, "still.json");
+    fs.writeFileSync(stillPath, JSON.stringify(still));
+    expectRefused(apply(f, [], { spec: stillPath }), "piece-past-end", f.outDir);
+  });
+
+  ffTest("(14) a refusal after the first video was cut leaves nothing of the run in --out", () => {
+    const f = fixture();
+    const two = clone(f.spec);
+    const second = clone(f.spec).videos[0];
+    second.slug = "z-cut";
+    two.videos.push(second);
+    const twoPath = path.join(f.root, "two-fail.json");
+    fs.writeFileSync(twoPath, JSON.stringify(two));
+    // The means: a folder planted at the temp name of the second video, so ffmpeg cannot open
+    // its output. The first video is cut by then.
+    fs.mkdirSync(path.join(f.outDir, "z-cut.tmp.mp4"));
+    const r = apply(f, [], { spec: twoPath });
+    expect(r.code).toBe(2);
+    expect(r.err.startsWith("ffmpeg-failed:")).toBe(true);
+    expect(r.out).toBe("");
+    expect(fs.readdirSync(f.outDir)).toEqual(["z-cut.tmp.mp4"]); // only the planted folder
   });
 
   test("(12) on a Linux CI run the system ffmpeg is there", () => {

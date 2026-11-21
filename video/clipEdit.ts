@@ -5,7 +5,7 @@
  * private data, and per video the beats and the pieces played. validateSpec refuses a bad
  * spec with reason-coded lines; apply builds ONE system ffmpeg graph per video (an argument
  * array, no shell), writes <slug>.mp4, <slug>.edit.json and a contact sheet under review/.
- * Spec text never reaches the graph or a path unchecked: labels are generated, slugs checked.
+ * Spec text reaches the graph and the paths only after the checks: labels are generated, slugs checked.
  */
 
 import { spawnSync } from "child_process";
@@ -653,7 +653,20 @@ export interface ApplyOpts {
   only?: string;
 }
 
-/** Throws a Refusal before anything is written; returns the stdout lines. */
+/** Remove a plain file only (a folder planted at the name stays). */
+function removeFile(p: string): void {
+  try {
+    if (fs.lstatSync(p).isFile()) fs.unlinkSync(p);
+  } catch {
+    // not there
+  }
+}
+
+/**
+ * Returns the stdout lines. A Refusal before the renames leaves nothing of the run in --out
+ * (the temp files of the run are removed). After the renames, a failed record or sheet write
+ * throws a plain error (exit 1) and the renamed mp4 files stay.
+ */
 export function applyEdit(opts: ApplyOpts): string[] {
   let raw: string;
   let spec: unknown;
@@ -718,15 +731,23 @@ export function applyEdit(opts: ApplyOpts): string[] {
     }
     facts.set(s.id, f);
   }
-  const tol = 1 / sp.output.fps;
+  const fps = sp.output.fps;
   for (const v of videos) {
     const used = new Set<string>();
     for (const b of v.beats) {
       for (const p of b.pieces) {
         used.add(p.src);
         const len = (facts.get(p.src) as SourceFacts).length;
-        const end = "still" in p ? p.still : p.to;
-        if (end > len + tol) throw new Refusal("piece-past-end", `video ${v.slug} beat ${b.n} reaches ${end} s, source ${p.src} ends at ${round6(len)} s`);
+        // Frames the source has at the output fps: round(length * fps). A piece needs its end
+        // frame round(to*fps) within it, a still needs its frame round(still*fps) below it. On a
+        // variable-frame-rate clip the fps filter can count one more or less; the frame count
+        // check after the cut stays.
+        const have = Math.round(len * fps);
+        const past = "still" in p ? Math.round(p.still * fps) >= have : Math.round(p.to * fps) > have;
+        if (past) {
+          const end = "still" in p ? p.still : p.to;
+          throw new Refusal("piece-past-end", `video ${v.slug} beat ${b.n} reaches ${end} s, source ${p.src} ends at ${round6(len)} s`);
+        }
       }
     }
     // concat joins parts of one size: the sources of a video must share it
@@ -737,7 +758,7 @@ export function applyEdit(opts: ApplyOpts): string[] {
     if (sizes.size > 1) throw new Refusal("shape-mismatch", `video ${v.slug} mixes sources of different sizes`);
   }
 
-  // Build every graph first, so a bad graph writes nothing.
+  // Build the graphs before any file is written, so a bad graph leaves nothing behind.
   const built = videos.map((v) => {
     const g = buildGraph(sp, v);
     const bad = filterNames(g.graph).filter((n) => !(ALLOWED_FILTERS as readonly string[]).includes(n));
@@ -745,42 +766,49 @@ export function applyEdit(opts: ApplyOpts): string[] {
     return { v, g };
   });
 
-  const lines: string[] = [];
-  for (const { v, g } of built) {
-    const finalMp4 = path.join(realOut, `${v.slug}.mp4`);
-    const tmpMp4 = path.join(realOut, `${v.slug}.tmp.mp4`);
-    const args = ["-y", "-hide_banner", "-loglevel", "error"];
-    for (const id of g.inputs) args.push("-i", paths.get(id) as string);
-    args.push(
-      "-filter_complex",
-      g.graph,
-      "-map",
-      `[${g.outLabel}]`,
-      "-map_metadata",
-      "-1",
-      "-an",
-      "-c:v",
-      "libx264",
-      "-pix_fmt",
-      "yuv420p",
-      "-movflags",
-      "+faststart",
-      tmpMp4,
-    );
-    const res = spawnSync(ffmpeg, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-    if (res.status !== 0) {
-      fs.rmSync(tmpMp4, { force: true });
-      throw new Refusal("ffmpeg-failed", `ffmpeg exited ${res.status} for ${v.slug}: ${(res.stderr ?? "").slice(-300).replace(/\s+/g, " ")}`);
+  // Step 1: cut and check all videos to temp names. Step 2: rename them. Step 3: records and sheets.
+  const cuts: { v: VideoSpec;frames: number; tmpMp4: string; finalMp4: string }[] = [];
+  try {
+    for (const { v, g } of built) {
+      const finalMp4 = path.join(realOut, `${v.slug}.mp4`);
+      const tmpMp4 = path.join(realOut, `${v.slug}.tmp.mp4`);
+      cuts.push({ v, frames: g.frames, tmpMp4, finalMp4 });
+      const args = ["-y", "-hide_banner", "-loglevel", "error"];
+      for (const id of g.inputs) args.push("-i", paths.get(id) as string);
+      args.push(
+        "-filter_complex",
+        g.graph,
+        "-map",
+        `[${g.outLabel}]`,
+        "-map_metadata",
+        "-1",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        tmpMp4,
+      );
+      const res = spawnSync(ffmpeg, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+      if (res.status !== 0) {
+        throw new Refusal("ffmpeg-failed", `ffmpeg exited ${res.status} for ${v.slug}: ${(res.stderr ?? "").slice(-300).replace(/\s+/g, " ")}`);
+      }
+      const counted = countFrames(probe, tmpMp4);
+      if (counted !== g.frames) {
+        throw new Refusal("ffmpeg-failed", `video ${v.slug} has ${counted} frames, expected ${g.frames}`);
+      }
     }
-    const counted = countFrames(probe, tmpMp4);
-    if (counted !== g.frames) {
-      fs.rmSync(tmpMp4, { force: true });
-      throw new Refusal("ffmpeg-failed", `video ${v.slug} has ${counted} frames, expected ${g.frames}`);
-    }
-    fs.renameSync(tmpMp4, finalMp4);
-    writeAtomic(path.join(realOut, `${v.slug}.edit.json`), JSON.stringify(buildManifest(sp, v, specSha), null, 2) + "\n");
+    for (const c of cuts) fs.renameSync(c.tmpMp4, c.finalMp4);
+  } finally {
+    for (const c of cuts) removeFile(c.tmpMp4); // gone after a rename; a leftover only after a refusal
+  }
 
-    const sec = g.frames / sp.output.fps;
+  const lines: string[] = [];
+  for (const { v, frames, finalMp4 } of cuts) {
+    writeAtomic(path.join(realOut, `${v.slug}.edit.json`), JSON.stringify(buildManifest(sp, v, specSha), null, 2) + "\n");
+    const sec = frames / sp.output.fps;
     const beats: ContactSheetBeat[] = [];
     for (let i = 0; i < Math.ceil(sec - 1e-9); i++) {
       beats.push({ label: `${i}s`, fromSec: i, durationSec: Math.min(1, sec - i) });
@@ -792,7 +820,7 @@ export function applyEdit(opts: ApplyOpts): string[] {
     } finally {
       console.log = log;
     }
-    lines.push(`clip-edit: wrote ${v.slug} frames=${g.frames} sec=${round6(sec)}`);
+    lines.push(`clip-edit: wrote ${v.slug} frames=${frames} sec=${round6(sec)}`);
   }
   return lines;
 }
