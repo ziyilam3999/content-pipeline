@@ -1337,6 +1337,18 @@ describe("23 dry-run spend line", () => {
     expect(fake.calls.length).toBe(0);
   });
 
+  it("a paid-media line is in neither room figure: the whole spend line", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [...THREE_PAIRS, { service: "elevenlabs", cost_usd: 5 }]);
+    const before = readBytes(ctx.ledger);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ ceiling: "25" }), fake);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("video-gen: spend group=ai-video spent usd=1.260 ceiling=25 room usd=23.740 room-after usd=23.320");
+    expect(readBytes(ctx.ledger)).toEqual(before);
+    expect(fake.calls.length).toBe(0);
+  });
+
   it("rounds spent up and the rooms down: 1.2601 spent of 25", async () => {
     const ctx = makeCtx();
     writeLedger(ctx.ledger, [aiAtt(1.2601)]);
