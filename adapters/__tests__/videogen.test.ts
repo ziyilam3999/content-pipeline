@@ -198,7 +198,7 @@ class FakeCaller implements VideoCaller {
   downloadCount = 0;
   gen: () => Promise<unknown> = async () => reply([]);
   states: unknown[] = []; // file-status replies, default ACTIVE
-  stuck = false; // every file-status reply is PROCESSING
+  stuck = false; // file-status replies stay PROCESSING
   dl = Buffer.from("made-up-download-bytes");
 
   async generate(call: NetCall): Promise<unknown> {
@@ -527,7 +527,7 @@ describe("5 no-video and failed replies", () => {
     capture("5-no-video", r, fake, ctx.ledger);
   });
 
-  it("a reply with no model_output step at all is no-video", async () => {
+  it("a reply with no model_output step is no-video", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
     fake.gen = async () => ({ steps: [], id: "made-up-interaction-4", status: "completed", model: REPLY_MODEL });
@@ -1032,7 +1032,7 @@ describe("21 default caller", () => {
     const saved = fs.readdirSync(ctx.out);
     expect(saved.length).toBe(1);
     expect(sha(fs.readFileSync(path.join(ctx.out, saved[0])))).toBe(sha(dlBytes));
-    expect(fetchCount).toBe(0); // the fence itself was never hit
+    expect(fetchCount).toBe(0); // the fence itself was not hit
     captures.push({ label: "21-default", text: [r?.out, r?.err, readBytes(ctx.ledger)?.toString("utf8"), seen.map((s) => s.url).join("\n")].join("\n") });
   });
 
