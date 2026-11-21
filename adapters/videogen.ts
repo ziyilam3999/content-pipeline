@@ -2,14 +2,22 @@
  * Row A48 — paid AI video generation tool (Gemini Omni), dry run by default, with one
  * spend ledger and a ceiling. Thin CLI: tools/videogen.ts (npm run video:gen).
  *
- * Request shape read 2026-11-21 from the docs page the plan record names,
- * https://aistudio.google.com/docs/omni.md (model page
- * https://aistudio.google.com/docs/models/gemini-omni-flash.md): one synchronous POST
- * .../models/<model>:generateVideo with header x-goog-api-key; the reply holds the
- * video inline (base64) or a file uri (the page advises uri delivery above 4 MB);
- * a uri file is polled with a GET until ready/failed, then downloaded with ?alt=media.
- * The shape is UNPROVEN until the paid hand run after the merge; a wrong endpoint or
- * field there is a follow-up ticket, not a silent fallback here.
+ * Call shape built from four pages read 2026-11-21 (plain public GET, no key):
+ *   https://aistudio.google.com/docs/omni.md (guide),
+ *   https://aistudio.google.com/api-reference/interactions-api/create-interaction.md (reference),
+ *   https://aistudio.google.com/docs/background-execution.md (status values),
+ *   https://aistudio.google.com/llms.txt (index; names the Interactions API as the default).
+ * What they show: POST /v1beta/interactions with the model id in the body, "input" as a
+ * list (image items first, then a text item), "response_format" holding type video,
+ * duration like "6s", resolution, aspect_ratio and delivery "uri"; the key in header
+ * x-goog-api-key. The reply holds the video under steps[model_output].content[video] as
+ * base64 "data" or a "uri"; top-level id, model, status, errors[]. A uri file is polled with
+ * GET /v1beta/files/<id> (field state: ACTIVE or FAILED), then fetched with
+ * GET /v1beta/files/<id>:download?alt=media.
+ * What the pages do not give: an image size or request size limit, whether 6 s at 720p
+ * fits inline, the generation time, the shape of a blocked reply (the code records the raw
+ * status and errors), usage numbers for a video reply, and whether delivery defaults to
+ * inline. Nothing here is proven: the first paid hand run after the merge proves the shape.
  *
  * Money rules: rates are whole micro-USD per second (list prices read 2026-11-21);
  * one attempt line is appended to the ledger BEFORE the call, under an O_EXCL lock;
@@ -37,7 +45,7 @@ export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export const DEFAULT_TIMEOUT_SECONDS = 900;
 
-/** Standing cap on --ceiling-usd for all paid media together. */
+/** Standing cap on --ceiling-usd for paid media together. */
 export const CEILING_CAP_USD = 20;
 
 const SERVICE = "gemini-omni";
@@ -88,17 +96,28 @@ export interface NetCall {
   timeoutMs: number;
 }
 
+export interface ReplyError {
+  code: string;
+  message: string;
+}
+
+interface ReplyMeta {
+  interactionId?: string;
+  model?: string;
+  replyStatus?: string;
+}
+
+/** What the tool reads out of a create reply. */
 export type GenerateResult =
-  | { kind: "video"; bytes: Buffer; mimeType: string; interactionId?: string; model?: string }
-  | { kind: "uri"; uri: string; interactionId?: string; model?: string }
-  | { kind: "blocked"; reason?: string; interactionId?: string; model?: string }
-  | { kind: "no-video"; interactionId?: string; model?: string };
+  | ({ kind: "video"; bytes: Buffer; mimeType: string } & ReplyMeta)
+  | ({ kind: "uri"; uri: string } & ReplyMeta)
+  | ({ kind: "failed"; errors: ReplyError[] } & ReplyMeta)
+  | ({ kind: "no-video" } & ReplyMeta);
 
-export type FileState = "processing" | "ready" | "failed";
-
+/** The caller hands back parsed JSON for the two JSON steps and raw bytes for the download. */
 export interface VideoCaller {
-  generate(call: NetCall): Promise<GenerateResult>;
-  fileStatus(call: NetCall): Promise<FileState>;
+  generate(call: NetCall): Promise<unknown>;
+  fileStatus(call: NetCall): Promise<unknown>;
   download(call: NetCall): Promise<Buffer>;
 }
 
@@ -123,16 +142,40 @@ function fetchNow(): typeof fetch {
   return f;
 }
 
+const API_HOST = "generativelanguage.googleapis.com";
+const API_BASE = `https://${API_HOST}/v1beta`;
+const MAX_REDIRECTS = 5;
+const KEY_HEADER = "x-goog-api-key";
+
+/** The key header goes to the API host only; a redirect to another host gets none. */
+function headersFor(url: string, headers: Record<string, string>): Record<string, string> {
+  if (new URL(url).host === API_HOST) return headers;
+  const rest: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) if (k.toLowerCase() !== KEY_HEADER) rest[k] = v;
+  return rest;
+}
+
+/** One request; a GET redirect is followed by hand so the key header can be held back. */
 async function send(call: NetCall): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), call.timeoutMs);
   try {
-    return await fetchNow()(call.url, {
-      method: call.method,
-      headers: call.headers,
-      body: call.body,
-      signal: controller.signal,
-    });
+    let url = call.url;
+    for (let hop = 0; ; hop++) {
+      const res = await fetchNow()(url, {
+        method: call.method,
+        headers: headersFor(url, call.headers),
+        body: call.body,
+        redirect: "manual",
+        signal: controller.signal,
+      });
+      const loc = res.headers.get("location");
+      const isRedirect = res.status >= 300 && res.status < 400;
+      if (!isRedirect || !loc || call.method !== "GET" || hop >= MAX_REDIRECTS) return res;
+      const next = new URL(loc, url);
+      if (next.protocol !== "https:") return res;
+      url = next.toString();
+    }
   } catch (e) {
     if (controller.signal.aborted) throw new CallTimeout(call.url.split("?")[0]);
     throw e;
@@ -141,56 +184,52 @@ async function send(call: NetCall): Promise<Response> {
   }
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-function parseGenerateReply(json: any): GenerateResult {
-  const interactionId = json?.interactionId ?? json?.responseId ?? json?.metadata?.interactionId;
-  const model = json?.modelVersion ?? json?.model;
-  const cand = json?.candidates?.[0];
-  for (const p of cand?.content?.parts ?? []) {
-    const inline = p?.inlineData ?? p?.inline_data;
-    if (inline?.data) {
-      return {
-        kind: "video",
-        bytes: Buffer.from(String(inline.data), "base64"),
-        mimeType: String(inline.mimeType ?? inline.mime_type ?? "video/mp4"),
-        interactionId: interactionId ? String(interactionId) : undefined,
-        model: model ? String(model) : undefined,
-      };
-    }
-    const uri = p?.fileData?.fileUri ?? p?.fileData?.uri ?? p?.file_data?.file_uri ?? p?.fileData?.fileUri;
-    if (uri) {
-      return {
-        kind: "uri",
-        uri: String(uri),
-        interactionId: interactionId ? String(interactionId) : undefined,
-        model: model ? String(model) : undefined,
-      };
+type Json = Record<string, unknown>;
+const asObj = (v: unknown): Json => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Json) : {});
+const asStr = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+
+/** Read a create reply: video at steps[model_output].content[video], plus id, model, status, errors. */
+export function parseInteraction(raw: unknown): GenerateResult {
+  const json = asObj(raw);
+  const meta: ReplyMeta = { interactionId: asStr(json.id), model: asStr(json.model), replyStatus: asStr(json.status) };
+  const errors: ReplyError[] = (Array.isArray(json.errors) ? json.errors : []).map((e) => ({
+    code: String(asObj(e).code ?? ""),
+    message: String(asObj(e).message ?? ""),
+  }));
+  // a status other than completed, or any errors item, is a failed attempt (raw values recorded)
+  if (errors.length > 0 || meta.replyStatus !== "completed") return { kind: "failed", errors, ...meta };
+  for (const step of Array.isArray(json.steps) ? json.steps : []) {
+    if (asObj(step).type !== "model_output") continue;
+    for (const item of Array.isArray(asObj(step).content) ? (asObj(step).content as unknown[]) : []) {
+      const v = asObj(item);
+      if (v.type !== "video") continue;
+      const data = asStr(v.data);
+      if (data) return { kind: "video", bytes: Buffer.from(data, "base64"), mimeType: asStr(v.mime_type) ?? "video/mp4", ...meta };
+      const uri = asStr(v.uri);
+      if (uri) return { kind: "uri", uri, ...meta };
     }
   }
-  const block = json?.blockReason ?? cand?.blockReason;
-  if (block) return { kind: "blocked", reason: String(block) };
-  const fin = String(cand?.finishReason ?? "");
-  if (/BLOCK|SAFETY|PROHIBIT/i.test(fin)) return { kind: "blocked", reason: fin };
-  return { kind: "no-video" };
+  return { kind: "no-video", ...meta };
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/** The file id is the path part between "files/" and ":download" (a bare "files/<id>" works too). */
+export function fileIdFromUri(uri: string): string | null {
+  const m = /files\/([^/:?#]+)/.exec(uri.split(/[?#]/)[0]);
+  return m ? m[1] : null;
+}
 
 /** The real caller; the tool hands it each URL and header, the key sits in a header. */
 export function realVideoCaller(): VideoCaller {
   return {
-    async generate(call: NetCall): Promise<GenerateResult> {
+    async generate(call: NetCall): Promise<unknown> {
       const res = await send(call);
       if (!res.ok) throw new HttpError(res.status);
-      return parseGenerateReply(await res.json());
+      return res.json();
     },
-    async fileStatus(call: NetCall): Promise<FileState> {
+    async fileStatus(call: NetCall): Promise<unknown> {
       const res = await send(call);
       if (!res.ok) throw new HttpError(res.status);
-      const json = (await res.json()) as { state?: unknown; status?: unknown; done?: unknown };
-      const st = String(json.state ?? json.status ?? "").toUpperCase();
-      if (st.includes("FAIL")) return "failed";
-      if (/ACTIVE|READY|DONE|OK/.test(st) || json.done === true) return "ready";
-      return "processing";
+      return res.json();
     },
     async download(call: NetCall): Promise<Buffer> {
       const res = await send(call);
@@ -200,7 +239,7 @@ export function realVideoCaller(): VideoCaller {
   };
 }
 
-// ── ledger (one spend record for all paid media; JSON lines) ───────────────────────────
+// ── ledger (one spend record for paid media; JSON lines) ───────────────────────────
 
 /** Read the ledger and return the total spent in whole micro-USD. Missing file = 0. */
 export function readLedgerTotal(ledger: string): number {
@@ -373,7 +412,7 @@ function readImage(file: string, role: string): ImageIn {
   return { role, name: path.basename(file), bytes, sha: sha256(bytes), mimeType: png ? "image/png" : "image/jpeg" };
 }
 
-/** Build the full plan: reads the inputs and runs all refusal checks except key-missing. */
+/** Build the full plan: reads the inputs and runs the refusal checks except key-missing. */
 export function buildPlan(a: ParsedArgs): Plan {
   const outReal = checkFolder(a.out, "out folder");
   const ledgerFolder = checkFolder(path.dirname(a.ledger), "ledger folder");
@@ -454,15 +493,24 @@ function scrub(text: string, key: string): string {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Create body: images first (first frame, then refs), then the text; no generation_config. */
 function buildRequestBody(plan: Plan): string {
-  const parts: Record<string, unknown>[] = [{ text: plan.promptText }];
-  for (const img of plan.images) {
-    parts.push({ inlineData: { mimeType: img.mimeType, data: img.bytes.toString("base64") } });
-  }
+  const input: Record<string, unknown>[] = plan.images.map((img) => ({
+    type: "image",
+    data: img.bytes.toString("base64"),
+    mime_type: img.mimeType,
+  }));
+  input.push({ type: "text", text: plan.promptText });
   return JSON.stringify({
-    contents: [{ parts }],
-    // uri delivery asked for: the docs page advises it above 4 MB (shape unproven)
-    generationConfig: { seconds: plan.seconds, resolution: plan.resolution, aspectRatio: plan.aspect, responseMode: "uri" },
+    model: plan.model,
+    input,
+    response_format: {
+      type: "video",
+      duration: `${plan.seconds}s`,
+      resolution: plan.resolution,
+      aspect_ratio: plan.aspect,
+      delivery: "uri",
+    },
   });
 }
 
@@ -471,26 +519,32 @@ interface Outcome {
   file: string | null;
   interactionId: string | null;
   model: string | null;
+  replyStatus: string | null;
+  errors: ReplyError[] | null;
   detail?: string;
 }
 
+/** Poll GET files/<id> until state is ACTIVE (FAILED stops; other values keep polling), then download. */
 async function pollAndDownload(
   caller: VideoCaller,
   uri: string,
-  headers: Record<string, string>,
+  key: string,
   timeoutMs: number,
   intervalMs: number,
 ): Promise<Buffer> {
+  const fileId = fileIdFromUri(uri);
+  if (!fileId) throw new Error("the reply uri holds no file id");
+  const headers = { [KEY_HEADER]: key };
+  const base = `${API_BASE}/files/${encodeURIComponent(fileId)}`;
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const st = await caller.fileStatus({ url: uri, method: "GET", headers, timeoutMs });
-    if (st === "failed") throw new Error(`file status failed for ${uri.split("?")[0]}`);
-    if (st === "ready") break;
+    const state = asObj(await caller.fileStatus({ url: base, method: "GET", headers, timeoutMs })).state;
+    if (state === "FAILED") throw new Error("file state FAILED");
+    if (state === "ACTIVE") break;
     if (Date.now() + intervalMs > deadline) throw new CallTimeout("file status");
     await wait(intervalMs);
   }
-  const dl = uri.includes("?") ? `${uri}&alt=media` : `${uri}?alt=media`;
-  return caller.download({ url: dl, method: "GET", headers, timeoutMs });
+  return caller.download({ url: `${base}:download?alt=media`, method: "GET", headers, timeoutMs });
 }
 
 async function liveRun(a: ParsedArgs, plan: Plan, deps?: VideoGenDeps): Promise<CliResult> {
@@ -543,37 +597,45 @@ async function liveRun(a: ParsedArgs, plan: Plan, deps?: VideoGenDeps): Promise<
   }
 
   const caller = deps?.caller ?? realVideoCaller();
-  const headers = { "x-goog-api-key": key, "content-type": "application/json" };
-  const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(plan.model)}:generateVideo`;
   const timeoutMs = a.timeoutSeconds * 1000;
 
   let o: Outcome;
   try {
-    const reply = await caller.generate({
-      url: genUrl,
+    const raw = await caller.generate({
+      url: `${API_BASE}/interactions`,
       method: "POST",
-      headers,
+      headers: { [KEY_HEADER]: key, "content-type": "application/json" },
       body: buildRequestBody(plan),
       timeoutMs,
     });
-    const interactionId = reply.interactionId ?? null;
-    const replyModel = reply.model ?? null;
+    const reply = parseInteraction(raw);
+    const base = {
+      interactionId: reply.interactionId ?? null,
+      model: reply.model ?? null,
+      replyStatus: reply.replyStatus ?? null,
+      errors: null,
+    };
     if (reply.kind === "video" || reply.kind === "uri") {
       const bytes =
-        reply.kind === "video" ? reply.bytes : await pollAndDownload(caller, reply.uri, headers, timeoutMs, deps?.pollIntervalMs ?? 5000);
+        reply.kind === "video" ? reply.bytes : await pollAndDownload(caller, reply.uri, key, timeoutMs, deps?.pollIntervalMs ?? 5000);
       const fileName = `clip-${attemptId}.mp4`;
       fs.writeFileSync(path.join(plan.outReal, fileName), bytes); // the returned bytes, as received
-      o = { status: "ok", file: fileName, interactionId, model: replyModel };
-    } else if (reply.kind === "blocked") {
-      o = { status: "blocked", file: null, interactionId, model: replyModel, detail: reply.reason };
+      o = { ...base, status: "ok", file: fileName };
+    } else if (reply.kind === "failed") {
+      // the blocked-reply shape is not in the docs: the raw status and errors are recorded
+      const errors = reply.errors.map((e) => ({ code: e.code.slice(0, 200), message: e.message.slice(0, 200) }));
+      const what = errors.map((e) => `${e.code}: ${e.message}`).join("; ");
+      o = { ...base, status: "error", file: null, errors, detail: `reply status=${reply.replyStatus ?? "none"} ${what}` };
     } else {
-      o = { status: "no-video", file: null, interactionId, model: replyModel };
+      o = { ...base, status: "no-video", file: null };
     }
   } catch (e) {
     const status = e instanceof CallTimeout ? "timeout" : e instanceof HttpError ? `http-${e.status}` : "error";
-    o = { status, file: null, interactionId: null, model: null, detail: msg(e) };
+    o = { status, file: null, interactionId: null, model: null, replyStatus: null, errors: null, detail: msg(e) };
   }
 
+  const detail = o.detail ? scrub(o.detail.replace(/\s+/g, " ").slice(0, 200), key) : undefined;
+  const errors = o.errors?.map((e) => ({ code: scrub(e.code, key), message: scrub(e.message, key) })) ?? null;
   fs.appendFileSync(
     plan.ledgerReal,
     `${JSON.stringify({
@@ -583,9 +645,12 @@ async function liveRun(a: ParsedArgs, plan: Plan, deps?: VideoGenDeps): Promise<
       service: SERVICE,
       cost_usd: 0,
       status: o.status,
-      interaction_id: o.interactionId,
-      model: o.model,
+      interaction_id: o.interactionId === null ? null : scrub(o.interactionId, key),
+      model: o.model === null ? null : scrub(o.model, key),
       file: o.file,
+      reply_status: o.replyStatus === null ? null : scrub(o.replyStatus, key),
+      errors,
+      detail: detail ?? null,
     })}\n`,
   );
 
@@ -593,8 +658,7 @@ async function liveRun(a: ParsedArgs, plan: Plan, deps?: VideoGenDeps): Promise<
     const out = scrub(`video-gen: wrote ${o.file} usd=${formatUsdMicro(plan.estimateMicro)} attempt=${attemptId}\n`, key);
     return { code: 0, out, err: "" };
   }
-  const detail = o.detail ? ` ${o.detail.replace(/\s+/g, " ").slice(0, 200)}` : "";
-  const err = scrub(`video-gen: ${o.status} attempt=${attemptId}${detail}\n`, key);
+  const err = scrub(`video-gen: ${o.status} attempt=${attemptId}${detail ? ` ${detail}` : ""}\n`, key);
   return { code: 1, out: "", err };
 }
 

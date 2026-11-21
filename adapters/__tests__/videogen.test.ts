@@ -10,7 +10,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-import type { CliResult, FileState, GenerateResult, NetCall, VideoCaller, VideoGenDeps } from "../videogen";
+import type { CliResult, NetCall, VideoCaller, VideoGenDeps } from "../videogen";
 
 type VG = typeof import("../videogen");
 
@@ -35,6 +35,21 @@ jest.mock("child_process", () => {
     execFileSync: (file: string, args: readonly string[]): string => {
       mockExecCalls.push({ file, args: [...args] });
       return "chain-key-not-real\n";
+    },
+  };
+});
+
+// test-only seam for the lock race: fs.existsSync tells a hook what it answered (the hook
+// can make the lock file appear after the plan-stage check); null means a plain pass-through
+const mockFsHooks: { exists: ((p: string, answer: boolean) => void) | null } = { exists: null };
+jest.mock("fs", () => {
+  const actual = jest.requireActual("fs") as typeof import("fs");
+  return {
+    ...actual,
+    existsSync: (p: import("fs").PathLike): boolean => {
+      const answer = actual.existsSync(p);
+      mockFsHooks.exists?.(String(p), answer);
+      return answer;
     },
   };
 });
@@ -155,24 +170,47 @@ function ledgerLines(p: string): Record<string, unknown>[] {
     .map((l) => JSON.parse(l) as Record<string, unknown>);
 }
 
+// reply shapes as the docs show them (steps[model_output].content[video], id, status, model)
+const REPLY_MODEL = "gemini-omni-1.2-flash-reply";
+function reply(items: unknown[], over: Record<string, unknown> = {}): unknown {
+  return {
+    steps: [
+      { type: "user_input", content: [{ type: "text", text: "made-up" }] },
+      { type: "thought", content: [{ type: "thought", text: "made-up" }] },
+      { type: "model_output", content: items },
+    ],
+    id: "made-up-interaction-1",
+    status: "completed",
+    model: REPLY_MODEL,
+    object: "interaction",
+    ...over,
+  };
+}
+const inlineVideo = (bytes: Buffer): unknown => ({ type: "video", mime_type: "video/mp4", data: bytes.toString("base64") });
+const uriVideo = (uri: string): unknown => ({ type: "video", mime_type: "video/mp4", uri });
+const okReply = (bytes = Buffer.from("made-up-bytes")): unknown => reply([inlineVideo(bytes)]);
+const FILE_URI = "https://generativelanguage.googleapis.com/v1beta/files/made-up-file-1:download?alt=media";
+
 class FakeCaller implements VideoCaller {
   calls: NetCall[] = [];
   generateCount = 0;
   statusCount = 0;
   downloadCount = 0;
-  gen: () => Promise<GenerateResult> = async () => ({ kind: "no-video" });
-  states: FileState[] = [];
+  gen: () => Promise<unknown> = async () => reply([]);
+  states: unknown[] = []; // file-status replies, default ACTIVE
+  stuck = false; // every file-status reply is PROCESSING
   dl = Buffer.from("made-up-download-bytes");
 
-  async generate(call: NetCall): Promise<GenerateResult> {
+  async generate(call: NetCall): Promise<unknown> {
     this.calls.push(call);
     this.generateCount++;
     return this.gen();
   }
-  async fileStatus(call: NetCall): Promise<FileState> {
+  async fileStatus(call: NetCall): Promise<unknown> {
     this.calls.push(call);
     this.statusCount++;
-    return this.states.shift() ?? "ready";
+    if (this.stuck) return { state: "PROCESSING" };
+    return this.states.length > 0 ? this.states.shift() : { state: "ACTIVE" };
   }
   async download(call: NetCall): Promise<Buffer> {
     this.calls.push(call);
@@ -266,25 +304,28 @@ describe("2a live, inline reply", () => {
     const ff = writePng(ctx.tmp);
     const bytes = Buffer.from("made-up-mp4-bytes-inline");
     const fake = new FakeCaller();
-    fake.gen = async () => ({
-      kind: "video",
-      bytes,
-      mimeType: "video/mp4",
-      interactionId: "made-up-interaction-1",
-      model: "gemini-omni-1.2-flash-reply",
-    });
+    fake.gen = async () => okReply(bytes);
     const keyReader = jest.fn(() => KEY);
     const r = await run(live(ctx, { firstFrame: ff }), fake, () => keyReader());
     expect(keyReader).toHaveBeenCalledTimes(1);
     expect(r.code).toBe(0);
 
-    // key in a header only, prompt text in the body
+    // the docs' endpoint and body; key in a header only
     expect(fake.calls.length).toBe(1);
+    expect(fake.calls[0].method).toBe("POST");
+    expect(fake.calls[0].url).toBe("https://generativelanguage.googleapis.com/v1beta/interactions");
     expect(fake.calls[0].headers["x-goog-api-key"]).toBe(KEY);
-    expect(fake.calls[0].url).toContain("gemini-omni-1.2-flash");
-    expect(fake.calls[0].url).not.toContain(KEY);
-    const body = JSON.parse(fake.calls[0].body as string) as { contents: { parts: { text?: string }[] }[] };
-    expect(body.contents[0].parts[0].text).toBe(SAFE_PROMPT);
+    const body = JSON.parse(fake.calls[0].body as string) as Record<string, unknown>;
+    expect(body).toEqual({
+      model: "gemini-omni-1.2-flash",
+      input: [
+        { type: "image", data: PNG_BYTES.toString("base64"), mime_type: "image/png" },
+        { type: "text", text: SAFE_PROMPT },
+      ],
+      response_format: { type: "video", duration: "6s", resolution: "720p", aspect_ratio: "9:16", delivery: "uri" },
+    });
+    expect(body).not.toHaveProperty("generationConfig");
+    expect(body).not.toHaveProperty("generation_config");
 
     // saved file = returned bytes, byte for byte
     const saved = fs.readdirSync(ctx.out);
@@ -319,24 +360,40 @@ describe("2a live, inline reply", () => {
     expect(outcome.cost_usd).toBe(0);
     expect(outcome.status).toBe("ok");
     expect(outcome.interaction_id).toBe("made-up-interaction-1");
-    expect(outcome.model).toBe("gemini-omni-1.2-flash-reply");
+    expect(outcome.model).toBe(REPLY_MODEL);
+    expect(outcome.reply_status).toBe("completed");
     expect(outcome.file).toBe(saved[0]);
     capture("2a", r, fake, ctx.ledger);
+  });
+
+  it("sends a plain text item when there is no image", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.gen = async () => okReply();
+    await run(live(ctx), fake);
+    const body = JSON.parse(fake.calls[0].body as string) as { input: unknown[] };
+    expect(body.input).toEqual([{ type: "text", text: SAFE_PROMPT }]);
   });
 });
 
 describe("2b live, uri reply", () => {
-  it("polls the file until ready, downloads and saves the download bytes", async () => {
+  it("polls files/<id> until ACTIVE, downloads and saves the download bytes", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
-    fake.gen = async () => ({ kind: "uri", uri: "file:made-up-file-uri-1", interactionId: "made-up-interaction-2", model: "gemini-omni-1.2-flash" });
-    fake.states = ["processing", "ready"];
+    fake.gen = async () => reply([uriVideo(FILE_URI)], { id: "made-up-interaction-2" });
+    fake.states = [{ state: "PROCESSING" }, { state: "ACTIVE" }];
     fake.dl = Buffer.from("made-up-download-bytes-xyz");
     const r = await run(live(ctx), fake);
     expect(r.code).toBe(0);
     expect(fake.statusCount).toBe(2); // a not-ready then a ready status
     expect(fake.downloadCount).toBe(1);
-    expect(fake.calls[0].headers["x-goog-api-key"]).toBe(KEY);
+    const base = "https://generativelanguage.googleapis.com/v1beta/files/made-up-file-1";
+    expect(fake.calls.slice(1).map((c) => [c.method, c.url])).toEqual([
+      ["GET", base],
+      ["GET", base],
+      ["GET", `${base}:download?alt=media`], // one alt=media
+    ]);
+    for (const c of fake.calls) expect(c.headers["x-goog-api-key"]).toBe(KEY); // header on each step
     const saved = fs.readdirSync(ctx.out);
     expect(saved.length).toBe(1);
     expect(sha(fs.readFileSync(path.join(ctx.out, saved[0])))).toBe(sha(fake.dl));
@@ -345,15 +402,52 @@ describe("2b live, uri reply", () => {
     expect(lines[0].kind).toBe("attempt");
     expect(lines[1].status).toBe("ok");
     expect(lines[1].interaction_id).toBe("made-up-interaction-2");
+    expect(lines[1].model).toBe(REPLY_MODEL);
     expect(lines[1].file).toBe(saved[0]);
     capture("2b", r, fake, ctx.ledger);
+  });
+
+  it("accepts a bare files/<id> uri", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.gen = async () => reply([uriVideo("files/made-up-file-2")]);
+    const r = await run(live(ctx), fake);
+    expect(r.code).toBe(0);
+    expect(fake.calls[1].url).toBe("https://generativelanguage.googleapis.com/v1beta/files/made-up-file-2");
+  });
+
+  it("a FAILED file state is a failed attempt, nothing is downloaded", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.gen = async () => reply([uriVideo(FILE_URI)]);
+    fake.states = [{ state: "FAILED" }];
+    const r = await run(live(ctx), fake);
+    expect(r.code).toBe(1);
+    expect(fake.downloadCount).toBe(0);
+    const lines = ledgerLines(ctx.ledger);
+    expect(lines.length).toBe(2);
+    expect(lines[0].kind).toBe("attempt");
+    expect(lines[1].status).toBe("error");
+    expect(String(lines[1].detail)).toContain("FAILED");
+    capture("2b-failed", r, fake, ctx.ledger);
+  });
+
+  it("other file states keep polling until the limit, then time out", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.gen = async () => reply([uriVideo(FILE_URI)]);
+    fake.stuck = true;
+    const r = await run(live(ctx, { timeout: "1" }), fake); // 1 s limit, 1 ms interval
+    expect(r.code).toBe(1);
+    expect(fake.downloadCount).toBe(0);
+    expect(ledgerLines(ctx.ledger)[1].status).toBe("timeout");
   });
 });
 
 // ── (3) the attempt line counts even when the call fails ───────────────────────────────
 
 describe("3 attempt line kept on failure", () => {
-  const cases: { label: string; status: string; make: () => Promise<GenerateResult> }[] = [
+  const cases: { label: string; status: string; make: () => Promise<unknown> }[] = [
     { label: "throws", status: "error", make: async () => { throw Object.assign(new Error("made-up generate failure"), { cause: new Error("made-up cause detail") }); } },
     { label: "times out", status: "timeout", make: async () => { throw new vg.CallTimeout("generate"); } },
     { label: "returns 500", status: "http-500", make: async () => { throw new vg.HttpError(500); } },
@@ -374,6 +468,26 @@ describe("3 attempt line kept on failure", () => {
       capture(`3-${c.label}`, r, fake, ctx.ledger);
     });
   }
+
+  it("the attempt line is already in the ledger when the call is sent", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    let seenAtCall: string | null = null;
+    fake.gen = async () => {
+      seenAtCall = readBytes(ctx.ledger)?.toString("utf8") ?? null; // read at call time
+      return okReply();
+    };
+    const r = await run(live(ctx), fake);
+    expect(r.code).toBe(0);
+    expect(seenAtCall).not.toBeNull();
+    const seen = String(seenAtCall).split("\n").filter((l) => l !== "");
+    expect(seen.length).toBe(1);
+    expect(String(seenAtCall).endsWith("\n")).toBe(true);
+    const line = JSON.parse(seen[0]) as Record<string, unknown>;
+    expect(line.kind).toBe("attempt");
+    expect(line.cost_usd).toBe(0.42);
+    expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false); // lock released before the call
+  });
 });
 
 // ── (4) no automatic retry ────────────────────────────────────────────────────────────
@@ -398,11 +512,11 @@ describe("4 no retry", () => {
 
 // ── (5) no-video and blocked replies ──────────────────────────────────────────────────
 
-describe("5 no-video and blocked", () => {
-  it("a reply with no video part: exit 1, attempt kept, outcome no-video", async () => {
+describe("5 no-video and failed replies", () => {
+  it("a completed reply with no video item: exit 1, attempt kept, outcome no-video", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
-    fake.gen = async () => ({ kind: "no-video", interactionId: "made-up-interaction-3" });
+    fake.gen = async () => reply([{ type: "text", text: "made-up words only" }], { id: "made-up-interaction-3" });
     const r = await run(live(ctx), fake);
     expect(r.code).toBe(1);
     const lines = ledgerLines(ctx.ledger);
@@ -413,16 +527,54 @@ describe("5 no-video and blocked", () => {
     capture("5-no-video", r, fake, ctx.ledger);
   });
 
-  it("a blocked reply: exit 1, attempt kept, outcome blocked", async () => {
+  it("a reply with no model_output step at all is no-video", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
-    fake.gen = async () => ({ kind: "blocked", reason: "made-up-block-reason" });
+    fake.gen = async () => ({ steps: [], id: "made-up-interaction-4", status: "completed", model: REPLY_MODEL });
+    const r = await run(live(ctx), fake);
+    expect(r.code).toBe(1);
+    expect(ledgerLines(ctx.ledger)[1].status).toBe("no-video");
+  });
+
+  it("a status other than completed is a failed attempt, the raw status is recorded", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.gen = async () => reply([inlineVideo(Buffer.from("made-up-bytes"))], { status: "failed" });
+    const r = await run(live(ctx), fake);
+    expect(r.code).toBe(1);
+    expect(fs.readdirSync(ctx.out).length).toBe(0);
+    const lines = ledgerLines(ctx.ledger);
+    expect(lines.length).toBe(2);
+    expect(lines[0].kind).toBe("attempt");
+    expect(lines[1].status).toBe("error");
+    expect(lines[1].reply_status).toBe("failed");
+    expect(lines[1].interaction_id).toBe("made-up-interaction-1");
+    expect(lines[1].model).toBe(REPLY_MODEL);
+    capture("5-status-failed", r, fake, ctx.ledger);
+  });
+
+  it("an errors item is a failed attempt, its code and message are recorded", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.gen = async () => reply([], { errors: [{ code: "made-up-error-code", message: "made-up error message" }] });
     const r = await run(live(ctx), fake);
     expect(r.code).toBe(1);
     const lines = ledgerLines(ctx.ledger);
     expect(lines.length).toBe(2);
-    expect(lines[1].status).toBe("blocked");
-    capture("5-blocked", r, fake, ctx.ledger);
+    expect(lines[1].status).toBe("error");
+    expect(lines[1].errors).toEqual([{ code: "made-up-error-code", message: "made-up error message" }]);
+    expect(r.err).toContain("made-up-error-code");
+    capture("5-errors-item", r, fake, ctx.ledger);
+  });
+
+  it("the key is cut out of a reply error text before it is recorded", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.gen = async () => reply([], { status: "failed", errors: [{ code: "made-up", message: `echo ${KEY} back` }] });
+    const r = await run(live(ctx), fake);
+    expect(r.code).toBe(1);
+    expect(r.err).not.toContain(KEY);
+    expect(readBytes(ctx.ledger)?.toString("utf8")).not.toContain(KEY);
   });
 });
 
@@ -693,11 +845,35 @@ describe("15 ledger lock", () => {
   it("the lock file is gone after a normal run", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
-    fake.gen = async () => ({ kind: "video", bytes: Buffer.from("made-up-bytes"), mimeType: "video/mp4" });
+    fake.gen = async () => okReply();
     const r = await run(live(ctx), fake);
     expect(r.code).toBe(0);
     expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false);
     expect(ledgerLines(ctx.ledger).length).toBe(2);
+  });
+
+  it("refuses when the lock appears after the plan-stage check, before the exclusive create", async () => {
+    const ctx = makeCtx();
+    const lock = `${ctx.ledger}.lock`;
+    const fake = new FakeCaller();
+    fake.gen = async () => okReply();
+    // the plan-stage check sees no lock; the lock file is made right after it answers
+    mockFsHooks.exists = (p, answer) => {
+      // the tool checks the real path of the folder, so match on the lock file's name
+      if (p.endsWith(path.basename(lock)) && !answer) fs.writeFileSync(lock, "");
+    };
+    let r: CliResult;
+    try {
+      r = await run(live(ctx), fake);
+    } finally {
+      mockFsHooks.exists = null;
+    }
+    expect(fs.existsSync(lock)).toBe(true); // the test's own lock, left in place
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("ledger-busy");
+    expect(r.err).toContain(lock);
+    expect(fake.calls.length).toBe(0);
+    expect(readBytes(ctx.ledger)).toBeNull();
   });
 });
 
@@ -756,7 +932,7 @@ describe("18 default key reader", () => {
     try {
       const ctx = makeCtx();
       const fake = new FakeCaller();
-      fake.gen = async () => ({ kind: "video", bytes: Buffer.from("made-up"), mimeType: "video/mp4" });
+      fake.gen = async () => okReply();
       const r = await vg.runVideoGen(live(ctx), { caller: fake, pollIntervalMs: 1 }); // default key reader
       expect(r.code).toBe(0);
       expect(fake.calls[0].headers["x-goog-api-key"]).toBe("env-key-not-real");
@@ -775,7 +951,7 @@ describe("18 default key reader", () => {
     try {
       const ctx = makeCtx();
       const fake = new FakeCaller();
-      fake.gen = async () => ({ kind: "video", bytes: Buffer.from("made-up"), mimeType: "video/mp4" });
+      fake.gen = async () => okReply();
       const r = await vg.runVideoGen(live(ctx), { caller: fake, pollIntervalMs: 1 });
       expect(r.code).toBe(0);
       expect(fake.calls[0].headers["x-goog-api-key"]).toBe("chain-key-not-real");
@@ -789,6 +965,136 @@ describe("18 default key reader", () => {
       if (oldSvc === undefined) delete process.env.GEMINI_KEYCHAIN_SERVICE;
       else process.env.GEMINI_KEYCHAIN_SERVICE = oldSvc;
     }
+  });
+});
+
+// ── (21) the default caller: fetch is looked up at run time; redirects hold the key back ──
+
+interface SeenFetch {
+  url: string;
+  headers: Record<string, string>;
+  redirect?: string;
+}
+
+function fakeRes(status: number, o: { json?: unknown; bytes?: Buffer; location?: string } = {}): Response {
+  const b = o.bytes ?? Buffer.alloc(0);
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (n: string) => (n.toLowerCase() === "location" ? o.location ?? null : null) },
+    json: async () => o.json,
+    arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength),
+  } as unknown as Response;
+}
+
+/** Swap globalThis.fetch for one test; the no-network fence comes back afterwards. */
+async function withFetch(impl: (u: string, h: Record<string, string>) => Response, seen: SeenFetch[], fn: () => Promise<void>): Promise<void> {
+  const fence = globalThis.fetch;
+  (globalThis as { fetch: typeof fetch }).fetch = (async (url: string, init?: RequestInit) => {
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    seen.push({ url: String(url), headers, redirect: init?.redirect });
+    return impl(String(url), headers);
+  }) as unknown as typeof fetch;
+  try {
+    await fn();
+  } finally {
+    (globalThis as { fetch: typeof fetch }).fetch = fence;
+  }
+}
+
+describe("21 default caller", () => {
+  const API = "https://generativelanguage.googleapis.com/v1beta";
+  const hasKeyHeader = (h: Record<string, string>): boolean => Object.keys(h).some((k) => k.toLowerCase() === "x-goog-api-key");
+
+  it("sends through a fetch swapped in after import (looked up at run time)", async () => {
+    const ctx = makeCtx();
+    const dlBytes = Buffer.from("made-up-bytes-from-swapped-fetch");
+    const seen: SeenFetch[] = [];
+    let r: CliResult | undefined;
+    await withFetch(
+      (u) => {
+        if (u === `${API}/interactions`) return fakeRes(200, { json: reply([uriVideo(FILE_URI)]) });
+        if (u.includes(":download")) return fakeRes(200, { bytes: dlBytes });
+        return fakeRes(200, { json: { state: "ACTIVE" } });
+      },
+      seen,
+      async () => {
+        r = await vg.runVideoGen(live(ctx), { keyReader: () => KEY, pollIntervalMs: 1 }); // default caller
+      },
+    );
+    expect(r?.code).toBe(0);
+    expect(seen.map((s) => s.url)).toEqual([`${API}/interactions`, `${API}/files/made-up-file-1`, `${API}/files/made-up-file-1:download?alt=media`]);
+    for (const s of seen) {
+      expect(s.headers["x-goog-api-key"]).toBe(KEY);
+      expect(s.url).not.toContain(KEY);
+      expect(s.redirect).toBe("manual");
+    }
+    const saved = fs.readdirSync(ctx.out);
+    expect(saved.length).toBe(1);
+    expect(sha(fs.readFileSync(path.join(ctx.out, saved[0])))).toBe(sha(dlBytes));
+    expect(fetchCount).toBe(0); // the fence itself was never hit
+    captures.push({ label: "21-default", text: [r?.out, r?.err, readBytes(ctx.ledger)?.toString("utf8"), seen.map((s) => s.url).join("\n")].join("\n") });
+  });
+
+  it("a redirect to another host is followed without the key header", async () => {
+    const ctx = makeCtx();
+    const dlBytes = Buffer.from("made-up-bytes-after-redirect");
+    const other = "https://storage.made-up-host.test/blob?token=made-up";
+    const seen: SeenFetch[] = [];
+    let r: CliResult | undefined;
+    await withFetch(
+      (u) => {
+        if (u === `${API}/interactions`) return fakeRes(200, { json: reply([uriVideo(FILE_URI)]) });
+        if (u === `${API}/files/made-up-file-1:download?alt=media`) return fakeRes(302, { location: other });
+        if (u === other) return fakeRes(200, { bytes: dlBytes });
+        return fakeRes(200, { json: { state: "ACTIVE" } });
+      },
+      seen,
+      async () => {
+        r = await vg.runVideoGen(live(ctx), { keyReader: () => KEY, pollIntervalMs: 1 });
+      },
+    );
+    expect(r?.code).toBe(0);
+    expect(seen.length).toBe(4);
+    expect(hasKeyHeader(seen[2].headers)).toBe(true); // API host, key held
+    expect(seen[3].url).toBe(other);
+    expect(hasKeyHeader(seen[3].headers)).toBe(false); // other host, no key header
+    expect(JSON.stringify(seen[3])).not.toContain(KEY);
+    const saved = fs.readdirSync(ctx.out);
+    expect(sha(fs.readFileSync(path.join(ctx.out, saved[0])))).toBe(sha(dlBytes));
+  });
+
+  it("a redirect that stays on the API host keeps the key header", async () => {
+    const ctx = makeCtx();
+    const seen: SeenFetch[] = [];
+    let r: CliResult | undefined;
+    await withFetch(
+      (u) => {
+        if (u === `${API}/interactions`) return fakeRes(200, { json: reply([uriVideo(FILE_URI)]) });
+        if (u === `${API}/files/made-up-file-1:download?alt=media`) return fakeRes(302, { location: "/v1beta/blob/made-up" });
+        if (u === `${API}/blob/made-up`) return fakeRes(200, { bytes: Buffer.from("made-up") });
+        return fakeRes(200, { json: { state: "ACTIVE" } });
+      },
+      seen,
+      async () => {
+        r = await vg.runVideoGen(live(ctx), { keyReader: () => KEY, pollIntervalMs: 1 });
+      },
+    );
+    expect(r?.code).toBe(0);
+    expect(seen[3].url).toBe(`${API}/blob/made-up`);
+    expect(seen[3].headers["x-goog-api-key"]).toBe(KEY);
+  });
+
+  it("a non-2xx reply through the default caller is an http-<code> outcome, called once", async () => {
+    const ctx = makeCtx();
+    const seen: SeenFetch[] = [];
+    let r: CliResult | undefined;
+    await withFetch(() => fakeRes(503), seen, async () => {
+      r = await vg.runVideoGen(live(ctx), { keyReader: () => KEY, pollIntervalMs: 1 });
+    });
+    expect(r?.code).toBe(1);
+    expect(seen.length).toBe(1);
+    expect(ledgerLines(ctx.ledger)[1].status).toBe("http-503");
   });
 });
 
