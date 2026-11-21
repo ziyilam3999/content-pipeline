@@ -9,7 +9,7 @@
  */
 
 import { POST_ASSETS } from "../publish/publishAssets";
-import { GETSPACE_STORYBOARD_SLUGS, isStoryboardSlug } from "../video/getspaceStoryboard";
+import { GETSPACE_STORYBOARD_SLUGS, LEVEL3_SLUG, isStoryboardSlug } from "../video/getspaceStoryboard";
 import { recordStoryboardApproval, storyboardDocPath } from "../video/storyboardGate";
 import * as fs from "fs";
 
@@ -28,7 +28,7 @@ function main(): void {
   if (!slug || !isStoryboardSlug(slug)) {
     console.error(
       `usage: npm run storyboard:approve -- <slug> [--note "<note>"]\n` +
-        `  <slug> must be a known post (${[...Object.keys(POST_ASSETS), ...GETSPACE_STORYBOARD_SLUGS].join(" | ")}).`,
+        `  <slug> must be a known post (${[...Object.keys(POST_ASSETS), ...GETSPACE_STORYBOARD_SLUGS, LEVEL3_SLUG].join(" | ")}).`,
     );
     process.exit(2);
   }

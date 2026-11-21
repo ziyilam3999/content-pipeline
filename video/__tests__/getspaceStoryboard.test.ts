@@ -349,3 +349,382 @@ describe("isStoryboardSlug", () => {
     expect(isStoryboardSlug("getspace-other")).toBe(false);
   });
 });
+
+// ---- the 4th storyboard (level3) and its list file ----
+
+const L3 = "getspace-level3.md";
+const LIST = "getspace-ai-shots.md";
+const L3_OPEN = [
+  "Pale roads", "Odd bells", "Neat coats", "Rich dust", "Keen elms", "Fond farms",
+  "Hot gates", "Idle hats", "Just jams", "Kind keys", "Lazy lamps", "Mild maps",
+];
+
+function l3s(i: number): string {
+  return `${L3_OPEN[i]} are shown here as plain test words for this line today.`;
+}
+
+function n3(j: number, id: string): string {
+  return [0, 1, 2].map((k) => `${l3s(j * 3 + k)} [${id}]`).join(" ");
+}
+
+function level3(): string {
+  const rows = [
+    "| 1 | Start | 10 | ai | AI-1 | - | - |",
+    `| 2 | Home | 12 | clip | C-01 | Home [S-01] | ${n3(0, "S-01")} |`,
+    "| 3 | Next | 8 | ai | AI-2 | - | - |",
+    `| 4 | Pin | 12 | clip | C-02 | Pin [S-02] | ${n3(1, "S-02")} |`,
+    `| 5 | Screen | 12 | screen | SCR-1 | Pin [S-02] | ${n3(2, "S-02")} |`,
+    `| 6 | Wait | 12 | clip | C-03 | Wait [S-10] | ${n3(3, "S-10")} |`,
+  ];
+  return `---
+slug: getspace-level3
+title: "Level test"
+aspect: 9:16
+target_runtime_sec: 66
+---
+
+# Storyboard - "Level test"
+
+## The beats
+
+| # | Beat | Dur | Asset | Clip | On-screen text | Narration |
+${SEP}
+${rows.join("\n")}
+`;
+}
+
+function aiList(): string {
+  return `# AI shots - getspace-level3
+
+## AI clips
+
+| Id | Sec | Shows | First frame | Prompt |
+|----|-----|-------|-------------|--------|
+| AI-1 | 10 | A full level from above. | none | Plain test words for the first shot. |
+| AI-2 | 8 | The same level, later. | last frame of AI-1 | Plain test words for the second shot. |
+
+## Screens
+
+| Id | Shows | Facts shown |
+|----|-------|-------------|
+| SCR-1 | A made-up match screen. | S-02, S-03 |
+`;
+}
+
+function fixture3(): Files {
+  return { ...fixture(), [L3]: level3(), [LIST]: aiList() };
+}
+
+function addAiRow(f: Files, row: string): void {
+  f[LIST] = rep(f[LIST], "\n\n## Screens", `\n${row}\n\n## Screens`);
+}
+
+function addScreenRow(f: Files, row: string): void {
+  f[LIST] = `${f[LIST]}${row}\n`;
+}
+
+const A = (id: string, text: string): string => `FAIL getspace-ai-shots.md ${id}: ${text}`;
+const SEC_FAIL = "Sec is not a whole number from 3 to 15";
+const FIRST_FAIL = "First frame is not none or last frame of an earlier AI clip";
+
+describe("getspace level3 - the fixture and asset kinds", () => {
+  test("a valid fixture with level3 and the list file passes", () => {
+    expect(run(fixture3())).toEqual([]);
+  });
+
+  test("Sec 3 and Sec 15 rows pass", () => {
+    const f = fixture3();
+    f[LIST] = rep(rep(f[LIST], "| AI-1 | 10 |", "| AI-1 | 15 |"), "| AI-2 | 8 |", "| AI-2 | 3 |");
+    f[L3] = rep(rep(f[L3], "| 3 | Next | 8 |", "| 3 | Next | 3 |"), "| 6 | Wait | 12 |", "| 6 | Wait | 17 |");
+    expect(run(f)).toEqual([]);
+  });
+
+  test.each(["still", "synth"])("level3 beat with asset %s keeps the BASE fail text", (asset) => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "| clip | C-01 |", `| ${asset} | C-01 |`);
+    expect(run(f)).toContain(`FAIL getspace-level3.md beat 2: Asset ${asset} is refused, only clip`);
+  });
+
+  test.each(["ai", "screen"])("seek beat with asset %s names the asset", (asset) => {
+    const f = fixture3();
+    f[SEEK] = rep(f[SEEK], "| clip | C-01 |", `| ${asset} | C-01 |`);
+    expect(run(f)).toContain(`FAIL getspace-seek.md beat 1: Asset ${asset} is refused, only clip`);
+  });
+});
+
+describe("getspace level3 - ai beats", () => {
+  test("an AI id not in the list", () => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "| ai | AI-2 |", "| ai | AI-9 |");
+    expect(run(f)).toContain("FAIL getspace-level3.md beat 3: clip AI-9 is not an AI clip of getspace-ai-shots.md");
+  });
+
+  test.each(["SCR-1", "C-09"])("an ai beat with Clip %s", (id) => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "| ai | AI-2 |", `| ai | ${id} |`);
+    expect(run(f)).toContain(`FAIL getspace-level3.md beat 3: clip ${id} is not an AI clip of getspace-ai-shots.md`);
+  });
+
+  test.each(["AI-1", "C-09"])("a screen beat with Clip %s", (id) => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "| screen | SCR-1 |", `| screen | ${id} |`);
+    expect(run(f)).toContain(`FAIL getspace-level3.md beat 5: clip ${id} is not a screen of getspace-ai-shots.md`);
+  });
+
+  test("two ai beats on one id above its Sec, each alone within it", () => {
+    const f = fixture3();
+    f[L3] = rep(rep(f[L3], "| 1 | Start | 10 |", "| 1 | Start | 6 |"), "| 3 | Next | 8 | ai | AI-2 |", "| 3 | Next | 6 | ai | AI-1 |");
+    expect(run(f)).toContain("FAIL getspace-level3.md: beats on AI-1 need 12 s, the clip is 10 s");
+  });
+
+  test("one ai beat with Dur above Sec", () => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "| 3 | Next | 8 |", "| 3 | Next | 9 |");
+    expect(run(f)).toContain("FAIL getspace-level3.md: beats on AI-2 need 9 s, the clip is 8 s");
+  });
+
+  test("an ai beat with on-screen text", () => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "| ai | AI-1 | - | - |", "| ai | AI-1 | Home [S-01] | - |");
+    expect(run(f)).toContain("FAIL getspace-level3.md beat 1 On-screen text: an ai beat holds no on-screen text, only -");
+  });
+
+  test("an ai beat narration with a digit", () => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "| ai | AI-1 | - | - |", "| ai | AI-1 | - | Some 5 words. [S-01] |");
+    expect(run(f)).toContain("FAIL getspace-level3.md beat 1 Narration: number 5 in narration; numbers go on screen only");
+  });
+
+  test("an ai beat narration with an unknown fact id", () => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "| ai | AI-1 | - | - |", "| ai | AI-1 | - | Some words. [S-77] |");
+    expect(run(f)).toContain("FAIL getspace-level3.md beat 1 Narration: unknown fact id S-77");
+  });
+});
+
+describe("getspace level3 - screen beats", () => {
+  test("an on-screen id not in Facts shown of the screen", () => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "| screen | SCR-1 | Pin [S-02] |", "| screen | SCR-1 | Pin [S-01] |");
+    expect(run(f)).toContain("FAIL getspace-level3.md beat 5 On-screen text: on-screen id S-01 is not in Facts shown of SCR-1");
+  });
+
+  test("an on-screen digit that is not a number of the cited facts", () => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "| screen | SCR-1 | Pin [S-02] |", "| screen | SCR-1 | 9 credits [S-03] |");
+    expect(run(f)).toContain("FAIL getspace-level3.md beat 5 On-screen text: number 9 is not a number of the cited facts S-03");
+  });
+
+  test("a screen on-screen digit of the cited fact passes", () => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "| screen | SCR-1 | Pin [S-02] |", "| screen | SCR-1 | 7 credits [S-03] |");
+    expect(run(f)).toEqual([]);
+  });
+
+  test("a screen beat narration with a digit", () => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], "Hot gates are", "Hot 5 gates are");
+    expect(run(f)).toContain("FAIL getspace-level3.md beat 5 Narration: number 5 in narration; numbers go on screen only");
+  });
+
+  test("a Screens row citing an open point, an unknown id and a never row", () => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "S-02, S-03", "S-02, S-77");
+    expect(run(f)).toContain(A("SCR-1", "unknown fact id S-77"));
+    f[LIST] = rep(f[LIST], "S-02, S-77", "S-02, S-16");
+    expect(run(f)).toContain(A("SCR-1", "cites never row S-16"));
+    const g = fixture3();
+    snapEdit((d) => {
+      const x = d.facts.find((o) => o.id === "S-03");
+      if (x) x.open = true;
+    })(g);
+    expect(run(g)).toContain(A("SCR-1", "cites open point S-03"));
+  });
+});
+
+describe("getspace level3 - the list file", () => {
+  test.each(["2", "16", "4.5"])("Sec %s", (sec) => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "| AI-1 | 10 |", `| AI-1 | ${sec} |`);
+    expect(run(f)).toContain(A("AI-1", SEC_FAIL));
+  });
+
+  test.each([
+    ["a digit", "Plain test words 5 for the first shot.", "Prompt: digit"],
+    ["an at sign", `Plain ${["a", "b"].join("@")} words.`, "Prompt: at sign"],
+    ["a slash", "Plain test/words for the first shot.", "Prompt: slash"],
+    ["a backslash", "Plain test\\words for the first shot.", "Prompt: backslash"],
+    ["a tilde", "Plain test ~ words for the first shot.", "Prompt: tilde"],
+    ["a web address", `Plain test words ${url} for the first shot.`, "Prompt: URL or web or file ending"],
+  ])("a Prompt cell holding %s", (_n, text, line) => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "Plain test words for the first shot.", text);
+    expect(run(f)).toContain(`FAIL getspace-ai-shots.md AI-1 ${line}`);
+  });
+
+  test("a Shows cell holding a digit", () => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "A full level from above.", "A full level 5 from above.");
+    expect(run(f)).toContain("FAIL getspace-ai-shots.md AI-1 Shows: digit");
+  });
+
+  const home = ["/Use", "rs/zz", "qx/notes.txt"].join("");
+
+  test("a home path in the AI clips Shows and Prompt cells", () => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "A full level from above.", `A file at ${home} from above.`);
+    f[LIST] = rep(f[LIST], "Plain test words for the first shot.", `Plain words held at ${home}.`);
+    const out = run(f);
+    expect(out).toContain(A("AI-1 Shows", "home path"));
+    expect(out).toContain(A("AI-1 Prompt", "home path"));
+  });
+
+  test("a service name in the AI clips Shows and Prompt cells", () => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "A full level from above.", `The ${svc} level from above.`);
+    f[LIST] = rep(f[LIST], "Plain test words for the first shot.", `Plain words for the ${svc} shot.`);
+    const out = run(f);
+    expect(out).toContain(A("AI-1 Shows", "service name"));
+    expect(out).toContain(A("AI-1 Prompt", "service name"));
+  });
+
+  test.each([
+    ["a digit", "A made-up 4 match screen.", "digit"],
+    ["a slash", "A/B made-up match screen.", "slash"],
+    ["a backslash", "A\\B made-up match screen.", "backslash"],
+    ["a tilde", "A ~B made-up match screen.", "tilde"],
+    ["an at sign", `A ${["a", "b"].join("@")} match screen.`, "at sign"],
+    ["a web address", `A match screen at ${url}.`, "URL or web or file ending"],
+    ["a service name", `A ${svc} match screen.`, "service name"],
+    ["a home path", `A match screen at ${home}.`, "home path"],
+  ])("the Screens Shows cell holding %s", (_n, text, line) => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "A made-up match screen.", text);
+    expect(run(f)).toContain(A("SCR-1 Shows", line));
+  });
+
+  test("a Prompt with everyday, one and ninety passes", () => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "Plain test words for the first shot.", "Everyday cars, one at a time, ninety degrees.");
+    expect(run(f)).toEqual([]);
+  });
+
+  test.each([
+    ["a later clip", "last frame of AI-1", "last frame of AI-3"],
+    ["its own id", "last frame of AI-1", "last frame of AI-2"],
+    ["free text", "last frame of AI-1", "the old frame"],
+  ])("First frame holding %s", (_n, from, to) => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], from, to);
+    expect(run(f)).toContain(A("AI-2", FIRST_FAIL));
+  });
+
+  test("an AI id gap and a repeat", () => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "| AI-2 |", "| AI-3 |");
+    expect(run(f)).toContain("FAIL getspace-ai-shots.md line 8: Id AI-3 is not AI-2");
+    const g = fixture3();
+    addAiRow(g, "| AI-2 | 8 | Another view. | last frame of AI-1 | More plain words. |");
+    expect(run(g)).toContain("FAIL getspace-ai-shots.md line 9: Id AI-2 is not AI-3");
+  });
+
+  test("an SCR id gap and a repeat", () => {
+    const f = fixture3();
+    addScreenRow(f, "| SCR-3 | Another screen. | S-02 |");
+    expect(run(f)).toContain("FAIL getspace-ai-shots.md line 15: Id SCR-3 is not SCR-2");
+    const g = fixture3();
+    addScreenRow(g, "| SCR-1 | Another screen. | S-02 |");
+    expect(run(g)).toContain("FAIL getspace-ai-shots.md line 15: Id SCR-1 is not SCR-2");
+  });
+
+  test("level3 present with the list file missing", () => {
+    const f = fixture3();
+    f[LIST] = null;
+    expect(run(f)).toContain("FAIL getspace-ai-shots.md: missing");
+  });
+
+  test("the list file present with level3 absent", () => {
+    const f = fixture3();
+    f[L3] = null;
+    expect(run(f)).toContain("FAIL getspace-ai-shots.md: present with no getspace-level3.md");
+  });
+
+  test("an AI id and an SCR id used by no beat", () => {
+    const f = fixture3();
+    addAiRow(f, "| AI-3 | 5 | Another view. | last frame of AI-2 | More plain words. |");
+    addScreenRow(f, "| SCR-2 | Another screen. | S-02 |");
+    const out = run(f);
+    expect(out).toContain("FAIL getspace-ai-shots.md AI-3: used by no beat");
+    expect(out).toContain("FAIL getspace-ai-shots.md SCR-2: used by no beat");
+  });
+
+  const failsClosed: [string, (f: Files) => void, string][] = [
+    ["a byte order mark", (f) => { f[LIST] = `﻿${f[LIST]}`; }, "FAIL getspace-ai-shots.md: starts with a byte order mark"],
+    ["a lone CR", (f) => { f[LIST] = rep(f[LIST], "Plain test words for the first", "Plain test\rwords for the first"); }, "FAIL getspace-ai-shots.md: holds a lone CR"],
+    ["a row with a missing cell", (f) => { f[LIST] = rep(f[LIST], "| AI-1 | 10 | A full level from above. | none |", "| AI-1 | 10 | none |"); }, "FAIL getspace-ai-shots.md line 7: row has 4 cells, the header has 5"],
+    ["a missing Screens table", (f) => { f[LIST] = `${(f[LIST] as string).split("\n| Id | Shows | Facts shown |")[0]}`; }, "FAIL getspace-ai-shots.md: no table under ## Screens"],
+    ["the two tables swapped", (f) => {
+      f[LIST] = `# AI shots - getspace-level3
+
+## AI clips
+
+| Id | Shows | Facts shown |
+|----|-------|-------------|
+| SCR-1 | A made-up match screen. | S-02, S-03 |
+
+## Screens
+
+| Id | Sec | Shows | First frame | Prompt |
+|----|-----|-------|-------------|--------|
+| AI-1 | 10 | A full level from above. | none | Plain test words. |
+`;
+    }, "FAIL getspace-ai-shots.md line 5: table header is not the fixed header"],
+    ["a third table", (f) => { f[LIST] = `${f[LIST]}\n| Id | Shows | Facts shown |\n|----|-------|-------------|\n| SCR-2 | X | S-02 |\n`; }, "FAIL getspace-ai-shots.md line 16: bar line after the table ends"],
+    ["a wrong first line", (f) => { f[LIST] = rep(f[LIST], "# AI shots - getspace-level3", "# AI shots - getspace-level4"); }, "FAIL getspace-ai-shots.md line 1: text outside the fixed lines and the tables"],
+  ];
+  test.each(failsClosed)("list file parsing fails closed: %s", (_n, edit, line) => {
+    const f = fixture3();
+    edit(f);
+    expect(run(f)).toContain(line);
+  });
+});
+
+describe("getspace level3 - across storyboards", () => {
+  test("the same sentence in seek and level3", () => {
+    const f = fixture3();
+    f[L3] = rep(f[L3], l3s(0), sentence(0));
+    expect(run(f)).toContain(`FAIL same sentence in getspace-seek.md and getspace-level3.md: '${sentence(0).toLowerCase()}'`);
+  });
+
+  test("a stray getspace-extra.md with level3 present", () => {
+    const f = fixture3();
+    f["getspace-extra.md"] = "x\n";
+    expect(run(f)).toContain("FAIL getspace-extra.md: not a known GetSpace storyboard file name");
+  });
+
+  const spare = "| C-05 | seeker | T-2 | Hold on the spare screen. | 20 | S-01 | blur: name, amount |\n| C-04 | seeker";
+  test("a clip used by no storyboard, with level3 absent and present", () => {
+    const f = fixture();
+    f[SHOT] = rep(f[SHOT], "| C-04 | seeker", spare);
+    f["getspace-give.md"] = rep(f[SEEK], "slug: getspace-seek", "slug: getspace-give");
+    f["getspace-helps.md"] = rep(f[SEEK], "slug: getspace-seek", "slug: getspace-helps");
+    expect(run(f)).toContain("FAIL getspace-shot-list.md C-05: used by no storyboard");
+    const g = { ...f, [L3]: level3(), [LIST]: aiList() };
+    expect(run(g)).toContain("FAIL getspace-shot-list.md C-05: used by no storyboard");
+  });
+
+  test("a clip used only by level3 is used", () => {
+    const f = fixture3();
+    f[SHOT] = rep(f[SHOT], "| C-04 | seeker", spare);
+    f["getspace-give.md"] = rep(f[SEEK], "slug: getspace-seek", "slug: getspace-give");
+    f["getspace-helps.md"] = rep(f[SEEK], "slug: getspace-seek", "slug: getspace-helps");
+    f[L3] = rep(f[L3], "| clip | C-02 |", "| clip | C-05 |");
+    expect(run(f).some((l) => l.includes("used by no storyboard"))).toBe(false);
+  });
+
+  test("slug helper knows level3 and not the list file", () => {
+    expect(isStoryboardSlug("getspace-level3")).toBe(true);
+    expect(isStoryboardSlug("getspace-other")).toBe(false);
+    expect(isStoryboardSlug("getspace-ai-shots")).toBe(false);
+  });
+});
