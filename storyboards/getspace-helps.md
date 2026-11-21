@@ -18,5 +18,4 @@ target_runtime_sec: 72
 | 5 | Activity | 6 | clip | C-12 | Plus for Give, minus for Find [H-01] Successful or Cancelled [H-13] | A plus sign marks a successful give, and a minus sign a successful find. [H-01] An entry also carries a status, for example Successful or Cancelled. [H-13] |
 | 6 | History | 4 | clip | C-12 | 20 most recent transactions [H-08] | The Credits History tab lists only the most recent transactions. [H-08] |
 | 7 | Borrow | 8 | clip | C-12 | Borrow credits [H-04] | When credits fall short, a driver can borrow and then search right away. [H-04] Borrowed credits cost nothing if they are repaid in time. [H-05] |
-| 8 | Rewards | 5 | clip | C-12 | Rewards [H-12] | The Rewards screen shows a points balance and lists rewards. [H-12] |
-| 9 | Premium | 7 | clip | C-12 | Seeking: 4 credits on Basic, 2 on Premium [H-02] | The Premium page compares the plans. [H-02] Seeking costs fewer credits on Premium than on Basic. [H-02] |
+| 8 | Premium | 7 | clip | C-12 | Seeking: 4 credits on Basic, 2 on Premium [H-02] | The Premium page compares the plans. [H-02] Seeking costs fewer credits on Premium than on Basic. [H-02] |
