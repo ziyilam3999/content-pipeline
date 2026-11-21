@@ -12,7 +12,8 @@
  *   - each narration / on-screen sentence cites fact ids; ids must be known, not open points, not never rows.
  *   - narration carries no digit and no number word (numbers go on screen only); on-screen digits must be
  *     numbers of the cited facts; borrowing, penalty and cancel facts carry no digit; no money, no banned word.
- *   - the storyboard asset is clip only; each beat clip is in the shot list and long enough.
+ *   - the storyboard asset is clip only; each beat clip is in the shot list and long enough. In
+ *     getspace-level3 the asset may also be ai or screen, tied to getspace-ai-shots.md (checkAiShots).
  *   - the shot list holds the 15 check-list lines, the five fixed answers, at most 12 clips, both sides of a
  *     take, and a Hide cell that names blur and the fixed-list words for the facts a clip shows.
  *   - an on-screen fact id is a fact the beat's clip shows; with all three storyboards present, each clip is
@@ -30,9 +31,14 @@ import { CHECKLIST_KINDS } from "./clipIntake";
 
 export const GETSPACE_STORYBOARD_SLUGS = ["getspace-seek", "getspace-give", "getspace-helps"];
 
-/** True for a known post slug or one of the three GetSpace storyboard slugs. */
+/** The 4th storyboard: it may hold ai and screen beats, tied to the list file. */
+export const LEVEL3_SLUG = "getspace-level3";
+const LEVEL3_FILE = `${LEVEL3_SLUG}.md`;
+const AI_SHOTS = "getspace-ai-shots.md";
+
+/** True for a known post slug, one of the three A41 GetSpace slugs, or the level 3 slug. */
 export function isStoryboardSlug(s: string): boolean {
-  return isPostSlug(s) || GETSPACE_STORYBOARD_SLUGS.includes(s);
+  return isPostSlug(s) || GETSPACE_STORYBOARD_SLUGS.includes(s) || s === LEVEL3_SLUG;
 }
 
 export interface GetspaceCheckOpts {
@@ -48,6 +54,8 @@ const ON_SCREEN = ["yes", "care", "never", "no"];
 const MAX_CLIPS = 12;
 
 const STORYBOARD_HEADER = "| # | Beat | Dur | Asset | Clip | On-screen text | Narration |";
+const AI_HEADER = "| Id | Sec | Shows | First frame | Prompt |";
+const SCREEN_HEADER = "| Id | Shows | Facts shown |";
 const SHOT_HEADER = "| Clip | Side | Take | What to do | Sec | Facts shown | Hide |";
 
 // the five lines the operator answered, in fixed neutral wording
@@ -360,6 +368,7 @@ function checkStoryboard(
   shownBy: Map<string, string[]>,
   used: Set<string>,
   fails: string[],
+  l3: Level3Ctx | null = null,
 ): string[] {
   const sentences: string[] = [];
   const lines = readLines(name, raw, fails);
@@ -404,6 +413,7 @@ function checkStoryboard(
   let durTotal = 0;
   let words = 0;
   const perClip = new Map<string, number>();
+  const perAi = new Map<string, number>();
   const openings = new Map<string, number>();
   scan.rows.forEach((row, i) => {
     const [num, beat, dur, asset, clip, onScreen, narration] = row.cells;
@@ -416,13 +426,32 @@ function checkStoryboard(
     else fails.push(`FAIL ${at}: Dur is not whole seconds`);
     durTotal += d;
     if (asset === "synth" || asset === "still") fails.push(`FAIL ${at}: Asset ${asset} is refused, only clip`);
-    else if (asset !== "clip") fails.push(`FAIL ${at}: Asset is not clip`);
-    if (clips && !clips.has(clip)) fails.push(`FAIL ${at}: clip ${clip} is not in the shot list`);
-    perClip.set(clip, (perClip.get(clip) ?? 0) + d);
-    used.add(clip);
+    else if (asset === "ai" || asset === "screen") {
+      if (!l3) fails.push(`FAIL ${at}: Asset ${asset} is refused, only clip`);
+    } else if (asset !== "clip") fails.push(`FAIL ${at}: Asset is not ${l3 ? "clip, ai or screen" : "clip"}`);
+    const kind = l3 && (asset === "ai" || asset === "screen") ? asset : "clip";
+    let shownIds: string[] | undefined;
+    if (l3 && kind === "ai") {
+      if (l3.lists && !l3.lists.ai.has(clip)) fails.push(`FAIL ${at}: clip ${clip} is not an AI clip of ${AI_SHOTS}`);
+      perAi.set(clip, (perAi.get(clip) ?? 0) + d);
+      l3.usedIds.add(clip);
+    } else if (l3 && kind === "screen") {
+      if (l3.lists && !l3.lists.screens.has(clip)) fails.push(`FAIL ${at}: clip ${clip} is not a screen of ${AI_SHOTS}`);
+      shownIds = l3.lists?.screens.get(clip);
+      l3.usedIds.add(clip);
+    } else {
+      if (clips && !clips.has(clip)) fails.push(`FAIL ${at}: clip ${clip} is not in the shot list`);
+      perClip.set(clip, (perClip.get(clip) ?? 0) + d);
+      used.add(clip);
+      shownIds = shownBy.get(clip);
+    }
 
     for (const [label, cell] of [["On-screen text", onScreen], ["Narration", narration]] as const) {
       const where = `${at} ${label}`;
+      if (kind === "ai" && label === "On-screen text") {
+        if (cell !== "-") fails.push(`FAIL ${where}: an ai beat holds no on-screen text, only -`);
+        continue;
+      }
       if (cell === "-") continue;
       textRules(where, cell, fails, true);
       numberWordRule(where, cell, fails);
@@ -443,10 +472,9 @@ function checkStoryboard(
           }
         } else {
           // on-screen text is text the clip shows
-          const shown = shownBy.get(clip);
-          if (shown) {
+          if (shownIds) {
             for (const id of g.ids) {
-              if (!shown.includes(id)) fails.push(`FAIL ${where}: on-screen id ${id} is not in Facts shown of ${clip}`);
+              if (!shownIds.includes(id)) fails.push(`FAIL ${where}: on-screen id ${id} is not in Facts shown of ${clip}`);
             }
           }
           for (const dg of digits) {
@@ -468,6 +496,12 @@ function checkStoryboard(
       if (have !== undefined && need > have) fails.push(`FAIL ${name}: beats on ${clip} need ${need} s, the clip is ${have} s`);
     }
   }
+  if (l3?.lists) {
+    for (const [id, need] of perAi) {
+      const have = l3.lists.ai.get(id);
+      if (have !== undefined && need > have) fails.push(`FAIL ${name}: beats on ${id} need ${need} s, the clip is ${have} s`);
+    }
+  }
   const ceiling = Math.min(220, 2.5 * durTotal);
   if (words < 140 || words > ceiling) {
     fails.push(`FAIL ${name}: narration has ${words} words, needs 140 to ${ceiling}`);
@@ -476,6 +510,118 @@ function checkStoryboard(
     if (count > 2) fails.push(`FAIL ${slug}: sentence opening '${o}' used ${count} times, at most 2`);
   }
   return sentences;
+}
+
+interface AiLists {
+  ai: Map<string, number>;
+  screens: Map<string, string[]>;
+}
+interface Level3Ctx {
+  lists: AiLists | null;
+  usedIds: Set<string>;
+}
+
+// ---- AI shots list file ----
+
+/** Free text of the list file: the text rules without banned words, plus no digit, slash, backslash or tilde. */
+function listTextRules(where: string, text: string, fails: string[]): void {
+  textRules(where, text, fails, false);
+  if (/\d/.test(text)) fails.push(`FAIL ${where}: digit`);
+  if (text.includes("/")) fails.push(`FAIL ${where}: slash`);
+  if (text.includes("\\")) fails.push(`FAIL ${where}: backslash`);
+  if (text.includes("~")) fails.push(`FAIL ${where}: tilde`);
+}
+
+function checkAiShots(name: string, raw: string, facts: Facts, fails: string[]): AiLists | null {
+  const lines = readLines(name, raw, fails);
+  if (!lines) return null;
+  const headings = ["# AI shots - getspace-level3", "## AI clips", "## Screens"];
+  const headers = [AI_HEADER, SCREEN_HEADER];
+  const rows: Row[][] = [[], []];
+  let hIdx = 0; // headings seen
+  let sec = -1; // table section: 0 AI clips, 1 Screens
+  let state: "none" | "header" | "rows" | "ended" | "bad" = "none";
+  const closeSection = (): void => {
+    if (sec >= 0 && state === "none") fails.push(`FAIL ${name}: no table under ${headings[sec + 1]}`);
+    if (sec >= 0 && state === "header") fails.push(`FAIL ${name}: table under ${headings[sec + 1]} has no separator row`);
+  };
+  lines.forEach((text, i) => {
+    const n = i + 1;
+    if (text === "") {
+      if (hIdx === 0) fails.push(`FAIL ${name} line ${n}: line 1 is not the first heading (blank line)`);
+      if (state === "rows") state = "ended";
+      if (state === "header") fails.push(`FAIL ${name} line ${n}: separator row is not the fixed form (blank line)`);
+      return;
+    }
+    if (hIdx < 3 && text === headings[hIdx]) {
+      if (hIdx >= 2) closeSection();
+      hIdx++;
+      if (hIdx >= 2) {
+        sec = hIdx - 2;
+        state = "none";
+      }
+      return;
+    }
+    if (text.startsWith("|")) {
+      if (sec < 0) fails.push(`FAIL ${name} line ${n}: bar line outside a table`);
+      else if (state === "none") {
+        if (text === headers[sec]) state = "header";
+        else {
+          fails.push(`FAIL ${name} line ${n}: table header is not the fixed header`);
+          state = "bad";
+        }
+      } else if (state === "header") {
+        if (!separatorOk(text, colCount(headers[sec]))) fails.push(`FAIL ${name} line ${n}: separator row is not the fixed form`);
+        state = "rows";
+      } else if (state === "rows") {
+        const cells = parseRow(name, n, text, colCount(headers[sec]), fails);
+        if (cells) rows[sec].push({ n, cells });
+      } else if (state === "ended") {
+        fails.push(`FAIL ${name} line ${n}: bar line after the table ends`);
+      }
+      return;
+    }
+    fails.push(`FAIL ${name} line ${n}: text outside the fixed lines and the tables`);
+    if (state === "rows") state = "ended";
+  });
+  if (hIdx < 3) fails.push(`FAIL ${name}: fixed line missing: ${headings[hIdx]}`);
+  else closeSection();
+
+  const lists: AiLists = { ai: new Map(), screens: new Map() };
+  rows[0].forEach((row, i) => {
+    const [id, secCell, shows, first, prompt] = row.cells;
+    const at = `${name} ${id}`;
+    if (id !== `AI-${i + 1}`) fails.push(`FAIL ${name} line ${row.n}: Id ${id} is not AI-${i + 1}`);
+    let secN = 0;
+    if (/^\d+$/.test(secCell) && Number(secCell) >= 3 && Number(secCell) <= 15) secN = Number(secCell);
+    else fails.push(`FAIL ${at}: Sec is not a whole number from 3 to 15`);
+    const m = first.match(/^last frame of AI-(\d+)$/);
+    if (first !== "none" && !(m && Number(m[1]) >= 1 && Number(m[1]) < i + 1)) {
+      fails.push(`FAIL ${at}: First frame is not none or last frame of an earlier AI clip`);
+    }
+    listTextRules(`${at} Shows`, shows, fails);
+    listTextRules(`${at} Prompt`, prompt, fails);
+    lists.ai.set(id, secN);
+  });
+  rows[1].forEach((row, i) => {
+    const [id, shows, shown] = row.cells;
+    const at = `${name} ${id}`;
+    if (id !== `SCR-${i + 1}`) fails.push(`FAIL ${name} line ${row.n}: Id ${id} is not SCR-${i + 1}`);
+    listTextRules(`${at} Shows`, shows, fails);
+    let ids: string[] = [];
+    if (!ID_LIST_RE.test(shown)) fails.push(`FAIL ${at}: Facts shown is not a list of S, G or H ids`);
+    else {
+      ids = shown.split(", ");
+      for (const f of ids) {
+        const fact = facts.get(f);
+        if (!fact) fails.push(`FAIL ${at}: unknown fact id ${f}`);
+        else if (fact.open) fails.push(`FAIL ${at}: cites open point ${f}`);
+        else if (fact.on_screen === "never") fails.push(`FAIL ${at}: cites never row ${f}`);
+      }
+    }
+    lists.screens.set(id, ids);
+  });
+  return lists;
 }
 
 // ---- shot list ----
@@ -577,7 +723,7 @@ export function checkGetspaceStoryboards(opts?: GetspaceCheckOpts): string[] {
   const fails: string[] = [];
 
   const listing = fs.readdirSync(root);
-  const known = new Set<string>([SHOT_LIST, ...GETSPACE_STORYBOARD_SLUGS.map((s) => `${s}.md`)]);
+  const known = new Set<string>([SHOT_LIST, LEVEL3_FILE, AI_SHOTS, ...GETSPACE_STORYBOARD_SLUGS.map((s) => `${s}.md`)]);
   for (const f of listing) {
     if (/^getspace-.*[.]md$/i.test(f) && !known.has(f)) fails.push(`FAIL ${f}: not a known GetSpace storyboard file name`);
   }
@@ -592,17 +738,31 @@ export function checkGetspaceStoryboards(opts?: GetspaceCheckOpts): string[] {
   }
 
   const present = GETSPACE_STORYBOARD_SLUGS.map((s) => `${s}.md`).filter((f) => listing.includes(f));
-  if (present.length === 0) fails.push("FAIL storyboards: no GetSpace storyboard present");
+  const level3 = listing.includes(LEVEL3_FILE);
+  const aiShots = listing.includes(AI_SHOTS);
+  if (present.length === 0 && !level3) fails.push("FAIL storyboards: no GetSpace storyboard present");
+  if (level3 && !aiShots) fails.push(`FAIL ${AI_SHOTS}: missing`);
+  if (aiShots && !level3) fails.push(`FAIL ${AI_SHOTS}: present with no ${LEVEL3_FILE}`);
+  const lists = aiShots ? checkAiShots(AI_SHOTS, fs.readFileSync(path.join(root, AI_SHOTS), "utf8"), facts, fails) : null;
+  const ctx: Level3Ctx = { lists, usedIds: new Set() };
+
   const seen = new Map<string, string>();
-  for (const f of present) {
-    const sentences = checkStoryboard(f, fs.readFileSync(path.join(root, f), "utf8"), facts, clips, shownBy, used, fails);
+  for (const f of level3 ? [...present, LEVEL3_FILE] : present) {
+    const raw = fs.readFileSync(path.join(root, f), "utf8");
+    const sentences = checkStoryboard(f, raw, facts, clips, shownBy, used, fails, f === LEVEL3_FILE ? ctx : null);
     for (const s of sentences) {
       const prev = seen.get(s);
       if (prev !== undefined) fails.push(`FAIL same sentence in ${prev} and ${f}: '${s}'`);
       else seen.set(s, f);
     }
   }
-  // with all three storyboards present, a clip no beat uses is a FAIL
+  // an AI or screen id no beat uses is a FAIL
+  if (level3 && lists) {
+    for (const id of [...lists.ai.keys(), ...lists.screens.keys()]) {
+      if (!ctx.usedIds.has(id)) fails.push(`FAIL ${AI_SHOTS} ${id}: used by no beat`);
+    }
+  }
+  // with seek, give and helps present, a clip no beat uses is a FAIL (level3 uses count)
   if (clips && present.length === GETSPACE_STORYBOARD_SLUGS.length) {
     for (const clip of clips.keys()) {
       if (!used.has(clip)) fails.push(`FAIL ${SHOT_LIST} ${clip}: used by no storyboard`);
