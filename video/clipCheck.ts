@@ -152,6 +152,7 @@ interface Ctx {
   cropTop: number;
   totalFrames: number;
   padGray: number; // gray value of a solid pad_color frame
+  sizeOk: boolean; // the mp4 has the spec size; set by the shape part
   cache: Map<string, Buffer>;
 }
 
@@ -183,13 +184,13 @@ function srcFrame(c: Ctx, id: string, k: number, tail: string, unit: number): Bu
   return b;
 }
 
-/** Every output frame's content area (between the pad bands) as 32x32 gray, one call. */
+/** The content area (between the pad bands) of each output frame as 32x32 gray, in one call. */
 function outContentFrames(c: Ctx): Buffer {
-  const key = "out:all-content";
+  const key = "out:content";
   let b = c.cache.get(key);
   if (!b) {
     const vf = `crop=${c.w}:${c.ch}:0:${c.padTop},scale=32:32,format=gray`;
-    b = ffmpegRaw(c.ffmpeg, ["-i", c.mp4, "-vf", vf], 1024, `every content frame of ${c.slug}`);
+    b = ffmpegRaw(c.ffmpeg, ["-i", c.mp4, "-vf", vf], 1024, `the content frames of ${c.slug}`);
     c.cache.set(key, b);
   }
   return b;
@@ -234,8 +235,9 @@ function partShape(c: Ctx, video: VideoSpec): string {
   const streams = doc.streams ?? [];
   const v = streams.find((s) => s.codec_type === "video");
   if (!v) throw new Error(`ffprobe of ${c.slug} shows no video stream`);
+  c.sizeOk = Number(v.width) === c.w && Number(v.height) === c.h;
   if (v.codec_name !== "h264" || v.pix_fmt !== "yuv420p") return "FAIL shape: codec";
-  if (Number(v.width) !== c.w || Number(v.height) !== c.h) return "FAIL shape: size";
+  if (!c.sizeOk) return "FAIL shape: size";
   const rate = `${c.fps}/1`;
   if (v.r_frame_rate !== rate || v.avg_frame_rate !== rate) return "FAIL shape: fps";
   if (streams.some((s) => s.codec_type === "audio")) return "FAIL shape: audio";
@@ -244,7 +246,7 @@ function partShape(c: Ctx, video: VideoSpec): string {
 }
 
 /** Blur strength where each box plays: the neighbour difference of the box must drop on the
- *  output. A source box below 1.0 is flat and proves nothing; an overlap whose samples are all
+ *  output. A source box below 1.0 is flat and proves nothing; an overlap whose samples are each
  *  flat fails as flat-source, because a flat source cannot show the blur held. */
 function partBlur(c: Ctx, video: VideoSpec, runs: PieceRun[]): string {
   const srcIds = [...new Set(runs.map((r) => r.p.src))];
@@ -286,16 +288,20 @@ function partBlur(c: Ctx, video: VideoSpec, runs: PieceRun[]): string {
   return "PASS blur";
 }
 
-/** Absence of the prove_absent window: no output frame may look like a native frame inside it. */
+/** Absence of the prove_absent window: no output frame may look like a native frame inside it.
+ *  Fails closed: a cut without a window, a window with no native frame and an output read of the
+ *  wrong length prove nothing. Only the sources this video plays are looked at. */
 function partCut(c: Ctx, video: VideoSpec): string {
   const srcIds = [...new Set(video.beats.flatMap((b) => b.pieces.map((p) => p.src)))];
   const out = outContentFrames(c);
   const nOut = Math.floor(out.length / 1024);
+  if (nOut < c.totalFrames) return "FAIL cut: short-read"; // a longer read only adds frames to compare
   for (const id of srcIds) {
     for (const cut of srcOf(c, id).cut) {
-      if (!cut.prove_absent) continue;
+      if (!cut.prove_absent) return "FAIL cut: unproven";
       const nat = srcNativeFrames(c, id, cut.prove_absent.from, cut.prove_absent.to);
       const nNat = Math.floor(nat.length / 1024);
+      if (nNat === 0) return "FAIL cut: empty-window";
       for (let i = 0; i < nOut; i++) {
         const a = out.subarray(i * 1024, i * 1024 + 1024);
         for (let j = 0; j < nNat; j++) {
@@ -384,9 +390,14 @@ function checkVideo(
     cropTop: o.crop_top,
     totalFrames: runs.reduce((n, r) => n + r.frames, 0),
     padGray: padGrayValue(env.ffmpeg, o.pad_color),
+    sizeOk: true,
     cache: new Map(),
   };
-  const parts = [partShape(c, video), partBlur(c, video, runs), partCut(c, video), partBars(c, runs), partCrop(c, runs), partStill(c, runs)];
+  const shape = partShape(c, video);
+  // The pixel reads assume the spec size; on another size the shape line stands alone.
+  const parts = c.sizeOk
+    ? [shape, partBlur(c, video, runs), partCut(c, video), partBars(c, runs), partCrop(c, runs), partStill(c, runs)]
+    : [shape];
   const lines = [`clip-edit check: ${video.slug} mp4 sha256=${sha256Streamed(c.mp4)}`];
   let fail = 0;
   for (const p of parts) {

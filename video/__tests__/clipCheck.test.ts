@@ -11,7 +11,7 @@ import * as path from "path";
 
 import { buildGraph, runCli, type ClipEditSpec } from "../clipEdit";
 import { runCheckCli } from "../clipCheck";
-import { makeEditFixture, type EditFixture } from "../clipEditFixture";
+import { fixtureSpec, makeEditFixture, type EditFixture } from "../clipEditFixture";
 import { hasSystemFfmpeg, resolveSystemFfmpeg } from "../contactSheet";
 
 jest.setTimeout(120000);
@@ -92,11 +92,67 @@ function applied(g: { f: EditFixture; specPa: string }, name: string, plant: (s:
   return { spec, out };
 }
 
-function expectFail(r: { code: number; out: string; err: string }, line: string): void {
+function expectFail(r: { code: number; out: string; err: string }, line: string, n?: number): void {
   expect(r.code).toBe(1);
   expect(r.out).toContain(`${line}\n`);
   const lines = r.out.split("\n").filter((l) => l !== "");
-  expect(lines[lines.length - 1]).toMatch(/^clip-edit check: videos=1 fail=[1-9][0-9]*$/);
+  expect(lines[lines.length - 1]).toMatch(n === undefined ? /^clip-edit check: videos=1 fail=[1-9][0-9]*$/ : new RegExp(`^clip-edit check: videos=1 fail=${n}$`));
+}
+
+/** The good output with a filter on top, re-encoded lossless so a planted pixel survives. */
+function planted(g: { out: string }, vf: string): string {
+  const out = tmp("planted");
+  ff(["-i", path.join(g.out, "test-cut.mp4"), "-vf", vf, "-an", "-c:v", "libx264", "-crf", "0", "-pix_fmt", "yuv420p", path.join(out, "test-cut.mp4")]);
+  return out;
+}
+
+/** The graph of spec-pa with the crop offset 80 replaced, run by the test. */
+function cropAt(g: { f: EditFixture; specPa: string }, offset: number): string {
+  const spec = clone(JSON.parse(fs.readFileSync(g.specPa, "utf8")) as ClipEditSpec);
+  const gr = buildGraph(spec, spec.videos[0]);
+  const s0 = spec.sources[0];
+  const ct = spec.output.crop_top;
+  const graph = gr.graph.replace(`crop=${s0.width}:${s0.height - ct}:0:${ct}`, `crop=${s0.width}:${s0.height - ct}:0:${offset}`);
+  if (graph === gr.graph) throw new Error("the crop offset was not planted");
+  const out = tmp(`crop${offset}`);
+  ff(["-i", g.f.clipFile, "-filter_complex", graph, "-map", `[${gr.outLabel}]`, "-map_metadata", "-1", "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", path.join(out, "test-cut.mp4")]);
+  return out;
+}
+
+/** sha256 of the content of each file under a folder, by relative path. */
+function snapshot(dir: string): Record<string, string> {
+  const res: Record<string, string> = {};
+  const walk = (d: string, pre: string): void => {
+    for (const n of fs.readdirSync(d).sort()) {
+      const p = path.join(d, n);
+      if (fs.statSync(p).isDirectory()) {
+        res[`${pre}${n}/`] = "dir";
+        walk(p, `${pre}${n}/`);
+      } else res[`${pre}${n}`] = sha(p);
+    }
+  };
+  walk(dir, "");
+  return res;
+}
+
+/** A test-made source whose rows are equal (a left-to-right ramp), a spec of its own and an
+ *  output cut with the apply graph by the system ffmpeg. */
+function rampCase(): { spec: string; clips: string; out: string } {
+  const root = tmp("ramp");
+  const clips = path.join(root, "clips");
+  const out = path.join(root, "out");
+  fs.mkdirSync(clips);
+  fs.mkdirSync(out);
+  const clip = path.join(clips, "fixture.mp4");
+  ff(["-f", "lavfi", "-i", "nullsrc=size=360x568:rate=30:duration=1", "-vf", "format=yuv420p,geq=lum='X*255/359':cb=128:cr=128", "-c:v", "libx264", "-crf", "0", "-pix_fmt", "yuv420p", clip]);
+  const s = fixtureSpec(sha(clip));
+  s.sources[0].blur = [];
+  s.sources[0].cut = [];
+  s.videos[0].beats = [{ n: 1, clip: "first", dur: 1, pieces: [{ src: "a", from: 0, to: 1 }] }];
+  const spec = path.join(root, "spec.json");
+  fs.writeFileSync(spec, JSON.stringify(s, null, 2) + "\n");
+  ff(["-i", clip, "-vf", "setpts=PTS-STARTPTS,fps=30,crop=360:488:0:80,pad=360:640:0:76:color=0xFFFFFF,format=yuv420p", "-frames:v", "30", "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", path.join(out, "test-cut.mp4")]);
+  return { spec, clips, out };
 }
 
 function expectRefused(r: { code: number; out: string; err: string }, code: string): void {
@@ -269,13 +325,96 @@ describe("clip:edit check", () => {
     expectFail(r, "FAIL still test-cut");
   });
 
-  ffTest("(23) writes nothing: a recursive listing of <out> and of the spec folder is the same before and after test 2's check", () => {
+  ffTest("(23) writes nothing: names and file contents of <out>, the spec folder and the clips folder are the same before and after test 2's check", () => {
     const g = goodOnce();
-    const specDir = list(g.f.root);
-    const outBefore = list(g.out);
+    const names = list(g.f.root);
+    const before = [snapshot(g.f.root), snapshot(g.out), snapshot(g.f.clipsDir)];
     const r = check(g.specPa, g.f.clipsDir, g.out);
     expect(r.code).toBe(0);
-    expect(list(g.f.root)).toEqual(specDir);
-    expect(list(g.out)).toEqual(outBefore);
+    expect(list(g.f.root)).toEqual(names);
+    expect([snapshot(g.f.root), snapshot(g.out), snapshot(g.f.clipsDir)]).toEqual(before);
+  });
+
+  ffTest("(24) FAIL cut: unproven, the cut of a played source has no prove_absent", () => {
+    const g = goodOnce();
+    const spec = variant(g, "unproven.json", (s) => void delete s.sources[0].cut[0].prove_absent);
+    expectFail(check(spec, g.f.clipsDir, g.out), "FAIL cut: unproven test-cut", 1);
+  });
+
+  ffTest("(25) FAIL cut: empty-window, a prove_absent window with no native frame", () => {
+    const g = goodOnce();
+    for (const [name, win] of [["narrow.json", { from: 1.551, to: 1.552 }], ["past-end.json", { from: 50, to: 51 }]] as const) {
+      const spec = variant(g, name, (s) => void (s.sources[0].cut[0].prove_absent = { ...win }));
+      expectFail(check(spec, g.f.clipsDir, g.out), "FAIL cut: empty-window test-cut", 1);
+    }
+  });
+
+  ffTest("(26) FAIL cut: short-read, the output one frame short", () => {
+    const g = goodOnce();
+    const out = tmp("short-cut");
+    ff(["-i", path.join(g.out, "test-cut.mp4"), "-frames:v", "74", "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", path.join(out, "test-cut.mp4")]);
+    expectFail(check(g.specPa, g.f.clipsDir, out), "FAIL cut: short-read test-cut");
+  });
+
+  ffTest("(27) FAIL shape: codec, one planted mp4 not h264 and one not yuv420p", () => {
+    const g = goodOnce();
+    for (const enc of [["-c:v", "mpeg4", "-pix_fmt", "yuv420p"], ["-c:v", "libx264", "-pix_fmt", "yuv444p"]]) {
+      const out = tmp("codec");
+      ff(["-i", path.join(g.out, "test-cut.mp4"), "-an", ...enc, path.join(out, "test-cut.mp4")]);
+      expectFail(check(g.specPa, g.f.clipsDir, out), "FAIL shape: codec test-cut");
+    }
+  });
+
+  ffTest("(28) FAIL shape: size, another size with the same frame count", () => {
+    const g = goodOnce();
+    const out = planted(g, "scale=320:568");
+    expectFail(check(g.specPa, g.f.clipsDir, out), "FAIL shape: size test-cut", 1);
+  });
+
+  ffTest("(29) FAIL shape: audio, a silent track added to the good video", () => {
+    const g = goodOnce();
+    const out = tmp("audio");
+    ff(["-i", path.join(g.out, "test-cut.mp4"), "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-shortest", path.join(out, "test-cut.mp4")]);
+    expectFail(check(g.specPa, g.f.clipsDir, out), "FAIL shape: audio test-cut", 1);
+  });
+
+  ffTest("(30) FAIL bars: a flat band of the wrong colour (the mean test)", () => {
+    const g = goodOnce();
+    const out = planted(g, "drawbox=x=0:y=0:w=iw:h=60:color=0xE0E0E0:t=fill,drawbox=x=0:y=580:w=iw:h=60:color=0xE0E0E0:t=fill");
+    expectFail(check(g.specPa, g.f.clipsDir, out), "FAIL bars test-cut", 1);
+  });
+
+  ffTest("(31) FAIL bars: one band pixel a few levels off, the row mean within 2 (the flat test)", () => {
+    const g = goodOnce();
+    const out = planted(g, "drawbox=x=100:y=10:w=1:h=1:color=0xF8F8F8:t=fill");
+    expectFail(check(g.specPa, g.f.clipsDir, out), "FAIL bars test-cut", 1);
+  });
+
+  ffTest("(32) FAIL crop: crop offset 28, 8 or more from rows crop_top.. (11.2) but nearer them than rows 0.. (15.9)", () => {
+    const g = goodOnce();
+    expectFail(check(g.specPa, g.f.clipsDir, cropAt(g, 28)), "FAIL crop test-cut");
+  });
+
+  ffTest("(33) FAIL crop: rows 0..32 equal the rows below crop_top, so the difference to them is not below the other", () => {
+    const r = rampCase();
+    expectFail(check(r.spec, r.clips, r.out), "FAIL crop test-cut", 1);
+  });
+
+  ffTest("(34) FAIL cut: the straight-through source with brightness +0.06 (best pair score about 14, between 0.5 and 20)", () => {
+    const g = goodOnce();
+    const out = tmp("bright");
+    ff(["-i", g.f.clipFile, "-vf", "setpts=PTS-STARTPTS,fps=30,eq=brightness=0.06,crop=360:488:0:80,pad=360:640:0:76:color=0xFFFFFF,format=yuv420p", "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", path.join(out, "test-cut.mp4")]);
+    expectFail(check(g.specPa, g.f.clipsDir, out), "FAIL cut test-cut");
+  });
+
+  ffTest("(35) a truncated output (10 frames) is an error line with no summary", () => {
+    const g = goodOnce();
+    const out = tmp("ten");
+    ff(["-i", path.join(g.out, "test-cut.mp4"), "-frames:v", "10", "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", path.join(out, "test-cut.mp4")]);
+    const r = check(g.specPa, g.f.clipsDir, out);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/^clip-edit check: error: /);
+    expect(r.out).toBe("");
+    expect(r.err).not.toContain("videos=");
   });
 });
