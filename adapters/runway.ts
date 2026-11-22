@@ -614,7 +614,9 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
   const cCredits = o.finalCost ?? o.estimated ?? 0;
   const deltaMicro = Math.max(0, Math.round(cCredits * MICRO_PER_CREDIT) - clip.estimateMicro);
 
-  const failure = o.failure ? scrub(o.failure.replace(/\s+/g, " ").slice(0, 200), key) : null;
+  // scrub the WHOLE text before the 200-character cut: cutting first would leave the first
+  // part of a key that straddles character 200, a part scrub can no longer match
+  const failure = o.failure ? scrub(o.failure.replace(/\s+/g, " "), key).slice(0, 200) : null;
   fs.appendFileSync(
     b.ledgerReal,
     `${JSON.stringify({

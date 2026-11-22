@@ -30,13 +30,16 @@ let vg: VG;
 // the Keychain lookup is faked at the module level: the builtin's execFileSync
 // property is non-configurable, so jest.mock replaces the module the adapter sees
 const mockExecCalls: { file: string; args: string[] }[] = [];
+let mockKeychainValue = "rw-chain-key-not-real\n"; // what ONE Keychain lookup returns
+let mockKeychainThrows = false; // true → the lookup throws (a missing or locked entry)
 jest.mock("child_process", () => {
   const actual = jest.requireActual("child_process") as Record<string, unknown>;
   return {
     ...actual,
     execFileSync: (file: string, args: readonly string[]): string => {
       mockExecCalls.push({ file, args: [...args] });
-      return "rw-chain-key-not-real\n";
+      if (mockKeychainThrows) throw new Error("the made-up Keychain lookup failed");
+      return mockKeychainValue;
     },
   };
 });
@@ -441,6 +444,28 @@ describe("t4 key containment", () => {
     const text = readBytes(ctx.ledger)?.toString("utf8") ?? "";
     expect(text).not.toContain(KEY);
     expect(text).toContain("[redacted]");
+  });
+
+  it("a failure text of 190 characters then the key: the 200-character cut leaks no piece of the key", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.statuses = [{ id: "made-up-task-1", status: "FAILED", failure: `${"x".repeat(190)}${KEY}` }];
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(1);
+    const ledgerText = readBytes(ctx.ledger)?.toString("utf8") ?? "";
+    expect(r.err).toContain("[redacted]");
+    expect(ledgerText).toContain("[redacted]");
+    // the key starts before character 200 and ends after it: no 6-character piece of it may
+    // survive in stdout, stderr, the record or any file in --out (a cut before the scrub
+    // would leave the first 10 characters of the key in all of them)
+    const printed = [r.out, r.err, ledgerText];
+    for (const f of fs.readdirSync(ctx.out)) {
+      printed.push(fs.readFileSync(path.join(ctx.out, f), "utf8"));
+    }
+    for (let i = 0; i + 6 <= KEY.length; i++) {
+      const piece = KEY.slice(i, i + 6);
+      for (const h of printed) expect([piece, h]).toEqual([piece, expect.not.stringContaining(piece)]);
+    }
   });
 
   it("a throwing create call that echoes the key is scrubbed too", async () => {
@@ -879,4 +904,69 @@ describe("t10 key-missing", () => {
       expect(fs.readdirSync(ctx.out).length).toBe(0);
     });
   }
+});
+
+// ── (11) the key reader itself: env first, else ONE Keychain lookup ─────────────────────
+
+describe("t11 key reader", () => {
+  const ENV = "RUNWAYML_API_SECRET";
+  const CHAIN_KEY = "rw-chain-key-not-real";
+  let savedValue: string | undefined;
+  let wasSet: boolean;
+
+  beforeEach(() => {
+    savedValue = process.env[ENV];
+    wasSet = Object.prototype.hasOwnProperty.call(process.env, ENV);
+    mockExecCalls.length = 0;
+    mockKeychainValue = `${CHAIN_KEY}\n`;
+    mockKeychainThrows = false;
+  });
+  afterEach(() => {
+    if (wasSet) process.env[ENV] = savedValue;
+    else delete process.env[ENV];
+    mockExecCalls.length = 0;
+    mockKeychainValue = `${CHAIN_KEY}\n`;
+    mockKeychainThrows = false;
+  });
+
+  it("(a) env set: its value is returned trimmed and the Keychain is never asked", () => {
+    process.env[ENV] = "  rw-env-key-not-real  ";
+    expect(rw.readRunwayKey()).toBe("rw-env-key-not-real");
+    expect(mockExecCalls.length).toBe(0);
+  });
+
+  it('(b) env set to "  " or "" counts as absent: ONE Keychain lookup, its value trimmed', () => {
+    for (const blank of ["  ", ""]) {
+      process.env[ENV] = blank;
+      mockExecCalls.length = 0;
+      expect(rw.readRunwayKey()).toBe(CHAIN_KEY); // the mock returns it with a trailing newline
+      expect(mockExecCalls).toEqual([
+        { file: "security", args: ["find-generic-password", "-s", ENV, "-w"] },
+      ]);
+    }
+  });
+
+  it("(c) a Keychain call that throws, or returns only whitespace: an error that holds no key value", () => {
+    delete process.env[ENV];
+    const texts: string[] = [];
+    mockKeychainThrows = true;
+    try {
+      rw.readRunwayKey();
+    } catch (e) {
+      texts.push(e instanceof Error ? e.message : String(e));
+    }
+    mockKeychainThrows = false;
+    mockKeychainValue = "   \n\t";
+    try {
+      rw.readRunwayKey();
+    } catch (e) {
+      texts.push(e instanceof Error ? e.message : String(e));
+    }
+    expect(texts.length).toBe(2); // both cases throw
+    for (const t of texts) {
+      expect(t).not.toBe("");
+      expect(t).not.toContain(CHAIN_KEY);
+      expect(t).not.toContain("rw-env-key-not-real");
+    }
+  });
 });
