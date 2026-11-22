@@ -120,6 +120,12 @@ export interface RunwayModelInfo {
   ratios: string[];
   durations: number[];
   audioFlag: boolean; // whether the model takes the audio flag at all
+  /** The model always makes sound and has no audio switch (Kling 4.0): the body holds no audio key. */
+  audioAlways: boolean;
+  /** The clip charge is rounded up to whole credits (the list-price rule of Kling 4.0). */
+  roundUpCredits: boolean;
+  /** Ratios per endpoint, when the model gives them so; an endpoint with no list is refused. */
+  ratiosByEndpoint?: Readonly<Record<string, string[]>>;
   /** ratio -> audio "true"/"false" -> list credits per second (docs.dev.runwayml.com/guides/pricing). */
   creditsPerSecond: Readonly<Record<string, Readonly<Record<string, number>>>>;
 }
@@ -137,6 +143,8 @@ export interface RunwayClip {
   creditsPerSecond: number;
   rateMicro: number; // whole micro-USD per second
   estimateMicro: number; // whole micro-USD for the clip
+  roundedUp: boolean; // the clip charge was rounded up to whole credits
+  sendAudioKey: boolean; // false for a model with no audio switch: the body holds no audio key
 }
 
 export interface RunwayPlan {
@@ -181,7 +189,31 @@ export function loadPlan(file: string): RunwayPlan {
     ) {
       throw new Refusal("plan-invalid", `model ${name} is not well formed`);
     }
-    models[name] = { name, promptMax, promptMin, ratios, durations, audioFlag: mo.audio_flag === true, creditsPerSecond: prices };
+    if (mo.audio_always !== undefined && typeof mo.audio_always !== "boolean") {
+      throw new Refusal("plan-invalid", `model ${name}: audio_always must be true or false`);
+    }
+    const audioAlways = mo.audio_always === true;
+    if (audioAlways && mo.audio_flag === true) {
+      throw new Refusal("plan-invalid", `model ${name}: audio_flag and audio_always contradict`);
+    }
+    if (mo.round_up_credits !== undefined && typeof mo.round_up_credits !== "boolean") {
+      throw new Refusal("plan-invalid", `model ${name}: round_up_credits must be true or false`);
+    }
+    let ratiosByEndpoint: Record<string, string[]> | undefined;
+    if (mo.ratios_by_endpoint !== undefined) {
+      const rbe = asObj(mo.ratios_by_endpoint);
+      ratiosByEndpoint = {};
+      for (const [ep, list] of Object.entries(rbe)) {
+        if (!Array.isArray(list) || list.length === 0) {
+          throw new Refusal("plan-invalid", `model ${name}: ratios_by_endpoint ${ep} is not a list`);
+        }
+        ratiosByEndpoint[ep] = list.map(String);
+      }
+    }
+    models[name] = {
+      name, promptMax, promptMin, ratios, durations, audioFlag: mo.audio_flag === true, audioAlways,
+      roundUpCredits: mo.round_up_credits === true, ratiosByEndpoint, creditsPerSecond: prices,
+    };
   }
   if (Object.keys(models).length === 0) throw new Refusal("plan-invalid", "the plan holds no models");
 
@@ -208,9 +240,16 @@ export function loadPlan(file: string): RunwayPlan {
     const m = models[model];
     if (!m) throw new Refusal("plan-invalid", `clip ${id}: unknown model ${model}`);
     if (!m.ratios.includes(ratio ?? "")) throw new Refusal("plan-invalid", `clip ${id}: ratio ${String(ratio)} is not a ratio of ${model}`);
+    if (m.ratiosByEndpoint) {
+      // per-endpoint ratios: no list for this endpoint is a refusal, not a fall back to m.ratios
+      const list = m.ratiosByEndpoint[endpoint];
+      if (!list || !list.includes(ratio ?? "")) {
+        throw new Refusal("plan-invalid", `clip ${id}: ratio ${String(ratio)} is not a ratio of ${model} on ${endpoint}`);
+      }
+    }
     if (!m.durations.includes(seconds ?? -1)) throw new Refusal("plan-invalid", `clip ${id}: duration ${String(seconds)} is not a duration of ${model}`);
     if (typeof audio !== "boolean") throw new Refusal("plan-invalid", `clip ${id}: audio must be true or false`);
-    if (audio && !m.audioFlag) throw new Refusal("plan-invalid", `clip ${id}: model ${model} has no audio flag`);
+    if (audio && !m.audioFlag && !m.audioAlways) throw new Refusal("plan-invalid", `clip ${id}: model ${model} has no audio flag`);
     const units = prompt.length; // a JS string length IS UTF-16 code units
     if (units > m.promptMax) {
       throw new Refusal("prompt-too-long", `clip ${id}: the prompt is ${units} UTF-16 code units, model ${model} allows ${m.promptMax}`);
@@ -231,12 +270,21 @@ export function loadPlan(file: string): RunwayPlan {
         `model ${model} at ${ratio} audio ${audio}: price ${credits} credits/s rounds to rate ${rateMicro} micro-USD/s`,
       );
     }
+    let estimateMicro = rateMicro * (seconds as number);
+    if (m.roundUpCredits) {
+      // whole-number arithmetic: credits in thousandths, the clip charge rounded UP to whole credits
+      const milli = Math.round(credits * 1000);
+      const chargedCredits = Math.floor((milli * (seconds as number) + 999) / 1000);
+      estimateMicro = chargedCredits * MICRO_PER_CREDIT;
+    }
     clips.push({
       id, shot, model, endpoint, seconds: seconds as number, ratio: ratio as string, audio, prompt,
       promptSha: sha256(Buffer.from(prompt, "utf8")),
       creditsPerSecond: credits,
       rateMicro,
-      estimateMicro: rateMicro * (seconds as number),
+      estimateMicro,
+      roundedUp: m.roundUpCredits,
+      sendAudioKey: !m.audioAlways,
     });
   }
   return { planId, clips, totalMicro: clips.reduce((s, c) => s + c.estimateMicro, 0) };
@@ -539,7 +587,9 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
       rate_usd_per_s: clip.rateMicro / 1e6,
       credits_per_s: clip.creditsPerSecond,
       price_read: PRICE_READ,
-      basis: "list credits per second x seconds x USD 0.01 per credit",
+      basis: clip.roundedUp
+        ? "list credits per second x seconds, rounded up to whole credits, x USD 0.01 per credit"
+        : "list credits per second x seconds x USD 0.01 per credit",
     },
     status: "attempted",
   });
@@ -582,8 +632,10 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
       promptText: clip.prompt,
       ratio: clip.ratio,
       duration: clip.seconds,
-      audio: clip.audio, // named explicitly on every call: the API default is true for all three models
     };
+    // named explicitly on every call: the API default is true; a model with no audio switch
+    // (Kling 4.0) gets no key, its schema refuses unknown keys
+    if (clip.sendAudioKey) body.audio = clip.audio;
     if (clip.endpoint === "image_to_video") body.promptImage = (b.still as StillImage).dataUri;
 
     const createReply = asObj(

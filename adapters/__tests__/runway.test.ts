@@ -1510,3 +1510,255 @@ describe("t13 round 4", () => {
     });
   });
 });
+
+// ── second plan (A52b): Seedance 2.5, Kling 4.0 and the Veo prompt control ──────────────
+
+const PLAN_B_FILE = path.join(REPO, "tools", "runway-tryout-plan-b.json");
+const PLAN_B = JSON.parse(fs.readFileSync(PLAN_B_FILE, "utf8")) as PlanJson;
+const SENTENCE = "The giver is told the seeker is nearby as the arrival gets close.";
+const KLING4_IDS = ["ai-1-kling4-pic", "ai-4-kling4-pic", "ai-4-kling4-voice"];
+const SEED25_IDS = ["ai-1-seedance25-pic", "ai-4-seedance25-pic", "ai-4-seedance25-voice"];
+const PLAN_B_IDS = [...SEED25_IDS, ...KLING4_IDS, "ai-4-veo-newprompt-pic"];
+
+function tempPlanB(mut: (p: PlanJson) => void): string {
+  const p = JSON.parse(fs.readFileSync(PLAN_B_FILE, "utf8")) as PlanJson;
+  mut(p);
+  const f = path.join(mkTmp(), "plan-b.json");
+  fs.writeFileSync(f, JSON.stringify(p));
+  return f;
+}
+
+/** A live run of one plan-b clip; returns the create body. */
+async function liveBody(id: string): Promise<{ body: Record<string, unknown>; r: CliResult; ctx: Ctx }> {
+  const ctx = makeCtx(PLAN_B_FILE);
+  const fake = new FakeCaller();
+  const c = PLAN_B.clips.find((x) => x.id === id) as PlanClip;
+  const o: ArgsOpts = { clip: id, extra: ["--live"] };
+  if (c.endpoint === "image_to_video") o.still = writeStill(ctx.tmp);
+  const r = await run(ctx.args(o), fake);
+  expect([id, r.code]).toEqual([id, 0]);
+  return { body: JSON.parse(fake.calls[0].body as string) as Record<string, unknown>, r, ctx };
+}
+
+describe("t15 kling_4 audio rule", () => {
+  it("the body of each kling_4 clip holds exactly model, promptText, ratio, duration (and promptImage): no audio key", async () => {
+    for (const id of KLING4_IDS) {
+      const { body } = await liveBody(id);
+      const c = PLAN_B.clips.find((x) => x.id === id) as PlanClip;
+      const keys = ["model", "promptText", "ratio", "duration", ...(c.endpoint === "image_to_video" ? ["promptImage"] : [])];
+      expect([id, Object.keys(body).sort()]).toEqual([id, keys.sort()]);
+      if (c.endpoint === "image_to_video") {
+        expect([id, body.ratio]).toEqual([id, "auto_720p"]);
+        expect(body.promptImage).toBe(`data:image/png;base64,${PNG_BYTES.toString("base64")}`);
+      }
+    }
+  });
+
+  it("a kling_4 clip with audio true is allowed, and so is audio false; the clip line and attempt line keep the plan audio", async () => {
+    const ctx = makeCtx(PLAN_B_FILE);
+    const r = await run(ctx.args(), new FakeCaller());
+    expect(r.code).toBe(0);
+    const voice = r.out.split("\n").find((l) => l.includes("id=ai-4-kling4-voice")) as string;
+    const pic = r.out.split("\n").find((l) => l.includes("id=ai-4-kling4-pic")) as string;
+    expect(voice).toContain("audio=true");
+    expect(pic).toContain("audio=false");
+    const { ctx: c2 } = await liveBody("ai-4-kling4-voice");
+    expect((ledgerLines(c2.ledger)[0].sent as Record<string, unknown>).audio).toBe(true);
+  });
+
+  it("the audio key of seedance2_5 and the veo clip equals the plan boolean", async () => {
+    for (const id of [...SEED25_IDS, "ai-4-veo-newprompt-pic"]) {
+      const { body } = await liveBody(id);
+      const c = PLAN_B.clips.find((x) => x.id === id) as PlanClip;
+      expect([id, body.audio]).toEqual([id, c.audio]);
+    }
+  });
+
+  it("a model with audio_flag true AND audio_always true refuses plan-invalid, dry run too", async () => {
+    const plan = tempPlanB((p) => {
+      (p.models.kling_4 as unknown as { audio_flag: boolean }).audio_flag = true;
+    });
+    const ctx = makeCtx(plan);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    await expectRefusal(r, "plan-invalid", fake, ctx.ledger);
+  });
+
+  it("an audio_always value that is not a boolean refuses plan-invalid", async () => {
+    const plan = tempPlanB((p) => {
+      (p.models.kling_4 as unknown as { audio_always: string }).audio_always = "yes";
+    });
+    const ctx = makeCtx(plan);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    await expectRefusal(r, "plan-invalid", fake, ctx.ledger);
+  });
+});
+
+describe("t16 price lookup", () => {
+  it("clip lines: kling_4 0.950 at rate 0.157, seedance2_5 1.800, veo 0.600", async () => {
+    const ctx = makeCtx(PLAN_B_FILE);
+    const r = await run(ctx.args(), new FakeCaller());
+    for (const id of KLING4_IDS) {
+      const line = r.out.split("\n").find((l) => l.includes(`id=${id} `)) as string;
+      expect([id, line]).toEqual([id, expect.stringContaining("rate-usd-per-s=0.157 estimate-usd=0.950")]);
+    }
+    for (const id of SEED25_IDS) {
+      const line = r.out.split("\n").find((l) => l.includes(`id=${id} `)) as string;
+      expect([id, line]).toEqual([id, expect.stringContaining("estimate-usd=1.800")]);
+    }
+    const veo = r.out.split("\n").find((l) => l.includes("id=ai-4-veo-newprompt-pic ")) as string;
+    expect(veo).toContain("estimate-usd=0.600");
+  });
+
+  it("a 5 s kling_4 clip is 79 credits (ceil of 78.5), USD 0.790", async () => {
+    const plan = tempPlanB((p) => {
+      (p.models.kling_4 as unknown as { durations: number[] }).durations = [5, 6];
+      (p.clips.find((x) => x.id === "ai-1-kling4-pic") as PlanClip).seconds = 5;
+    });
+    const ctx = makeCtx(plan);
+    const r = await run(ctx.args({ clip: "ai-1-kling4-pic" }), new FakeCaller());
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("estimate-usd=0.790");
+  });
+
+  it("a kling_4 clip whose ratio has no price entry refuses price-unknown", async () => {
+    const plan = tempPlanB((p) => {
+      delete p.models.kling_4.credits_per_second["auto_720p"];
+    });
+    const ctx = makeCtx(plan);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    await expectRefusal(r, "price-unknown", fake, ctx.ledger);
+  });
+
+  it("attempt basis: seedance2_5 keeps today's text, kling_4 names the round-up", async () => {
+    const s = await liveBody("ai-1-seedance25-pic");
+    expect((ledgerLines(s.ctx.ledger)[0].cost_how as Record<string, unknown>).basis).toBe(
+      "list credits per second x seconds x USD 0.01 per credit",
+    );
+    const k = await liveBody("ai-1-kling4-pic");
+    const att = ledgerLines(k.ctx.ledger)[0];
+    expect(String((att.cost_how as Record<string, unknown>).basis)).toContain("rounded up to whole credits");
+    expect(att.cost_usd).toBe(0.95);
+  });
+});
+
+describe("t17 plan check of plan-b", () => {
+  const plan = (id: string): PlanClip => PLAN_B.clips.find((x) => x.id === id) as PlanClip;
+
+  it("shape: 7 clips with the 7 ids, 6 s, plan id, endpoints, audio booleans, ratios", () => {
+    expect(PLAN_B.plan_id).toBe("a52b-runway-tryout-2026-11-22");
+    expect(PLAN_B.clips.map((c) => c.id)).toEqual(PLAN_B_IDS);
+    for (const c of PLAN_B.clips) {
+      expect([c.id, c.seconds]).toEqual([c.id, 6]);
+      expect([c.id, c.endpoint]).toEqual([c.id, c.shot === "AI-1" ? "text_to_video" : "image_to_video"]);
+      expect([c.id, c.audio]).toEqual([c.id, c.id.endsWith("-voice")]);
+      const kling4Image = c.model === "kling_4" && c.endpoint === "image_to_video";
+      expect([c.id, c.ratio]).toEqual([c.id, kling4Image ? "auto_720p" : "720:1280"]);
+    }
+    expect(PLAN.clips.length).toBe(9); // the first plan file is untouched
+  });
+
+  it("prompt shape: AI-1 clips share one, AI-4 pic clips share one, voice prompts extend it; limits hold", () => {
+    const ai1 = PLAN_B.clips.filter((c) => c.shot === "AI-1");
+    const pic = PLAN_B.clips.filter((c) => c.shot === "AI-4" && !c.audio);
+    const voice = PLAN_B.clips.filter((c) => c.audio);
+    expect([ai1.length, pic.length, voice.length]).toEqual([2, 3, 2]);
+    expect(new Set(ai1.map((c) => c.prompt)).size).toBe(1);
+    expect(new Set(pic.map((c) => c.prompt)).size).toBe(1);
+    for (const v of voice) {
+      expect(v.prompt.startsWith(pic[0].prompt)).toBe(true);
+      expect(v.prompt).toContain(SENTENCE);
+    }
+    for (const c of PLAN_B.clips) {
+      expect([c.id, c.prompt.length <= PLAN_B.models[c.model].prompt_text_max]).toEqual([c.id, true]);
+    }
+    expect(plan("ai-4-veo-newprompt-pic").prompt.length).toBeLessThanOrEqual(1000);
+  });
+
+  it("the dry run prints 7 clip lines with the 3 prompt sha256 values of the decided prompts", async () => {
+    const ctx = makeCtx(PLAN_B_FILE);
+    const r = await run(ctx.args(), new FakeCaller());
+    const lines = r.out.split("\n").filter((l) => l.startsWith("runway: clip id="));
+    expect(lines.length).toBe(7);
+    const shaOf = (id: string): string => (lines.find((l) => l.includes(`id=${id} `)) as string).match(/prompt-sha256=([0-9a-f]{64})/)![1];
+    const ai1 = "234ec59efdb326d9a3b91e7570e4fb4045911b277eca346d1f5ca22e7eea1718";
+    const pic = "fe689df49373ed9a14a5582a7a29f4faa8fed3323f0d5dee38014b93b6f9ee9b";
+    const voice = "ff46cb433a7d3aebb40f860fd2359704f1635d4fb84a6da96f2847ac5839b7fa";
+    for (const id of ["ai-1-seedance25-pic", "ai-1-kling4-pic"]) expect(shaOf(id)).toBe(ai1);
+    for (const id of ["ai-4-seedance25-pic", "ai-4-kling4-pic", "ai-4-veo-newprompt-pic"]) expect(shaOf(id)).toBe(pic);
+    for (const id of ["ai-4-seedance25-voice", "ai-4-kling4-voice"]) expect(shaOf(id)).toBe(voice);
+  });
+
+  it("a kling_4 image_to_video clip with ratio 720:1280 refuses plan-invalid, also in the dry run", async () => {
+    const p = tempPlanB((x) => {
+      (x.clips.find((c) => c.id === "ai-4-kling4-pic") as PlanClip).ratio = "720:1280";
+    });
+    const ctx = makeCtx(p);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    await expectRefusal(r, "plan-invalid", fake, ctx.ledger);
+  });
+
+  it("a kling_4 clip on an endpoint with no ratio list refuses plan-invalid (no fall back to the model list)", async () => {
+    const p = tempPlanB((x) => {
+      delete (x.models.kling_4 as unknown as { ratios_by_endpoint: Record<string, string[]> }).ratios_by_endpoint.text_to_video;
+    });
+    const ctx = makeCtx(p);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    await expectRefusal(r, "plan-invalid", fake, ctx.ledger);
+  });
+
+  it("a seedance2_5 clip of 3 s refuses plan-invalid; 15001 code units refuse prompt-too-long", async () => {
+    const p1 = tempPlanB((x) => {
+      (x.clips.find((c) => c.id === "ai-1-seedance25-pic") as PlanClip).seconds = 3;
+    });
+    const c1 = makeCtx(p1);
+    const f1 = new FakeCaller();
+    await expectRefusal(await run(c1.args(), f1), "plan-invalid", f1, c1.ledger);
+    const p2 = tempPlanB((x) => {
+      (x.clips.find((c) => c.id === "ai-1-seedance25-pic") as PlanClip).prompt = "a".repeat(15001);
+    });
+    const c2 = makeCtx(p2);
+    const f2 = new FakeCaller();
+    await expectRefusal(await run(c2.args(), f2), "prompt-too-long", f2, c2.ledger);
+  });
+
+  it("the first plan file still loads with its 9 clip lines and usd=9.360", async () => {
+    const ctx = makeCtx(PLAN_FILE);
+    const r = await run(ctx.args(), new FakeCaller());
+    expect(r.out.split("\n").filter((l) => l.startsWith("runway: clip id=")).length).toBe(9);
+    expect(r.out).toContain("usd=9.360");
+  });
+});
+
+describe("t18 plan-b dry run total and cap", () => {
+  it("total clips=7 usd=8.850; record 15.52 gives the spend line with room-after 0.630, exit 0", async () => {
+    const ctx = makeCtx(PLAN_B_FILE);
+    writeLedger(ctx.ledger, [
+      { kind: "attempt", service: "gemini-omni", cost_usd: 6.16 },
+      { kind: "attempt", service: "runway", cost_usd: 9.36 },
+    ]);
+    const r = await run(ctx.args(), new FakeCaller());
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("runway: total clips=7 usd=8.850");
+    expect(r.out).toContain("spent usd=15.520 ceiling=25 room usd=9.480 room-after usd=0.630");
+  });
+
+  it("record 16.16 refuses over-ceiling with no clip line and the record unchanged; 16.15 passes", async () => {
+    const ctx = makeCtx(PLAN_B_FILE);
+    writeLedger(ctx.ledger, [{ kind: "attempt", service: "gemini-omni", cost_usd: 16.16 }]);
+    const before = readBytes(ctx.ledger);
+    const r = await run(ctx.args(), new FakeCaller());
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+    expect(r.out).toBe("");
+    expect(readBytes(ctx.ledger)).toEqual(before);
+    const ok = makeCtx(PLAN_B_FILE);
+    writeLedger(ok.ledger, [{ kind: "attempt", service: "gemini-omni", cost_usd: 16.15 }]);
+    const r2 = await run(ok.args(), new FakeCaller());
+    expect(r2.code).toBe(0);
+  });
+});
