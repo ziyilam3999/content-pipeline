@@ -47,7 +47,7 @@
       "seconds": 6,
       "ratio": "720:1280",
       "audio": false,
-      "prompt": "Top-down bird's-eye shot from a static camera fixed to the ceiling, looking straight down: a map-like plan view of one aisle in an indoor concrete parking garage. Ordinary parked hatchbacks and sedans in grey, silver, black and dark blue fill the bays on both sides, each seen from directly above with roof, bonnet and windscreen. Smooth bare grey concrete floor with simple white bay lines. Cool fluorescent light, soft shadows. One small red hatchback drives slowly up the centre of the aisle from the bottom edge of the frame towards the top, brakes to a short stop halfway with brake lights glowing, then rolls on. Everything else stays still. Real security-camera footage with slight sensor noise."
+      "prompt": "Locked-off overhead top-down shot from a camera fixed to the ceiling, looking straight down, no movement, held unbroken for the entire shot: a map-like plan view of one aisle in an indoor concrete parking garage. Ordinary parked hatchbacks and sedans in grey, silver, black and dark blue fill the bays on both sides, each seen from directly above with roof, bonnet and windscreen. Smooth bare grey concrete floor with simple white bay lines. Cool fluorescent light, soft shadows. One small red hatchback drives slowly up the centre of the aisle from the bottom edge of the frame towards the top, brakes to a short stop halfway with brake lights glowing, then rolls on. Everything else stays still. Real security-camera footage with slight sensor noise. Exactly one red hatchback throughout."
     },
     {
       "id": "ai-4-seedance25-pic",
@@ -57,7 +57,7 @@
       "seconds": 6,
       "ratio": "720:1280",
       "audio": false,
-      "prompt": "Fixed overhead security camera, the camera does not move. The silver hatchback at the right edge of the frame, parked in the bay just above the right-hand pillar with its tail lights facing the aisle, reverses slowly out into the empty aisle ahead of the red car. It straightens and drives away up the aisle, leaving the frame at the top. Only after the silver hatchback has gone, the red hatchback in the centre of the aisle steers gently to the right and rolls forward into that same empty bay, between the white lines, and stops. Every other car stays parked and still. The pillars and floor markings stay exactly as they are."
+      "prompt": "Locked-off overhead security camera, no movement, held unbroken for the entire shot. 0-3 seconds: the silver hatchback at the right edge of the frame, parked in the bay just above the right-hand pillar with its tail lights facing the aisle, reverses slowly out into the empty aisle ahead of the red car, straightens and drives away up the aisle, leaving the frame at the top. 3-6 seconds: the red hatchback in the centre of the aisle steers gently to the right and rolls forward into that same empty bay, between the white lines, and stops. Consistent throughout: exactly one red hatchback; every other car stays parked and still; the pillars and floor markings stay exactly as they are."
     },
     {
       "id": "ai-4-seedance25-voice",
@@ -67,7 +67,7 @@
       "seconds": 6,
       "ratio": "720:1280",
       "audio": true,
-      "prompt": "Fixed overhead security camera, the camera does not move. The silver hatchback at the right edge of the frame, parked in the bay just above the right-hand pillar with its tail lights facing the aisle, reverses slowly out into the empty aisle ahead of the red car. It straightens and drives away up the aisle, leaving the frame at the top. Only after the silver hatchback has gone, the red hatchback in the centre of the aisle steers gently to the right and rolls forward into that same empty bay, between the white lines, and stops. Every other car stays parked and still. The pillars and floor markings stay exactly as they are. A calm adult narrator says, \"The giver is told the seeker is nearby as the arrival gets close.\" The only other sound is a quiet garage hum."
+      "prompt": "Locked-off overhead security camera, no movement, held unbroken for the entire shot. 0-3 seconds: the silver hatchback at the right edge of the frame, parked in the bay just above the right-hand pillar with its tail lights facing the aisle, reverses slowly out into the empty aisle ahead of the red car, straightens and drives away up the aisle, leaving the frame at the top. 3-6 seconds: the red hatchback in the centre of the aisle steers gently to the right and rolls forward into that same empty bay, between the white lines, and stops. Consistent throughout: exactly one red hatchback; every other car stays parked and still; the pillars and floor markings stay exactly as they are. Dialogue (calm adult narrator, off-screen voice-over, English): \"The giver is told the seeker is nearby as the arrival gets close.\" No subtitles. No background music, environmental sounds only."
     },
     {
       "id": "ai-1-kling4-pic",
@@ -77,7 +77,7 @@
       "seconds": 6,
       "ratio": "720:1280",
       "audio": false,
-      "prompt": "Top-down bird's-eye shot from a static camera fixed to the ceiling, looking straight down: a map-like plan view of one aisle in an indoor concrete parking garage. Ordinary parked hatchbacks and sedans in grey, silver, black and dark blue fill the bays on both sides, each seen from directly above with roof, bonnet and windscreen. Smooth bare grey concrete floor with simple white bay lines. Cool fluorescent light, soft shadows. One small red hatchback drives slowly up the centre of the aisle from the bottom edge of the frame towards the top, brakes to a short stop halfway with brake lights glowing, then rolls on. Everything else stays still. Real security-camera footage with slight sensor noise."
+      "prompt": "Strictly vertical top-down overhead shot from a static camera fixed to the ceiling, one continuous shot with no cuts, angle changes or scene changes: a map-like plan view of one aisle in an indoor concrete parking garage. Ordinary parked hatchbacks and sedans in grey, silver, black and dark blue fill the bays on both sides, each seen from directly above with roof, bonnet and windscreen. Smooth bare grey concrete floor with simple white bay lines. Cool fluorescent light, soft shadows. One small red hatchback drives slowly up the centre of the aisle from the bottom edge of the frame towards the top, brakes to a short stop halfway with brake lights glowing, then rolls on. Everything else stays still. Real security-camera footage with slight sensor noise. Exactly one red hatchback is visible throughout. Audio: quiet garage ambience and a soft engine sound only. No background music. No subtitles."
     },
     {
       "id": "ai-4-kling4-pic",
@@ -87,7 +87,7 @@
       "seconds": 6,
       "ratio": "auto_720p",
       "audio": false,
-      "prompt": "Fixed overhead security camera, the camera does not move. The silver hatchback at the right edge of the frame, parked in the bay just above the right-hand pillar with its tail lights facing the aisle, reverses slowly out into the empty aisle ahead of the red car. It straightens and drives away up the aisle, leaving the frame at the top. Only after the silver hatchback has gone, the red hatchback in the centre of the aisle steers gently to the right and rolls forward into that same empty bay, between the white lines, and stops. Every other car stays parked and still. The pillars and floor markings stay exactly as they are."
+      "prompt": "One continuous shot from a fixed overhead security camera, with no cuts, angle changes or scene changes. The camera holds its position. The silver hatchback at the right edge of the frame, parked in the bay just above the right-hand pillar with its tail lights facing the aisle, reverses slowly out into the empty aisle ahead of the red car. It straightens and drives away up the aisle, leaving the frame at the top by about 3 seconds. Only after the silver hatchback has gone, the red hatchback in the centre of the aisle steers gently to the right and rolls forward into that same empty bay, between the white lines, and stops. Exactly one red hatchback is visible throughout. Every other car stays parked and still. The pillars and floor markings stay exactly as they are. Audio: quiet garage ambience and soft engine sound only. No background music. No subtitles."
     },
     {
       "id": "ai-4-kling4-voice",
@@ -97,7 +97,7 @@
       "seconds": 6,
       "ratio": "auto_720p",
       "audio": true,
-      "prompt": "Fixed overhead security camera, the camera does not move. The silver hatchback at the right edge of the frame, parked in the bay just above the right-hand pillar with its tail lights facing the aisle, reverses slowly out into the empty aisle ahead of the red car. It straightens and drives away up the aisle, leaving the frame at the top. Only after the silver hatchback has gone, the red hatchback in the centre of the aisle steers gently to the right and rolls forward into that same empty bay, between the white lines, and stops. Every other car stays parked and still. The pillars and floor markings stay exactly as they are. A calm adult narrator says, \"The giver is told the seeker is nearby as the arrival gets close.\" The only other sound is a quiet garage hum."
+      "prompt": "One continuous shot from a fixed overhead security camera, with no cuts, angle changes or scene changes. The camera holds its position. The silver hatchback at the right edge of the frame, parked in the bay just above the right-hand pillar with its tail lights facing the aisle, reverses slowly out into the empty aisle ahead of the red car. It straightens and drives away up the aisle, leaving the frame at the top by about 3 seconds. Only after the silver hatchback has gone, the red hatchback in the centre of the aisle steers gently to the right and rolls forward into that same empty bay, between the white lines, and stops. Exactly one red hatchback is visible throughout. Every other car stays parked and still. The pillars and floor markings stay exactly as they are. Audio: an off-screen adult narrator with a calm, low, even voice speaks slowly in English: \"The giver is told the seeker is nearby as the arrival gets close.\" Quiet garage ambience. No background music. No subtitles."
     },
     {
       "id": "ai-4-veo-newprompt-pic",

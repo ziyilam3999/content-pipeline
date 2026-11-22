@@ -1661,35 +1661,42 @@ describe("t17 plan check of plan-b", () => {
     expect(PLAN.clips.length).toBe(9); // the first plan file is untouched
   });
 
-  it("prompt shape: AI-1 clips share one, AI-4 pic clips share one, voice prompts extend it; limits hold", () => {
+  it("prompt shape: 7 distinct per-model prompts, voice prompts hold the sentence, Veo control unchanged; limits hold", () => {
     const ai1 = PLAN_B.clips.filter((c) => c.shot === "AI-1");
     const pic = PLAN_B.clips.filter((c) => c.shot === "AI-4" && !c.audio);
     const voice = PLAN_B.clips.filter((c) => c.audio);
     expect([ai1.length, pic.length, voice.length]).toEqual([2, 3, 2]);
-    expect(new Set(ai1.map((c) => c.prompt)).size).toBe(1);
-    expect(new Set(pic.map((c) => c.prompt)).size).toBe(1);
-    for (const v of voice) {
-      expect(v.prompt.startsWith(pic[0].prompt)).toBe(true);
-      expect(v.prompt).toContain(SENTENCE);
+    expect(new Set(PLAN_B.clips.map((c) => c.prompt)).size).toBe(7);
+    for (const v of voice) expect([v.id, v.prompt.includes(SENTENCE)]).toEqual([v.id, true]);
+    for (const c of PLAN_B.clips.filter((x) => !x.audio)) {
+      expect([c.id, c.prompt.includes(SENTENCE)]).toEqual([c.id, false]);
     }
     for (const c of PLAN_B.clips) {
       expect([c.id, c.prompt.length <= PLAN_B.models[c.model].prompt_text_max]).toEqual([c.id, true]);
     }
-    expect(plan("ai-4-veo-newprompt-pic").prompt.length).toBeLessThanOrEqual(1000);
+    const veo = plan("ai-4-veo-newprompt-pic").prompt;
+    expect(veo.length).toBeLessThanOrEqual(1000);
+    expect(crypto.createHash("sha256").update(veo).digest("hex")).toBe(
+      "fe689df49373ed9a14a5582a7a29f4faa8fed3323f0d5dee38014b93b6f9ee9b",
+    );
   });
 
-  it("the dry run prints 7 clip lines with the 3 prompt sha256 values of the decided prompts", async () => {
+  it("the dry run prints 7 clip lines with the 7 prompt sha256 values of the per-model prompts", async () => {
     const ctx = makeCtx(PLAN_B_FILE);
     const r = await run(ctx.args(), new FakeCaller());
     const lines = r.out.split("\n").filter((l) => l.startsWith("runway: clip id="));
     expect(lines.length).toBe(7);
     const shaOf = (id: string): string => (lines.find((l) => l.includes(`id=${id} `)) as string).match(/prompt-sha256=([0-9a-f]{64})/)![1];
-    const ai1 = "234ec59efdb326d9a3b91e7570e4fb4045911b277eca346d1f5ca22e7eea1718";
-    const pic = "fe689df49373ed9a14a5582a7a29f4faa8fed3323f0d5dee38014b93b6f9ee9b";
-    const voice = "ff46cb433a7d3aebb40f860fd2359704f1635d4fb84a6da96f2847ac5839b7fa";
-    for (const id of ["ai-1-seedance25-pic", "ai-1-kling4-pic"]) expect(shaOf(id)).toBe(ai1);
-    for (const id of ["ai-4-seedance25-pic", "ai-4-kling4-pic", "ai-4-veo-newprompt-pic"]) expect(shaOf(id)).toBe(pic);
-    for (const id of ["ai-4-seedance25-voice", "ai-4-kling4-voice"]) expect(shaOf(id)).toBe(voice);
+    const expected: Record<string, string> = {
+      "ai-1-seedance25-pic": "7a32cbc2e127c77949d4508fbbb4c5e3a2999bf5878800279892e1cd8481585d",
+      "ai-4-seedance25-pic": "75553244a17ae34d19ab55b85768a8feae271014b694812c025779e7f0c59c38",
+      "ai-4-seedance25-voice": "bc3890a8c53d97588d4aeb8ef05158c4f1be484398dbf3749e90167491a4b55f",
+      "ai-1-kling4-pic": "99e04a5f68c09d183593cb415db68417c2876020b38bda299b0088bfa21936b0",
+      "ai-4-kling4-pic": "04f068973d32962a6bca1ce56db96df6f77f5b57f119b07a3e8b15669db0852c",
+      "ai-4-kling4-voice": "20f5ae138adb3adf0df482104d34715426d5bb03837c08dbb9c34e146d1df9e5",
+      "ai-4-veo-newprompt-pic": "fe689df49373ed9a14a5582a7a29f4faa8fed3323f0d5dee38014b93b6f9ee9b",
+    };
+    for (const [id, sha] of Object.entries(expected)) expect([id, shaOf(id)]).toEqual([id, sha]);
   });
 
   it("a kling_4 image_to_video clip with ratio 720:1280 refuses plan-invalid, also in the dry run", async () => {

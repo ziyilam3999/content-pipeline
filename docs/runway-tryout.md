@@ -97,8 +97,13 @@ the result is one observation.
 - Planned total USD 8.85 (Seedance 2.5 3 x 1.80; Kling 4.0 at list 3 x 0.95; the Veo prompt
   control 0.60).
 - The AI-4 clips use the same still as the first run (720 x 1280).
-- The new clips use the rewritten prompts (WAITING-167 = A). The Veo 3.1 fast (new prompt)
-  column is the old-versus-new prompt control.
+- Each model gets its own prompt, written from that model's vendor guide (WAITING-168 = A);
+  the Veo 3.1 fast (new prompt) clip keeps the rewritten prompt of WAITING-167 and stays the
+  old-versus-new prompt control.
+- What the Kling 4.0 prompt adds: one continuous shot with no cuts, the camera holds, an Audio
+  line (no music, no subtitles), "exactly one red hatchback".
+- What the Seedance 2.5 prompt adds: a locked-off camera held unbroken, timed beats 0-3 s and
+  3-6 s, a "Consistent throughout" line, and a labelled Dialogue line on the voice clip.
 - Kling 4.0 clips carry sound with no switch (pic clips too): the request holds no audio key,
   and the plan `audio` of a Kling 4.0 clip means "the prompt asks for a voice".
 - The Kling 4.0 AI-4 clips use ratio `auto_720p`, so the frame follows the still (the first-run
@@ -124,7 +129,12 @@ the result is one observation.
 - For seedance2_5 a promptImage given as one string has no position; the schema text says
   "omit position for reference images", so first-frame use is not confirmed by the docs
   (seedance2 has the same wording and was sent the same way in the first run).
-- The rewritten prompts are untested proposals, and the Veo control is one take.
+- The per-model prompts and the Veo rewritten prompt are untested proposals, and the Veo
+  control is one take.
+- Kling 4.0 and Seedance 2.5 now get different words, so a difference between them may come
+  from the prompt, not the model.
+- "by about 3 seconds" and "Exactly one red hatchback" are the edits with the weakest vendor
+  guide backing.
 - No retry room: an attempt line is written before the create call (adapters/runway.ts,
   `attemptLine`, from line 568 on this head), so one failed kling_4 (USD 0.95) or
   seedance2_5 (USD 1.80) attempt is above the USD 0.63 left and the 7 clips cannot finish
