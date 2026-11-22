@@ -1,0 +1,21 @@
+{
+  "plan_id": "a52c-still-edit-2026-11-22",
+  "model": "gemini-2.5-flash-image",
+  "price_usd_per_call": 0.04,
+  "price_read": "2026-11-22",
+  "items": [
+    {
+      "id": "ai-4-no-pillars",
+      "shot": "AI-4",
+      "needs_input": true,
+      "prompt": "Edit this photo; keep it photorealistic and keep the same straight-down camera view, framing, portrait size, lighting and colours. Remove all four white cylindrical pillars: the two tall ones standing on either side of the red car, at the left and right edges of the driving aisle, and the two short pillar tops at the bottom left and bottom right corners of the picture. Where each pillar stood, continue the plain grey concrete floor and the white painted bay lines that were hidden behind it, with no shadow, stain or mark left over. On the right side, in the strip of bare floor between the bay of the silver car at the top right and the black car below it, add one parked car seen from directly above: a dark grey hatchback of the same size as its neighbours, parked the same way round as the black car, filling that strip so it reads as an occupied bay, with a white bay line between it and the black car. Change nothing else: the red car in the middle of the aisle, the silver car at the top right, the black car, every other parked car, all painted lines, the white arrow at the bottom and the floor texture stay exactly where and as they are. Do not add any text, sign, arrow, person or other object."
+    },
+    {
+      "id": "ai-4-outdoor-start",
+      "shot": "AI-4",
+      "needs_input": false,
+      "aspect_ratio": "9:16",
+      "prompt": "A photorealistic photo taken straight down from a high pole camera over an outdoor car park in soft daylight, portrait format 9:16. One straight driving aisle of grey asphalt runs from the bottom of the frame to the top through the middle, with a row of parking bays marked by white painted lines on its left side and another on its right side, the bays at right angles to the aisle. Every bay holds one parked car seen from above, in mixed everyday colours (grey, black, dark blue, white), none of them red; no bay is empty. In the top bay of the right-hand row sits a silver hatchback. In the middle of the aisle, a little below that silver hatchback, a red hatchback stands still with its front pointing to the top of the frame, alone in the aisle with open asphalt in front of it and around it. No pillars, posts, lamp poles, trees, kerbs, people, signs, text, arrows or other objects on the asphalt; no shadows falling across the aisle; licence plates not readable."
+    }
+  ]
+}
