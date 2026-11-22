@@ -415,6 +415,136 @@ function fixture3(): Files {
   return { ...fixture(), [L3]: level3(), [LIST]: aiList() };
 }
 
+// a seek, give or helps fixture whose beat 1 is an ai beat tied to the list of that storyboard
+function aiListOf(slug: string): string {
+  return `# AI shots - getspace-${slug}
+
+## AI clips
+
+| Id | Sec | Shows | First frame | Prompt |
+|----|-----|-------|-------------|--------|
+| AI-1 | 15 | A full level from above. | none | Plain test words for the first shot. |
+
+## Screens
+
+| Id | Shows | Facts shown |
+|----|-------|-------------|
+`;
+}
+
+function fixtureAi(slug: string): Files {
+  const board = rep(
+    rep(storyboard(), "| 1 | Home | 16 | clip | C-01 | Home [S-01] |", "| 1 | Home | 15 | ai | AI-1 | - |"),
+    "slug: getspace-seek",
+    `slug: getspace-${slug}`,
+  );
+  const f = fixture();
+  if (slug !== "seek") f[SEEK] = null;
+  // clips not used by the ai storyboard stay used by the other file
+  f[`getspace-${slug}.md`] = board;
+  f[`getspace-${slug}-ai-shots.md`] = aiListOf(slug);
+  return f;
+}
+
+const SL = "getspace-seek-ai-shots.md";
+const S = (text: string): string => `FAIL ${SL}${text}`;
+
+describe("getspace ai beats in seek, give and helps", () => {
+  test("a seek ai beat with no seek list", () => {
+    const f = fixtureAi("seek");
+    f[SL] = null;
+    expect(run(f)).toContain("FAIL getspace-seek-ai-shots.md: missing");
+  });
+
+  test("an ai id present only in the give list or the level3 list", () => {
+    const want ="FAIL getspace-seek.md beat 1: clip AI-2 is not an AI clip of getspace-seek-ai-shots.md";
+    // AI-2 is in the give list only (the seek list holds AI-1 only)
+    const f = fixtureAi("seek");
+    f[SEEK] = rep(f[SEEK], "| ai | AI-1 |", "| ai | AI-2 |");
+    f["getspace-give.md"] = rep(storyboard(), "slug: getspace-seek", "slug: getspace-give");
+    f["getspace-give-ai-shots.md"] = rep(
+      aiListOf("give"),
+      "\n\n## Screens",
+      "\n| AI-2 | 8 | Next view. | none | More plain words. |\n\n## Screens",
+    );
+    expect(run(f)).toContain(want);
+    // AI-2 is in the level3 list only
+    const g = fixtureAi("seek");
+    g[SEEK] = rep(g[SEEK], "| ai | AI-1 |", "| ai | AI-2 |");
+    g[L3] = level3();
+    g[LIST] = aiList();
+    expect(run(g)).toContain(want);
+  });
+
+  test("a seek list with no getspace-seek.md", () => {
+    const f = fixture();
+    f[SL] = aiListOf("seek");
+    f[SEEK] = null;
+    f["getspace-give.md"] = rep(storyboard(), "slug: getspace-seek", "slug: getspace-give");
+    expect(run(f)).toContain("FAIL getspace-seek-ai-shots.md: present with no getspace-seek.md");
+  });
+
+  test("an AI id of the seek list used by no seek beat", () => {
+    const f = fixtureAi("seek");
+    f[SL] = rep(f[SL], "\n\n## Screens", "\n| AI-2 | 8 | Next view. | none | More plain words. |\n\n## Screens");
+    expect(run(f)).toContain("FAIL getspace-seek-ai-shots.md AI-2: used by no beat");
+  });
+
+  test("a list whose line 1 names another slug", () => {
+    const f = fixtureAi("seek");
+    f[SL] = rep(f[SL], "# AI shots - getspace-seek", "# AI shots - getspace-give");
+    expect(run(f)).toContain(S(" line 1: text outside the fixed lines and the tables"));
+  });
+
+  test.each(["getspace-seek-ai-shot.md", "getspace-seek-ai-shots.MD", "getspace-level3-ai-shots.md"])(
+    "a stray name %s is not a known file name",
+    (name) => {
+      const f = fixture();
+      f[name] = "x\n";
+      expect(run(f)).toContain(`FAIL ${name}: not a known GetSpace storyboard file name`);
+    },
+  );
+
+  test("two ai beats on one id above its Sec", () => {
+    const f = fixtureAi("seek");
+    // two beats of 9 s on AI-1 (Sec 15), each alone within it
+    f[SEEK] = rep(f[SEEK], "| 1 | Home | 15 |", "| 1 | Home | 9 |");
+    f[SEEK] = rep(f[SEEK], "| 2 | Pin | 16 | clip | C-02 | Pin [S-02] |", "| 2 | Pin | 9 | ai | AI-1 | - |");
+    expect(run(f)).toContain("FAIL getspace-seek.md: beats on AI-1 need 18 s, the clip is 15 s");
+  });
+
+  const closed: [string, (f: Files) => void, string][] = [
+    ["a byte order mark", (f) => { f[SL] = `﻿${f[SL]}`; }, S(": starts with a byte order mark")],
+    ["a lone CR", (f) => { f[SL] = rep(f[SL], "Plain test words for the first", "Plain test\rwords for the first"); }, S(": holds a lone CR")],
+    ["a missing table", (f) => { f[SL] = (f[SL] as string).split("\n| Id | Shows | Facts shown |")[0]; }, S(": no table under ## Screens")],
+  ];
+  test.each(closed)("a seek list fails closed: %s", (_n, edit, line) => {
+    const f = fixtureAi("seek");
+    edit(f);
+    expect(run(f)).toContain(line);
+  });
+
+  test("an SCR row in a seek list", () => {
+    const f = fixtureAi("seek");
+    f[SL] = `${f[SL]}| SCR-1 | A made-up match screen. | S-02 |\n`;
+    expect(run(f)).toContain(S(" SCR-1: a screen row is not allowed in this list, only ai clips"));
+  });
+
+  test("a screen beat in give and helps still fails", () => {
+    for (const slug of ["give", "helps"]) {
+      const f = fixtureAi(slug);
+      f[`getspace-${slug}.md`] = rep(f[`getspace-${slug}.md`], "| clip | C-02 |", "| screen | SCR-1 |");
+      expect(run(f)).toContain(`FAIL getspace-${slug}.md beat 2: Asset screen is refused, only clip`);
+    }
+  });
+
+  test("isStoryboardSlug is false for the three list slugs", () => {
+    for (const s of ["getspace-seek-ai-shots", "getspace-give-ai-shots", "getspace-helps-ai-shots"]) {
+      expect(isStoryboardSlug(s)).toBe(false);
+    }
+  });
+});
+
 function addAiRow(f: Files, row: string): void {
   f[LIST] = rep(f[LIST], "\n\n## Screens", `\n${row}\n\n## Screens`);
 }
@@ -445,10 +575,14 @@ describe("getspace level3 - the fixture and asset kinds", () => {
     expect(run(f)).toContain(`FAIL getspace-level3.md beat 2: Asset ${asset} is refused, only clip`);
   });
 
-  test.each(["ai", "screen"])("seek beat with asset %s names the asset", (asset) => {
+  test("seek beat with asset screen names the asset", () => {
     const f = fixture3();
-    f[SEEK] = rep(f[SEEK], "| clip | C-01 |", `| ${asset} | C-01 |`);
-    expect(run(f)).toContain(`FAIL getspace-seek.md beat 1: Asset ${asset} is refused, only clip`);
+    f[SEEK] = rep(f[SEEK], "| clip | C-01 |", "| screen | C-01 |");
+    expect(run(f)).toContain("FAIL getspace-seek.md beat 1: Asset screen is refused, only clip");
+  });
+
+  test.each(["seek", "give", "helps"])("a %s beat with asset ai and its own list passes", (slug) => {
+    expect(run(fixtureAi(slug))).toEqual([]);
   });
 });
 
