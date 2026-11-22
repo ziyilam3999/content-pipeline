@@ -1592,6 +1592,7 @@ describe("t15 kling_4 audio rule", () => {
     const fake = new FakeCaller();
     const r = await run(ctx.args(), fake);
     await expectRefusal(r, "plan-invalid", fake, ctx.ledger);
+    expect(r.err).toContain("audio_always must be true or false");
   });
 });
 
@@ -1709,6 +1710,28 @@ describe("t17 plan check of plan-b", () => {
     const fake = new FakeCaller();
     const r = await run(ctx.args(), fake);
     await expectRefusal(r, "plan-invalid", fake, ctx.ledger);
+  });
+
+  it("a round_up_credits value that is not a boolean refuses plan-invalid with its own text", async () => {
+    const p = tempPlanB((x) => {
+      (x.models.kling_4 as unknown as { round_up_credits: string }).round_up_credits = "yes";
+    });
+    const ctx = makeCtx(p);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    await expectRefusal(r, "plan-invalid", fake, ctx.ledger);
+    expect(r.err).toContain("round_up_credits must be true or false");
+  });
+
+  it("a ratios_by_endpoint entry that is an empty list refuses plan-invalid with its own text", async () => {
+    const p = tempPlanB((x) => {
+      (x.models.kling_4 as unknown as { ratios_by_endpoint: Record<string, string[]> }).ratios_by_endpoint.text_to_video = [];
+    });
+    const ctx = makeCtx(p);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    await expectRefusal(r, "plan-invalid", fake, ctx.ledger);
+    expect(r.err).toContain("is not a list");
   });
 
   it("a seedance2_5 clip of 3 s refuses plan-invalid; 15001 code units refuse prompt-too-long", async () => {
