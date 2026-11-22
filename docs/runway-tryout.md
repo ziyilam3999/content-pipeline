@@ -36,10 +36,11 @@ The four first-run columns were judged against "the silver car ... leaves at the
 | P6  | Within each clip the red car keeps one look (colour, shape, size) from the first frame to the last, and in each AI-4 clip it matches the red car of the still                    | yes       | yes          | yes          | yes          |              |           |                           |
 
 - Judging line for P5: for the three second-run columns (Seedance 2.5, Kling 4.0, Veo 3.1
-  fast (new prompt)) the AI-4 part of P5 reads "the silver car reverses out and leaves at the
-  top, the red car rolls into the freed bay". The four first-run columns were judged
-  against "leaves at the bottom". The other checks (P1 to P4, P6) and the AI-1 part of P5
-  are unchanged. The second-run cells are empty in the repo (fixed before the paid call).
+  fast (new prompt)) the AI-4 part of P5 reads
+  "the silver car reverses out and leaves at the top, the red car rolls into the freed bay".
+  The four first-run columns were judged against "leaves at the bottom". The other checks
+  (P1 to P4, P6, V1 to V3) and the AI-1 part of P5 are unchanged. The second-run cells are
+  empty in the repo (fixed before the paid call).
 - A tool **passes** with all six yes.
 - The **pick** is the passing tool with the lowest cost per second
   (list USD/s at 720:1280: Kling 3.0 standard 0.09 without audio / 0.13 with; Seedance 2.0
@@ -120,6 +121,15 @@ the result is one observation.
   USD 0.63, below the USD 20.51 that row A49-paid-runs plans.
 - What Runway bills for a kling_4 clip is not measured; it is recorded at list (USD 0.95), and
   while the 20% discount runs (through 2026-11-30 UTC) the real charge may be USD 0.76.
+- For seedance2_5 a promptImage given as one string has no position; the schema text says
+  "omit position for reference images", so first-frame use is not confirmed by the docs
+  (seedance2 has the same wording and was sent the same way in the first run).
+- The rewritten prompts are untested proposals, and the Veo control is one take.
+- No retry room: an attempt line is written before the create call (adapters/runway.ts,
+  `attemptLine`, from line 568 on this head), so one failed kling_4 (USD 0.95) or
+  seedance2_5 (USD 1.80) attempt is above the USD 0.63 left and the 7 clips cannot finish
+  under the cap; the Orchestrator runs the Veo control first and one clip of each new model
+  before the rest.
 - Whether seedance2 bills audio the same (the price page shows no audio split).
 - Whether a Runway audio track holds speech at all for a top-down shot.
 - The still for AI-4 is chosen at run time.
