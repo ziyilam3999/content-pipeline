@@ -12,8 +12,9 @@
  *   - each narration / on-screen sentence cites fact ids; ids must be known, not open points, not never rows.
  *   - narration carries no digit and no number word (numbers go on screen only); on-screen digits must be
  *     numbers of the cited facts; borrowing, penalty and cancel facts carry no digit; no money, no banned word.
- *   - the storyboard asset is clip only; each beat clip is in the shot list and long enough. In
- *     getspace-level3 the asset may also be ai or screen, tied to getspace-ai-shots.md (checkAiShots).
+ *   - the storyboard asset is clip or ai; each beat clip is in the shot list and long enough. An ai beat is
+ *     tied to the AI shots list of its own storyboard (<slug>-ai-shots.md, getspace-ai-shots.md for level3;
+ *     checkAiShots). The asset screen is level3 only; still and synth are refused in all four.
  *   - the shot list holds the 15 check-list lines, the five fixed answers, at most 12 clips, both sides of a
  *     take, and a Hide cell that names blur and the fixed-list words for the facts a clip shows.
  *   - an on-screen fact id is a fact the beat's clip shows; with all three storyboards present, each clip is
@@ -35,6 +36,11 @@ export const GETSPACE_STORYBOARD_SLUGS = ["getspace-seek", "getspace-give", "get
 export const LEVEL3_SLUG = "getspace-level3";
 const LEVEL3_FILE = `${LEVEL3_SLUG}.md`;
 const AI_SHOTS = "getspace-ai-shots.md";
+
+/** The AI shots list file of a storyboard slug: level3 keeps its name, the others are <slug>-ai-shots.md. */
+function aiListName(slug: string): string {
+  return slug === LEVEL3_SLUG ? AI_SHOTS : `${slug}-ai-shots.md`;
+}
 
 /** True for a known post slug, one of the three A41 GetSpace slugs, or the level 3 slug. */
 export function isStoryboardSlug(s: string): boolean {
@@ -426,17 +432,19 @@ function checkStoryboard(
     else fails.push(`FAIL ${at}: Dur is not whole seconds`);
     durTotal += d;
     if (asset === "synth" || asset === "still") fails.push(`FAIL ${at}: Asset ${asset} is refused, only clip`);
-    else if (asset === "ai" || asset === "screen") {
-      if (!l3) fails.push(`FAIL ${at}: Asset ${asset} is refused, only clip`);
-    } else if (asset !== "clip") fails.push(`FAIL ${at}: Asset is not ${l3 ? "clip, ai or screen" : "clip"}`);
-    const kind = l3 && (asset === "ai" || asset === "screen") ? asset : "clip";
+    else if (asset === "screen") {
+      if (!l3?.screens) fails.push(`FAIL ${at}: Asset ${asset} is refused, only clip`);
+    } else if (asset !== "clip" && asset !== "ai") {
+      fails.push(`FAIL ${at}: Asset is not ${l3?.screens ? "clip, ai or screen" : "clip or ai"}`);
+    }
+    const kind = l3 && (asset === "ai" || (asset === "screen" && l3.screens)) ? asset : "clip";
     let shownIds: string[] | undefined;
     if (l3 && kind === "ai") {
-      if (l3.lists && !l3.lists.ai.has(clip)) fails.push(`FAIL ${at}: clip ${clip} is not an AI clip of ${AI_SHOTS}`);
+      if (l3.lists && !l3.lists.ai.has(clip)) fails.push(`FAIL ${at}: clip ${clip} is not an AI clip of ${l3.aiName}`);
       perAi.set(clip, (perAi.get(clip) ?? 0) + d);
       l3.usedIds.add(clip);
     } else if (l3 && kind === "screen") {
-      if (l3.lists && !l3.lists.screens.has(clip)) fails.push(`FAIL ${at}: clip ${clip} is not a screen of ${AI_SHOTS}`);
+      if (l3.lists && !l3.lists.screens.has(clip)) fails.push(`FAIL ${at}: clip ${clip} is not a screen of ${l3.aiName}`);
       shownIds = l3.lists?.screens.get(clip);
       l3.usedIds.add(clip);
     } else {
@@ -519,6 +527,8 @@ interface AiLists {
 interface Level3Ctx {
   lists: AiLists | null;
   usedIds: Set<string>;
+  aiName: string; // list file of this storyboard
+  screens: boolean; // screen beats allowed (level3 only)
 }
 
 // ---- AI shots list file ----
@@ -532,10 +542,10 @@ function listTextRules(where: string, text: string, fails: string[]): void {
   if (text.includes("~")) fails.push(`FAIL ${where}: tilde`);
 }
 
-function checkAiShots(name: string, raw: string, facts: Facts, fails: string[]): AiLists | null {
+function checkAiShots(name: string, slug: string, raw: string, facts: Facts, fails: string[]): AiLists | null {
   const lines = readLines(name, raw, fails);
   if (!lines) return null;
-  const headings = ["# AI shots - getspace-level3", "## AI clips", "## Screens"];
+  const headings = [`# AI shots - ${slug}`, "## AI clips", "## Screens"];
   const headers = [AI_HEADER, SCREEN_HEADER];
   const rows: Row[][] = [[], []];
   let hIdx = 0; // headings seen
@@ -606,6 +616,10 @@ function checkAiShots(name: string, raw: string, facts: Facts, fails: string[]):
   rows[1].forEach((row, i) => {
     const [id, shows, shown] = row.cells;
     const at = `${name} ${id}`;
+    if (slug !== LEVEL3_SLUG) {
+      fails.push(`FAIL ${at}: a screen row is not allowed in this list, only ai clips`);
+      return;
+    }
     if (id !== `SCR-${i + 1}`) fails.push(`FAIL ${name} line ${row.n}: Id ${id} is not SCR-${i + 1}`);
     listTextRules(`${at} Shows`, shows, fails);
     let ids: string[] = [];
@@ -723,7 +737,12 @@ export function checkGetspaceStoryboards(opts?: GetspaceCheckOpts): string[] {
   const fails: string[] = [];
 
   const listing = fs.readdirSync(root);
-  const known = new Set<string>([SHOT_LIST, LEVEL3_FILE, AI_SHOTS, ...GETSPACE_STORYBOARD_SLUGS.map((s) => `${s}.md`)]);
+  const known = new Set<string>([
+    SHOT_LIST,
+    LEVEL3_FILE,
+    ...GETSPACE_STORYBOARD_SLUGS.map((s) => `${s}.md`),
+    ...[...GETSPACE_STORYBOARD_SLUGS, LEVEL3_SLUG].map(aiListName),
+  ]);
   for (const f of listing) {
     if (/^getspace-.*[.]md$/i.test(f) && !known.has(f)) fails.push(`FAIL ${f}: not a known GetSpace storyboard file name`);
   }
@@ -739,27 +758,33 @@ export function checkGetspaceStoryboards(opts?: GetspaceCheckOpts): string[] {
 
   const present = GETSPACE_STORYBOARD_SLUGS.map((s) => `${s}.md`).filter((f) => listing.includes(f));
   const level3 = listing.includes(LEVEL3_FILE);
-  const aiShots = listing.includes(AI_SHOTS);
   if (present.length === 0 && !level3) fails.push("FAIL storyboards: no GetSpace storyboard present");
-  if (level3 && !aiShots) fails.push(`FAIL ${AI_SHOTS}: missing`);
-  if (aiShots && !level3) fails.push(`FAIL ${AI_SHOTS}: present with no ${LEVEL3_FILE}`);
-  const lists = aiShots ? checkAiShots(AI_SHOTS, fs.readFileSync(path.join(root, AI_SHOTS), "utf8"), facts, fails) : null;
-  const ctx: Level3Ctx = { lists, usedIds: new Set() };
 
   const seen = new Map<string, string>();
-  for (const f of level3 ? [...present, LEVEL3_FILE] : present) {
+  for (const slug of [...GETSPACE_STORYBOARD_SLUGS, LEVEL3_SLUG]) {
+    const f = `${slug}.md`;
+    const aiName = aiListName(slug);
+    const isL3 = slug === LEVEL3_SLUG;
+    const hasBoard = listing.includes(f);
+    const hasList = listing.includes(aiName);
+    if (hasList && !hasBoard) fails.push(`FAIL ${aiName}: present with no ${f}`);
+    const lists = hasList ? checkAiShots(aiName, slug, fs.readFileSync(path.join(root, aiName), "utf8"), facts, fails) : null;
+    if (!hasBoard) continue;
+    const ctx: Level3Ctx = { lists, usedIds: new Set(), aiName, screens: isL3 };
     const raw = fs.readFileSync(path.join(root, f), "utf8");
-    const sentences = checkStoryboard(f, raw, facts, clips, shownBy, used, fails, f === LEVEL3_FILE ? ctx : null);
+    const sentences = checkStoryboard(f, raw, facts, clips, shownBy, used, fails, ctx);
     for (const s of sentences) {
       const prev = seen.get(s);
       if (prev !== undefined) fails.push(`FAIL same sentence in ${prev} and ${f}: '${s}'`);
       else seen.set(s, f);
     }
-  }
-  // an AI or screen id no beat uses is a FAIL
-  if (level3 && lists) {
-    for (const id of [...lists.ai.keys(), ...lists.screens.keys()]) {
-      if (!ctx.usedIds.has(id)) fails.push(`FAIL ${AI_SHOTS} ${id}: used by no beat`);
+    // level3 needs its list; the others need one only when a beat is ai
+    if (!hasList && (isL3 || ctx.usedIds.size > 0)) fails.push(`FAIL ${aiName}: missing`);
+    // an AI or screen id no beat uses is a FAIL
+    if (lists) {
+      for (const id of [...lists.ai.keys(), ...lists.screens.keys()]) {
+        if (!ctx.usedIds.has(id)) fails.push(`FAIL ${aiName} ${id}: used by no beat`);
+      }
     }
   }
   // with seek, give and helps present, a clip no beat uses is a FAIL (level3 uses count)
