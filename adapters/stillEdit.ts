@@ -152,9 +152,9 @@ export interface InputImage {
 }
 
 /**
- * Read and check the input image BEFORE any key read. The same three codes and detail texts
- * as the reader of videogen.ts, plus input-symlink (an lstat before the read): a symbolic
- * link is refused rather than followed.
+ * Read and check the input image BEFORE any key read. The same three codes as the reader of
+ * videogen.ts, the same wording after the role word, plus input-symlink (an lstat before the
+ * read): a symbolic link is refused rather than followed.
  */
 export function readInputImage(file: string): InputImage {
   let st: fs.Stats;

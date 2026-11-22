@@ -225,7 +225,8 @@ async function run(argv: string[], fake: FakeCaller, keyReader?: () => string): 
   }
 }
 
-/** A refusal: exit 2, one line, the code first, no call, and the record and out folder untouched. */
+/** A refusal: exit 2, one line, the code first, no call, the record byte-equal, no lock file,
+ *  and the out folder (makeCtx puts it beside the record as out/) still empty. */
 async function expectRefusal(r: CliResult, code: string, fake: FakeCaller, ledgerPath: string, before?: Buffer | null): Promise<void> {
   expect(r.code).toBe(2);
   const line = r.err.trim();
@@ -236,6 +237,8 @@ async function expectRefusal(r: CliResult, code: string, fake: FakeCaller, ledge
   if (before === undefined) expect(now).toBeNull(); // nothing was written
   else expect(now).toEqual(before ?? null); // byte-equal before and after
   expect(fs.readdirSync(path.dirname(ledgerPath)).filter((f) => f.endsWith(".lock")).length).toBe(0);
+  const outDir = path.join(path.dirname(ledgerPath), "out");
+  if (fs.existsSync(outDir)) expect(fs.readdirSync(outDir)).toEqual([]); // no file written to out/
 }
 
 // ── (1) the dry run ────────────────────────────────────────────────────────────────────
@@ -643,7 +646,7 @@ describe("t5 plan", () => {
   });
 });
 
-// ── (6) refusals: usage (six sub-cases, each its own detail text) ──────────────────────
+// ── (6) refusals: usage (the six required cases plus extra cases, each asserting its detail text) ──
 
 describe("t6 refusals: usage", () => {
   it("usage: a missing required option (--ledger dropped) refuses with its own text", async () => {
@@ -861,6 +864,7 @@ describe("t8 refusals: input, out-bad, ledger", () => {
     const r = await run(ctx.args({ out: path.join(REPO, "adapters"), in: still }), fake);
     expect(r.code).toBe(2);
     expect(r.err.trim().split(/\s+/)[0]).toBe("out-bad");
+    expect(r.err).toContain(`out folder ${path.join(REPO, "adapters")} is inside the repo tree but outside its out/ folder`);
     expect(fake.calls.length).toBe(0);
   });
 
@@ -872,6 +876,7 @@ describe("t8 refusals: input, out-bad, ledger", () => {
     const r = await run(ctx.args({ ledger: ledgerInside, in: still }), fake);
     expect(r.code).toBe(2);
     expect(r.err.trim().split(/\s+/)[0]).toBe("out-bad");
+    expect(r.err).toContain(`ledger folder ${path.join(REPO, "adapters")} is inside the repo tree but outside its out/ folder`);
     expect(fs.existsSync(ledgerInside)).toBe(false);
     expect(fs.existsSync(`${ledgerInside}.lock`)).toBe(false);
   });
@@ -884,7 +889,7 @@ describe("t8 refusals: input, out-bad, ledger", () => {
     const fake = new FakeCaller();
     const r = await run(ctx.args({ in: still }), fake);
     await expectRefusal(r, "ledger-unreadable", fake, ctx.ledger, before);
-    expect(r.err).toContain("ledger");
+    expect(r.err).toContain(`${path.join(fs.realpathSync(ctx.tmp), "ledger.jsonl")}: a line has no known service`);
   });
 });
 
@@ -986,6 +991,7 @@ describe("t10 double checks", () => {
     const r = await run(ctx.args({ in: still, extra: ["--live"] }), fake, reader);
     expect(r.code).toBe(2);
     expect(r.err.trim().split(/\s+/)[0]).toBe("ledger-busy");
+    expect(r.err).toContain(`lock file ${path.join(fs.realpathSync(ctx.tmp), "ledger.jsonl")}.lock exists`); // the run names the real path
     expect(fake.calls.length).toBe(0);
     expect(readBytes(ctx.ledger)).toBeNull(); // no attempt line
     expect(readBytes(`${ctx.ledger}.lock`)).toEqual(Buffer.alloc(0)); // neither stolen nor removed

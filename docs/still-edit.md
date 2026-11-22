@@ -2,7 +2,7 @@
 
 One paid still per run: an edit of an input still (`--in`, image part plus text part) or text
 to image (text part only, plus the item's `aspect_ratio` when it names one). Dry run is the
-default; `--live` sends exactly one POST to
+default; `--live` sends at most one POST, to the plan's model, at
 `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent`
 (header `x-goog-api-key`, that host only, no retry inside a run).
 
