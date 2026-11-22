@@ -399,20 +399,48 @@ function fetchNow(): typeof fetch {
   return f;
 }
 
+/** How many redirects one download call follows (the same limit as video:gen). */
+const MAX_DOWNLOAD_REDIRECTS = 5;
+
+/** The Authorization header goes to the API host only; a request to another host gets none. */
+function headersFor(url: string, headers: Record<string, string>): Record<string, string> {
+  if (new URL(url).host === API_HOST) return headers;
+  const rest: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) if (k.toLowerCase() !== "authorization") rest[k] = v;
+  return rest;
+}
+
+/** The next URL when this reply is a redirect this code follows; null when the reply is the result. */
+function nextHop(url: string, res: Response, isDownload: boolean, method: string, hop: number): string | null {
+  if (!isDownload || method !== "GET") return null; // the API calls take a 3xx as the reply
+  if (!(res.status >= 300 && res.status < 400) || hop >= MAX_DOWNLOAD_REDIRECTS) return null;
+  const loc = res.headers.get("location");
+  if (!loc) return null;
+  const next = new URL(loc, url); // a relative Location resolves against the URL that answered
+  return next.protocol === "https:" ? next.toString() : null; // http is not followed
+}
+
 async function send(call: NetCall, as: "json" | "bytes"): Promise<unknown> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), call.timeoutMs);
+  const timer = setTimeout(() => controller.abort(), call.timeoutMs); // one timer for all hops
   try {
-    const res = await fetchNow()(call.url, {
-      method: call.method,
-      headers: call.headers,
-      body: call.body,
-      redirect: "manual", // no silent hop: a 3xx is an http-<n> outcome, the key never follows it
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new HttpError(res.status);
-    if (as === "json") return res.json();
-    return Buffer.from(await res.arrayBuffer());
+    let url = call.url;
+    for (let hop = 0; ; hop++) {
+      const res = await fetchNow()(url, {
+        method: call.method,
+        headers: headersFor(url, call.headers),
+        body: call.body,
+        redirect: "manual", // each hop is decided in nextHop, not silently by fetch
+        signal: controller.signal,
+      });
+      const next = nextHop(url, res, as === "bytes", call.method, hop);
+      if (next === null) {
+        if (!res.ok) throw new HttpError(res.status);
+        if (as === "json") return res.json();
+        return Buffer.from(await res.arrayBuffer());
+      }
+      url = next;
+    }
   } catch (e) {
     if (controller.signal.aborted) throw new CallTimeout(call.url.split("?")[0]);
     throw e;
@@ -536,6 +564,9 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
 
   let taskId: string | null = null;
   let estimated: number | null = null;
+  // a terminal cost already read survives a later failure (no output url, a download or write
+  // that fails), so the outcome still tops the record up to what Runway may charge
+  let finalCost: number | null = null;
   let o: Outcome;
   try {
     const body: Record<string, unknown> = {
@@ -583,7 +614,7 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
       await wait(intervalMs);
     }
     const fin = asNum(task.cost);
-    const finalCost = fin !== undefined ? fin : null;
+    finalCost = fin !== undefined ? fin : null;
 
     if (status === "SUCCEEDED") {
       const outputs = Array.isArray(task.output) ? task.output : [];
@@ -605,7 +636,7 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
     }
   } catch (e) {
     const status = e instanceof CallTimeout ? "timeout" : e instanceof HttpError ? `http-${e.status}` : "error";
-    o = { status, taskId, estimated, finalCost: null, file: null, fileSha: null, failure: msg(e) };
+    o = { status, taskId, estimated, finalCost, file: null, fileSha: null, failure: msg(e) };
   }
 
   // cost rule: max(0, C x USD 0.01 - the attempt estimate), C = the final cost credits when

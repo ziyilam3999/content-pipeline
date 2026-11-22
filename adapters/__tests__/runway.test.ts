@@ -1175,3 +1175,278 @@ describe("t12 round 3", () => {
     expect(fake.calls.length).toBe(0);
   });
 });
+
+// ── (13) round 4: the cost after a failed step, and download redirects ──────────────────
+
+describe("t13 round 4", () => {
+  const API = "https://api.dev.runwayml.com/v1";
+
+  // a small fetch stub of our own: records each request, restores the no-network fence after
+  interface Seen {
+    url: string;
+    headers: Record<string, string>;
+    method: string;
+    redirect?: string;
+  }
+
+  function res(status: number, o: { json?: unknown; bytes?: Buffer; location?: string } = {}): Response {
+    const b = o.bytes ?? Buffer.alloc(0);
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      headers: { get: (n: string) => (n.toLowerCase() === "location" ? o.location ?? null : null) },
+      json: async () => o.json,
+      arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength),
+    } as unknown as Response;
+  }
+
+  async function withStubFetch(impl: (url: string) => Response, seen: Seen[], fn: () => Promise<void>): Promise<void> {
+    const fence = globalThis.fetch;
+    (globalThis as { fetch: typeof fetch }).fetch = (async (url: string, init?: RequestInit) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      seen.push({ url: String(url), headers, method: String(init?.method ?? "GET"), redirect: init?.redirect });
+      return impl(String(url));
+    }) as unknown as typeof fetch;
+    try {
+      await fn();
+    } finally {
+      (globalThis as { fetch: typeof fetch }).fetch = fence;
+    }
+  }
+
+  /** A live run through the REAL caller (no caller in deps), with globalThis.fetch stubbed. */
+  async function runReal(seen: Seen[], impl: (url: string) => Response, argv: string[]): Promise<CliResult> {
+    let r: CliResult | undefined;
+    await withStubFetch(impl, seen, async () => {
+      r = await rw.runRunwayTryout(argv, { keyReader: () => KEY, pollIntervalMs: 1 });
+    });
+    return r as CliResult;
+  }
+
+  it("C1 a download that fails after SUCCEEDED keeps the terminal cost in the outcome", async () => {
+    const rows: [string, Error, string][] = [
+      ["a plain Error", new Error("made-up download failure"), "error"],
+      ["an HttpError", new vg.HttpError(503), "http-503"],
+      ["a CallTimeout", new vg.CallTimeout("download"), "timeout"],
+    ];
+    for (const [label, err, expected] of rows) {
+      const ctx = makeCtx();
+      const fake = new FakeCaller();
+      fake.estimatedCost = 60;
+      fake.finalCost = 80;
+      fake.download = async () => {
+        throw err;
+      };
+      const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+      expect([label, r.code]).toEqual([label, 1]);
+      const outcome = ledgerLines(ctx.ledger)[1];
+      expect([label, outcome.status]).toEqual([label, expected]);
+      expect([label, outcome.final_cost_credits]).toEqual([label, 80]);
+      expect([label, outcome.estimated_cost_credits]).toEqual([label, 60]);
+      expect([label, outcome.cost_usd]).toEqual([label, 0.26]); // (80 - 54) x USD 0.01
+      expect([label, vg.readLedgerTotal(ctx.ledger, "ai-video")]).toEqual([label, 800_000]);
+      expect(outcome.file).toBeNull();
+      expect(fs.readdirSync(ctx.out).length).toBe(0);
+    }
+  });
+
+  it("C2 a SUCCEEDED reply with no output url keeps the terminal cost too", async () => {
+    for (const statusReply of [
+      { id: "made-up-task-1", status: "SUCCEEDED", output: [], cost: 80 },
+      { id: "made-up-task-1", status: "SUCCEEDED", cost: 80 },
+    ]) {
+      const ctx = makeCtx();
+      const fake = new FakeCaller();
+      fake.estimatedCost = 60;
+      fake.statuses = [statusReply];
+      const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+      expect(r.code).toBe(1);
+      const outcome = ledgerLines(ctx.ledger)[1];
+      expect(outcome.status).toBe("error");
+      expect(String(outcome.failure)).toContain("no output url");
+      expect(fake.downloadCount).toBe(0);
+      expect(outcome.final_cost_credits).toBe(80);
+      expect(outcome.cost_usd).toBe(0.26);
+      expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(800_000);
+    }
+  });
+
+  it("C3 no terminal reply: the final cost stays null and C is the create estimate", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.estimatedCost = 60;
+    fake.taskStatus = async () => {
+      throw new Error("made-up status failure");
+    };
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(1);
+    const outcome = ledgerLines(ctx.ledger)[1];
+    expect(outcome.status).toBe("error");
+    expect(outcome.final_cost_credits).toBeNull();
+    expect(outcome.cost_usd).toBe(0.06); // (60 - 54) x USD 0.01
+    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(600_000);
+  });
+
+  it("R1 a download redirect is followed, and no hop carries the key header", async () => {
+    const ctx = makeCtx();
+    const bytes = Buffer.from("made-up-runway-bytes-r1");
+    const hop1 = "https://cdn-a.made-up-host.test/made-up-clip.mp4";
+    const hop2 = "https://cdn-b.made-up-host.test/hop2.mp4";
+    const hop3 = "https://cdn-b.made-up-host.test/final/hop3.mp4"; // the relative Location resolves here
+    const seen: Seen[] = [];
+    const r = await runReal(
+      seen,
+      (u) => {
+        if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r1", estimatedCost: 54 } });
+        if (u === `${API}/tasks/made-up-task-r1`) return res(200, { json: { status: "SUCCEEDED", output: [hop1], cost: 54 } });
+        if (u === hop1) return res(302, { location: hop2 });
+        if (u === hop2) return res(307, { location: "/final/hop3.mp4" });
+        if (u === hop3) return res(200, { bytes });
+        return res(500, { json: { unexpected: u } });
+      },
+      ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }),
+    );
+    expect(r.code).toBe(0);
+    expect(seen.map((s) => s.url)).toEqual([`${API}/text_to_video`, `${API}/tasks/made-up-task-r1`, hop1, hop2, hop3]);
+    expect(seen[0].headers.Authorization).toBe(`Bearer ${KEY}`);
+    expect(seen[1].headers.Authorization).toBe(`Bearer ${KEY}`);
+    for (const s of seen.slice(2)) {
+      expect(Object.keys(s.headers).some((k) => k.toLowerCase() === "authorization")).toBe(false);
+      expect(JSON.stringify(s)).not.toContain(KEY);
+    }
+    for (const s of seen) expect(s.redirect).toBe("manual");
+    for (const s of seen.slice(2)) expect(s.method).toBe("GET");
+    const files = fs.readdirSync(ctx.out);
+    expect(files.length).toBe(1);
+    expect(sha(fs.readFileSync(path.join(ctx.out, files[0])))).toBe(sha(bytes));
+    const outcome = ledgerLines(ctx.ledger)[1];
+    expect(outcome.status).toBe("ok");
+    expect(outcome.file_sha256).toBe(sha(bytes));
+    const printed = `${r.out}${r.err}${readBytes(ctx.ledger)?.toString("utf8") ?? ""}`;
+    expect(printed).not.toContain(KEY);
+    expect(fetchCount).toBe(0); // the fence itself was never called
+  });
+
+  it("R2 the hop limit: 5 redirects followed, then the 3xx is the result", async () => {
+    const ctx = makeCtx();
+    const seen: Seen[] = [];
+    let downloadRequests = 0;
+    const r = await runReal(
+      seen,
+      (u) => {
+        if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r2", estimatedCost: 54 } });
+        if (u === `${API}/tasks/made-up-task-r2`)
+          return res(200, { json: { status: "SUCCEEDED", output: ["https://cdn-r2.made-up-host.test/hop0.mp4"], cost: 54 } });
+        downloadRequests++;
+        if (downloadRequests <= 10) return res(302, { location: `https://cdn-r2.made-up-host.test/hop${downloadRequests}.mp4` });
+        return res(200, { bytes: Buffer.from("made-up-r2-bytes") });
+      },
+      ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }),
+    );
+    expect(r.code).toBe(1);
+    expect(ledgerLines(ctx.ledger)[1].status).toBe("http-302");
+    expect(downloadRequests).toBe(6); // the limit (5) plus the first request
+    expect(fs.readdirSync(ctx.out).length).toBe(0);
+  });
+
+  it("R3 a Location that is not https, or no Location at all, is not followed", async () => {
+    for (const location of ["http://plain-r3.made-up-host.test/x.mp4", undefined] as (string | undefined)[]) {
+      const ctx = makeCtx();
+      const seen: Seen[] = [];
+      let downloadRequests = 0;
+      const r = await runReal(
+        seen,
+        (u) => {
+          if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r3", estimatedCost: 54 } });
+          if (u === `${API}/tasks/made-up-task-r3`)
+            return res(200, { json: { status: "SUCCEEDED", output: ["https://cdn-r3.made-up-host.test/clip.mp4"], cost: 54 } });
+          downloadRequests++;
+          if (u === "http://plain-r3.made-up-host.test/x.mp4") return res(200, { bytes: Buffer.from("made-up-r3-http-bytes") });
+          return res(302, location !== undefined ? { location } : {});
+        },
+        ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }),
+      );
+      expect([String(location), r.code]).toEqual([String(location), 1]);
+      expect(ledgerLines(ctx.ledger)[1].status).toBe("http-302");
+      expect(seen.every((s) => !s.url.startsWith("http:"))).toBe(true);
+      expect(downloadRequests).toBe(1);
+      expect(fs.readdirSync(ctx.out).length).toBe(0);
+    }
+  });
+
+  it("R4 a redirect on a keyed call is refused: one request, the Location gets none", async () => {
+    // (a) the status call (a GET with the key header)
+    {
+      const ctx = makeCtx();
+      const seen: Seen[] = [];
+      const r = await runReal(
+        seen,
+        (u) => {
+          if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r4a", estimatedCost: 54 } });
+          if (u === `${API}/tasks/made-up-task-r4a`) return res(302, { location: "https://elsewhere-r4a.made-up-host.test/task" });
+          if (u === "https://elsewhere-r4a.made-up-host.test/task")
+            return res(200, { json: { status: "SUCCEEDED", output: ["https://cdn-r4a.made-up-host.test/x.mp4"], cost: 54 } });
+          return res(500, { json: { unexpected: u } });
+        },
+        ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }),
+      );
+      expect(r.code).toBe(1);
+      const outcome = ledgerLines(ctx.ledger)[1];
+      expect(outcome.status).toBe("http-302");
+      expect(seen.map((s) => s.url)).toEqual([`${API}/text_to_video`, `${API}/tasks/made-up-task-r4a`]);
+      expect(outcome.final_cost_credits).toBeNull();
+      expect(fs.readdirSync(ctx.out).length).toBe(0);
+    }
+    // (b) the create call (a POST)
+    {
+      const ctx = makeCtx();
+      const seen: Seen[] = [];
+      const r = await runReal(
+        seen,
+        (u) => {
+          if (u === `${API}/text_to_video`) return res(307, { location: "https://elsewhere-r4b.made-up-host.test/create" });
+          return res(500, { json: { unexpected: u } });
+        },
+        ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }),
+      );
+      expect(r.code).toBe(1);
+      expect(ledgerLines(ctx.ledger)[1].status).toBe("http-307");
+      expect(seen.length).toBe(1);
+    }
+  });
+
+  it("R5 the key header stays on the API host: send() strips Authorization for other hosts", async () => {
+    const seen: Seen[] = [];
+    const bytes = Buffer.from("made-up-r5-bytes");
+    let dl: Buffer | undefined;
+    await withStubFetch(
+      (u) => {
+        if (u === "https://cdn-r5.made-up-host.test/a.mp4") return res(302, { location: "https://other-r5.made-up-host.test/b.mp4" });
+        return res(200, { bytes });
+      },
+      seen,
+      async () => {
+        dl = await rw.realRunwayCaller().download({
+          url: "https://cdn-r5.made-up-host.test/a.mp4",
+          method: "GET",
+          headers: { Authorization: `Bearer ${KEY}` },
+          timeoutMs: 1000,
+        });
+        await rw.realRunwayCaller().taskStatus({
+          url: `${API}/tasks/made-up-task-r5`,
+          method: "GET",
+          headers: { Authorization: `Bearer ${KEY}` },
+          timeoutMs: 1000,
+        });
+      },
+    );
+    expect(dl?.toString("utf8")).toBe(bytes.toString("utf8"));
+    expect(seen.length).toBe(3); // two download hops, one status call
+    for (const s of seen.slice(0, 2)) {
+      expect(Object.keys(s.headers).some((k) => k.toLowerCase() === "authorization")).toBe(false);
+      expect(JSON.stringify(s)).not.toContain(KEY);
+    }
+    expect(seen[2].headers.Authorization).toBe(`Bearer ${KEY}`);
+    expect(fetchCount).toBe(0);
+  });
+});
