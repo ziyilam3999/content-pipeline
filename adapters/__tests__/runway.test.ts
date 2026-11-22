@@ -970,3 +970,208 @@ describe("t11 key reader", () => {
     }
   });
 });
+
+// ── (12) round 3: the re-checks under the lock, the lock itself, plan values, unknown
+// statuses, stills and folders ───────────────────────────────────────────────────────────
+
+describe("t12 round 3", () => {
+  /** A key reader that first appends one line to the record plays the other run that wrote
+   *  between the first checks in buildRun and the lock taken in liveRun (ISSUE-020). */
+  function racingKeyReader(ledger: string, line: Record<string, unknown>): { reader: () => string; after: () => Buffer | null } {
+    let after: Buffer | null = null;
+    return {
+      reader: () => {
+        fs.appendFileSync(ledger, `${JSON.stringify(line)}\n`);
+        after = readBytes(ledger); // the bytes right after the racing append
+        return KEY;
+      },
+      after: () => after,
+    };
+  }
+
+  it("1 the cap re-check under the lock: a spend landing between the first check and the lock refuses over-ceiling", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [{ kind: "attempt", service: "gemini-omni", cost_usd: 24 }]); // 24 + 0.54 passes the first check
+    const race = racingKeyReader(ctx.ledger, { kind: "attempt", service: "gemini-omni", cost_usd: 0.5 });
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake, race.reader);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+    expect(r.err).toContain("24.500"); // the re-read total saw the racing 0.5, not the 24 of the first check
+    expect(fake.calls.length).toBe(0); // no create call
+    expect(race.after()).not.toBeNull();
+    expect(readBytes(ctx.ledger)).toEqual(race.after()); // no runway attempt line on top of the racing append
+    expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false); // the lock is released, not left behind
+  });
+
+  it("2 the retry re-count under the lock: a second attempt line landing before the lock refuses retry-limit", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [
+      runwayAttempt(PLAN.plan_id, "ai-1-kling3-pic", 0.54), // count 1 at the first check in buildRun
+      { kind: "outcome", service: "runway", cost_usd: 0 },
+    ]);
+    const race = racingKeyReader(ctx.ledger, runwayAttempt(PLAN.plan_id, "ai-1-kling3-pic", 0.54)); // count 2 under the lock
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake, race.reader);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("retry-limit");
+    expect(fake.calls.length).toBe(0); // no create call
+    expect(race.after()).not.toBeNull();
+    expect(readBytes(ctx.ledger)).toEqual(race.after()); // no third attempt line
+    expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false);
+  });
+
+  it("3 an existing <record>.lock refuses ledger-busy: no call, no record written, the lock is neither stolen nor removed", async () => {
+    const ctx = makeCtx();
+    fs.writeFileSync(`${ctx.ledger}.lock`, ""); // another run holds the lock
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("ledger-busy");
+    expect(fake.calls.length).toBe(0);
+    expect(readBytes(ctx.ledger)).toBeNull(); // nothing is written while the lock is held
+    expect(readBytes(`${ctx.ledger}.lock`)).toEqual(Buffer.alloc(0)); // still there, untouched
+  });
+
+  it("4a an unknown ratio refuses plan-invalid (not price-unknown)", async () => {
+    const plan = tempPlan((p) => {
+      p.clips[0].ratio = "999:999";
+    });
+    const ctx = makeCtx(plan);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("plan-invalid");
+    expect(r.err).toContain("999:999");
+    expect(fake.calls.length).toBe(0);
+  });
+
+  it("4b an unknown duration refuses plan-invalid", async () => {
+    const plan = tempPlan((p) => {
+      p.clips[0].seconds = 7;
+    });
+    const ctx = makeCtx(plan);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("plan-invalid");
+    expect(fake.calls.length).toBe(0);
+  });
+
+  it("4c an audio value that is not a boolean refuses plan-invalid (not price-unknown)", async () => {
+    const plan = tempPlan((p) => {
+      (p.clips[0] as unknown as { audio: string }).audio = "yes";
+    });
+    const ctx = makeCtx(plan);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("plan-invalid");
+    expect(fake.calls.length).toBe(0);
+  });
+
+  it("4d an audio-true clip on a model with audio_flag false refuses plan-invalid", async () => {
+    const plan = tempPlan((p) => {
+      (p.models["veo3.1_fast"] as unknown as { audio_flag: boolean }).audio_flag = false;
+    });
+    const ctx = makeCtx(plan);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("plan-invalid");
+    expect(r.err).toContain("audio flag");
+    expect(fake.calls.length).toBe(0);
+  });
+
+  it("5a an unknown status and a reply with no status keep polling until a terminal reply lands", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.statuses = [
+      { status: "MADE_UP_STATUS" },
+      {},
+      { status: "SUCCEEDED", output: [DL_URL], cost: 54 },
+    ];
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    expect(fake.statusCount).toBe(3); // two non-terminal replies, then the terminal one
+    expect(fake.downloadCount).toBe(1); // an unknown status never turns into a download by itself
+    expect(ledgerLines(ctx.ledger)[1].status).toBe("ok");
+  });
+
+  it("5b a status that never becomes terminal ends as outcome timeout, exit 1, no download, no file", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.statuses = Array.from({ length: 1000 }, () => ({ status: "MADE_UP_STATUS" }));
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", timeout: "1", extra: ["--live"] }), fake);
+    expect(r.code).toBe(1);
+    expect(ledgerLines(ctx.ledger)[1].status).toBe("timeout"); // never ok, never cancelled
+    expect(fake.downloadCount).toBe(0);
+    expect(fs.readdirSync(ctx.out).length).toBe(0);
+  });
+
+  it("6a --live on an image_to_video clip with no --still refuses usage before an attempt line exists", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-4-veo-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("usage");
+    expect(fake.calls.length).toBe(0);
+    expect(readBytes(ctx.ledger)).toBeNull(); // no attempt line: nothing counted against the cap or the 2 attempts
+  });
+
+  it("6b --still on a text_to_video clip refuses usage", async () => {
+    const ctx = makeCtx();
+    const still = writeStill(ctx.tmp);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", still }), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("usage");
+    expect(fake.calls.length).toBe(0);
+    expect(readBytes(ctx.ledger)).toBeNull();
+  });
+
+  it("6c a too-big still on a --live run refuses input-too-big BEFORE any key read", async () => {
+    const ctx = makeCtx();
+    const big = Buffer.concat([PNG_BYTES, Buffer.alloc(4_000_000)]); // base64 data URI over 5 M chars
+    const still = writeStill(ctx.tmp, "big.png", big);
+    const fake = new FakeCaller();
+    const keyReader = jest.fn(() => KEY);
+    const r = await run(ctx.args({ clip: "ai-4-veo-pic", still, extra: ["--live"] }), fake, keyReader);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("input-too-big");
+    expect(keyReader).not.toHaveBeenCalled(); // checked in buildRun, before liveRun reads the key
+    expect(fake.calls.length).toBe(0);
+    expect(readBytes(ctx.ledger)).toBeNull();
+  });
+
+  it("7a --out inside the repo tree but outside its out/ folder refuses out-bad", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ out: path.join(REPO, "adapters") }), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("out-bad");
+    expect(fake.calls.length).toBe(0);
+  });
+
+  it("7b a --ledger folder inside the repo tree but outside its out/ folder refuses out-bad and creates nothing there", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    const ledgerInside = path.join(REPO, "adapters", "made-up-ledger-a52.jsonl");
+    const r = await run(ctx.args({ ledger: ledgerInside }), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("out-bad");
+    expect(fs.existsSync(ledgerInside)).toBe(false);
+    expect(fs.existsSync(`${ledgerInside}.lock`)).toBe(false);
+  });
+
+  it("7c --out as a symlink refuses out-bad", async () => {
+    const ctx = makeCtx();
+    const link = path.join(ctx.tmp, "out-link");
+    fs.symlinkSync(ctx.out, link);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ out: link }), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("out-bad");
+    expect(fake.calls.length).toBe(0);
+  });
+});
