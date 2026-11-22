@@ -64,6 +64,7 @@
     "eyeball:ack": "tsx tools/eyeball-ack.ts",
     "clip:edit": "tsx tools/clipEdit.ts",
     "video:gen": "tsx tools/videogen.ts",
+    "video:tryout": "tsx tools/runwayTryout.ts",
     "capture:demo": "tsx tools/captureDemo.ts",
     "capture:fable": "tsx tools/captureFable.ts",
     "capture:forge": "tsx tools/captureForge.ts",
