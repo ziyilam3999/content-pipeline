@@ -650,8 +650,9 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
   // cost rule: after the outcome line the record holds, for this attempt, the larger of the
   // list estimate and C x USD 0.01. C = the cost credits of the terminal task reply when the
   // run read one with a number; else the estimatedCost credits of the create reply; else 0.
-  // A charge above that amount is not in the record: the run read no terminal reply (the
-  // create or a status call failed, or the poll ran out) or the terminal reply held no cost.
+  // A charge above that amount is not in the record when the run read no terminal reply (the
+  // create or a status call failed, or the poll ran out) or the terminal reply held no cost;
+  // whether a terminal cost equals what Runway bills is not measured.
   // A run that ends before the outcome line leaves the list estimate only.
   const cCredits = o.finalCost ?? o.estimated ?? 0;
   const deltaMicro = Math.max(0, Math.round(cCredits * MICRO_PER_CREDIT) - clip.estimateMicro);

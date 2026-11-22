@@ -9,7 +9,7 @@
  * Optional:
  *   --clip <id> — one clip of the plan
  *   --still <file> — the still image of an image_to_video clip
- *   --timeout-seconds <n> — the poll timeout (default 900)
+ *   --timeout-seconds <n> — the limit of each call and of the poll (default 900)
  *   --live — send the one call (needs --clip)
  * Dry run is the default: it reads no key, sends nothing and writes nothing.
  */
