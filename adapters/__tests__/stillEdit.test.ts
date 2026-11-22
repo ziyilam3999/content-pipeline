@@ -615,6 +615,21 @@ describe("t5 plan", () => {
     expect(planItem("ai-4-outdoor-start").needs_input).toBe(false);
   });
 
+  it("the dry run of each item prints the pinned prompt-sha256 of the ticket text (one changed character turns it red)", async () => {
+    const pinned: Record<string, string> = {
+      "ai-4-no-pillars": "4d38bfdedb55c13715660af5d0613574808fd86f81cf8a288e644bd10e313c91",
+      "ai-4-outdoor-start": "da9c2224321383c7a0129639105f6e07ed09288c6347da43c3342d9f4309443c",
+    };
+    for (const id of ["ai-4-no-pillars", "ai-4-outdoor-start"]) {
+      const ctx = makeCtx();
+      const o: ArgsOpts = { item: id, dropIn: id === "ai-4-outdoor-start" };
+      if (id === "ai-4-no-pillars") o.in = writeStill(ctx.tmp);
+      const r = await run(ctx.args(o), new FakeCaller());
+      expect([id, r.code]).toEqual([id, 0]);
+      expect([id, r.out.split("\n")[1]]).toEqual([id, expect.stringContaining(`prompt-sha256=${pinned[id]} `)]);
+    }
+  });
+
   it("the dry run of each item prints a prompt-sha256 (both quoted in the PR body)", async () => {
     for (const id of ["ai-4-no-pillars", "ai-4-outdoor-start"]) {
       const ctx = makeCtx();
@@ -665,6 +680,44 @@ describe("t6 refusals: usage", () => {
     const r = await run(ctx.args({ in: still, ceiling: "1.01" }), fake);
     await expectRefusal(r, "usage", fake, ctx.ledger);
     expect(r.err).toContain("--ceiling-usd must be above 0 and at most 1");
+  });
+
+  it("usage: an option given with no value (--item as the last argument) refuses with its own text", async () => {
+    const ctx = makeCtx();
+    const still = writeStill(ctx.tmp);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ in: still, extra: ["--item"] }), fake);
+    await expectRefusal(r, "usage", fake, ctx.ledger);
+    expect(r.err).toContain("bad or incomplete argument --item");
+  });
+
+  it("usage: --ceiling-usd 0 refuses with its own text", async () => {
+    const ctx = makeCtx();
+    const still = writeStill(ctx.tmp);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ in: still, ceiling: "0" }), fake);
+    await expectRefusal(r, "usage", fake, ctx.ledger);
+    expect(r.err).toContain("--ceiling-usd must be above 0 and at most");
+  });
+
+  it("usage: --ceiling-usd 2 (above the cap) refuses with its own text", async () => {
+    const ctx = makeCtx();
+    const still = writeStill(ctx.tmp);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ in: still, ceiling: "2" }), fake);
+    await expectRefusal(r, "usage", fake, ctx.ledger);
+    expect(r.err).toContain("--ceiling-usd must be above 0 and at most");
+  });
+
+  it("usage: a bad --timeout-seconds (0, then abc) refuses with its own text", async () => {
+    for (const bad of ["0", "abc"]) {
+      const ctx = makeCtx();
+      const still = writeStill(ctx.tmp);
+      const fake = new FakeCaller();
+      const r = await run(ctx.args({ in: still, timeout: bad }), fake);
+      await expectRefusal(r, "usage", fake, ctx.ledger);
+      expect(r.err).toContain("--timeout-seconds must be a whole number above 0");
+    }
   });
 
   it("usage: an item with needs_input true and no --in refuses with its own text", async () => {
@@ -838,14 +891,14 @@ describe("t8 refusals: input, out-bad, ledger", () => {
 // ── (9) key-missing (live only; the dry run never reads a key) ──────────────────────────
 
 describe("t9 key-missing", () => {
-  const readers: [string, () => string][] = [
+  const readers: [string, () => string, string][] = [
     ["a throwing reader", () => {
       throw new Error("no key found");
-    }],
-    ["an empty key", () => ""],
-    ["a blank key", () => "  "],
+    }, "the key reader threw"],
+    ["an empty key", () => "", "the key reader returned no key"],
+    ["a blank key", () => "  ", "the key reader returned no key"],
   ];
-  for (const [label, reader] of readers) {
+  for (const [label, reader, detail] of readers) {
     it(`refuses with key-missing for ${label}: no attempt line, nothing written, caller not called`, async () => {
       const ctx = makeCtx();
       const still = writeStill(ctx.tmp);
@@ -853,6 +906,7 @@ describe("t9 key-missing", () => {
       const r = await run(ctx.args({ in: still, extra: ["--live"] }), fake, reader);
       expect(r.code).toBe(2);
       expect(r.err.trim().split(/\s+/)[0]).toBe("key-missing");
+      expect(r.err).toContain(detail);
       expect(fake.calls.length).toBe(0);
       expect(readBytes(ctx.ledger)).toBeNull();
       expect(fs.readdirSync(ctx.out).length).toBe(0);
