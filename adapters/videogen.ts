@@ -54,13 +54,14 @@ export const AI_VIDEO_CEILING_CAP_USD = 25;
 
 const SERVICE = "gemini-omni";
 
-/** Cap groups the spend ledger reads apart: AI video against its own cap, other paid media together. */
-export type CapGroup = "ai-video" | "paid-media";
+/** Cap groups the spend ledger reads apart: AI video and AI images each against their own cap, other paid media together. */
+export type CapGroup = "ai-video" | "ai-image" | "paid-media";
 
 /** Each known ledger service maps to the one cap group its lines count in; the voice tool writes elevenlabs. */
 export const SERVICE_CAP_GROUPS: Readonly<Record<string, CapGroup>> = Object.freeze({
   "gemini-omni": "ai-video",
   runway: "ai-video", // the A52 try-out writes service runway; one AI video cap for both tools
+  "gemini-image": "ai-image", // the A52c still tool; image takes are not video spend
   elevenlabs: "paid-media",
 });
 

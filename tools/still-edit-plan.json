@@ -1,0 +1,21 @@
+{
+  "plan_id": "a52c-still-edit-2026-11-22",
+  "model": "gemini-2.5-flash-image",
+  "price_usd_per_call": 0.04,
+  "price_read": "2026-11-22",
+  "items": [
+    {
+      "id": "ai-4-no-pillars",
+      "shot": "AI-4",
+      "needs_input": true,
+      "prompt": "Edit this overhead image of an indoor parking-garage aisle. Remove all four concrete pillars and every pillar stub from the frame: the tall pillar on the right of the aisle, the tall pillar on the left, and the two low stubs at the bottom edge; fill each spot with the same smooth bare grey concrete floor and the same white painted bay lines, leaving no marks, cracks or patches behind. In the now-empty floor strip on the right of the aisle, between the bay of the silver hatchback at the top right and the black car below it, add one ordinary parked car seen from directly above, a grey or silver hatchback parked neatly within the painted lines, the same size and pointing the same way as the other parked cars. Everything else stays exactly as it is, pixel for pixel: the small red hatchback in the centre of the aisle, the silver hatchback at the top right, the black car and every other parked car, the painted lines, the cool fluorescent light and the slight sensor noise. Keep the same overhead security-camera look, the same framing and the same 9:16 portrait frame. Exactly one red hatchback. No new text, no arrows, no people, no new objects, no watermarks."
+    },
+    {
+      "id": "ai-4-outdoor-start",
+      "shot": "AI-4",
+      "needs_input": false,
+      "aspect_ratio": "9:16",
+      "prompt": "Strictly vertical top-down overhead view from a static security camera fixed high above, one single still frame, 9:16 portrait: an outdoor parking-lot aisle in flat overcast daylight. Ordinary parked hatchbacks and sedans in grey, silver, black and dark blue fill the bays on both sides of the aisle, each seen from directly above with roof, bonnet and windscreen, on smooth dark asphalt with simple white painted bay lines; no pillars, no walls, no roof, no curb. On the right side of the aisle, from the top down: a silver hatchback parked in the top bay with its tail lights facing the aisle, then a grey hatchback parked neatly in the next bay below it, then a black car in the bay below that. A small red hatchback sits in the centre of the aisle, nose pointing up the aisle. Real security-camera footage look with slight sensor noise, soft shadows, no motion blur. Exactly one red hatchback. No text, no arrows, no people, no watermarks."
+    }
+  ]
+}
