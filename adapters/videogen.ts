@@ -60,6 +60,7 @@ export type CapGroup = "ai-video" | "paid-media";
 /** Each known ledger service maps to the one cap group its lines count in; the voice tool writes elevenlabs. */
 export const SERVICE_CAP_GROUPS: Readonly<Record<string, CapGroup>> = Object.freeze({
   "gemini-omni": "ai-video",
+  runway: "ai-video", // the A52 try-out writes service runway; one AI video cap for both tools
   elevenlabs: "paid-media",
 });
 
@@ -407,7 +408,7 @@ export interface Plan {
 const REPO_ROOT = path.resolve(__dirname, "..");
 
 /** The out folder and the ledger folder stay outside this repo's tree, or inside its out/. */
-function checkFolder(p: string, what: string): string {
+export function checkFolder(p: string, what: string): string {
   let st: fs.Stats;
   try {
     st = fs.lstatSync(p);

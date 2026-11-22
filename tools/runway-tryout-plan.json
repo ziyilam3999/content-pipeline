@@ -1,0 +1,124 @@
+{
+  "plan_id": "a52-runway-tryout-2026-11-22",
+  "price_read": "2026-11-22",
+  "usd_per_credit": 0.01,
+  "ratio_resolution": { "720:1280": "720p (9:16)" },
+  "models": {
+    "kling3.0_standard": {
+      "prompt_text_max": 2500,
+      "prompt_text_min": 2,
+      "ratios": ["720:1280"],
+      "durations": [6],
+      "audio_flag": true,
+      "credits_per_second": { "720:1280": { "false": 9, "true": 13 } }
+    },
+    "seedance2": {
+      "prompt_text_max": 10000,
+      "prompt_text_min": 2,
+      "ratios": ["720:1280"],
+      "durations": [6],
+      "audio_flag": true,
+      "credits_per_second": { "720:1280": { "false": 30, "true": 30 } }
+    },
+    "veo3.1_fast": {
+      "prompt_text_max": 1000,
+      "prompt_text_min": 2,
+      "ratios": ["720:1280"],
+      "durations": [6],
+      "audio_flag": true,
+      "credits_per_second": { "720:1280": { "false": 10, "true": 15 } }
+    }
+  },
+  "clips": [
+    {
+      "id": "ai-1-kling3-pic",
+      "shot": "AI-1",
+      "model": "kling3.0_standard",
+      "endpoint": "text_to_video",
+      "seconds": 6,
+      "ratio": "720:1280",
+      "audio": false,
+      "prompt": "Real footage from a locked-off camera mounted on the ceiling, pointing straight down at ninety degrees, a true bird's-eye plan view of one aisle of an indoor concrete parking garage. Only roofs of cars are visible, no car sides, no horizon, no far wall, no vanishing point. Single continuous shot, no camera movement, no cuts. Cool fluorescent light, soft shadows under each car. Slightly worn plain grey concrete floor with plain white bay lines only: the floor is blank, with no painted numbers, letters, arrows or symbols. Plain blank round concrete pillars seen from above as grey circles. Bays on both sides are filled with ordinary cars in muted everyday colours, seen as roofs. One small red hatchback, seen from directly above as a roof, drives slowly along the aisle from the bottom of the frame to the top and pauses once, brake lights glowing briefly. Cars carry blank plates and no badges. Natural motion blur, subtle sensor noise, filmed on a real camera."
+    },
+    {
+      "id": "ai-1-seedance-pic",
+      "shot": "AI-1",
+      "model": "seedance2",
+      "endpoint": "text_to_video",
+      "seconds": 6,
+      "ratio": "720:1280",
+      "audio": false,
+      "prompt": "Real footage from a locked-off camera mounted on the ceiling, pointing straight down at ninety degrees, a true bird's-eye plan view of one aisle of an indoor concrete parking garage. Only roofs of cars are visible, no car sides, no horizon, no far wall, no vanishing point. Single continuous shot, no camera movement, no cuts. Cool fluorescent light, soft shadows under each car. Slightly worn plain grey concrete floor with plain white bay lines only: the floor is blank, with no painted numbers, letters, arrows or symbols. Plain blank round concrete pillars seen from above as grey circles. Bays on both sides are filled with ordinary cars in muted everyday colours, seen as roofs. One small red hatchback, seen from directly above as a roof, drives slowly along the aisle from the bottom of the frame to the top and pauses once, brake lights glowing briefly. Cars carry blank plates and no badges. Natural motion blur, subtle sensor noise, filmed on a real camera."
+    },
+    {
+      "id": "ai-1-veo-pic",
+      "shot": "AI-1",
+      "model": "veo3.1_fast",
+      "endpoint": "text_to_video",
+      "seconds": 6,
+      "ratio": "720:1280",
+      "audio": false,
+      "prompt": "Real footage from a locked-off camera mounted on the ceiling, pointing straight down at ninety degrees, a true bird's-eye plan view of one aisle of an indoor concrete parking garage. Only roofs of cars are visible, no car sides, no horizon, no far wall, no vanishing point. Single continuous shot, no camera movement, no cuts. Cool fluorescent light, soft shadows under each car. Slightly worn plain grey concrete floor with plain white bay lines only: the floor is blank, with no painted numbers, letters, arrows or symbols. Plain blank round concrete pillars seen from above as grey circles. Bays on both sides are filled with ordinary cars in muted everyday colours, seen as roofs. One small red hatchback, seen from directly above as a roof, drives slowly along the aisle from the bottom of the frame to the top and pauses once, brake lights glowing briefly. Cars carry blank plates and no badges. Natural motion blur, subtle sensor noise, filmed on a real camera."
+    },
+    {
+      "id": "ai-4-kling3-pic",
+      "shot": "AI-4",
+      "model": "kling3.0_standard",
+      "endpoint": "image_to_video",
+      "seconds": 6,
+      "ratio": "720:1280",
+      "audio": false,
+      "prompt": "Real footage from the same locked-off ceiling camera, pointing straight down at ninety degrees, the same aisle of the indoor concrete parking garage as in the first frame. Single continuous shot, no camera movement, no cuts. Cool fluorescent light, soft shadows. Plain grey concrete floor with plain white bay lines only. Natural motion blur, subtle sensor noise, filmed on a real camera. The silver car in the upper right bay reverses slowly out into the aisle, turns and drives out of the frame at the bottom. The red hatchback then turns and rolls forward into the freed bay next to the pillar and stops. All other parked cars stay still."
+    },
+    {
+      "id": "ai-4-seedance-pic",
+      "shot": "AI-4",
+      "model": "seedance2",
+      "endpoint": "image_to_video",
+      "seconds": 6,
+      "ratio": "720:1280",
+      "audio": false,
+      "prompt": "Real footage from the same locked-off ceiling camera, pointing straight down at ninety degrees, the same aisle of the indoor concrete parking garage as in the first frame. Single continuous shot, no camera movement, no cuts. Cool fluorescent light, soft shadows. Plain grey concrete floor with plain white bay lines only. Natural motion blur, subtle sensor noise, filmed on a real camera. The silver car in the upper right bay reverses slowly out into the aisle, turns and drives out of the frame at the bottom. The red hatchback then turns and rolls forward into the freed bay next to the pillar and stops. All other parked cars stay still."
+    },
+    {
+      "id": "ai-4-veo-pic",
+      "shot": "AI-4",
+      "model": "veo3.1_fast",
+      "endpoint": "image_to_video",
+      "seconds": 6,
+      "ratio": "720:1280",
+      "audio": false,
+      "prompt": "Real footage from the same locked-off ceiling camera, pointing straight down at ninety degrees, the same aisle of the indoor concrete parking garage as in the first frame. Single continuous shot, no camera movement, no cuts. Cool fluorescent light, soft shadows. Plain grey concrete floor with plain white bay lines only. Natural motion blur, subtle sensor noise, filmed on a real camera. The silver car in the upper right bay reverses slowly out into the aisle, turns and drives out of the frame at the bottom. The red hatchback then turns and rolls forward into the freed bay next to the pillar and stops. All other parked cars stay still."
+    },
+    {
+      "id": "ai-4-kling3-voice",
+      "shot": "AI-4",
+      "model": "kling3.0_standard",
+      "endpoint": "image_to_video",
+      "seconds": 6,
+      "ratio": "720:1280",
+      "audio": true,
+      "prompt": "Real footage from the same locked-off ceiling camera, pointing straight down at ninety degrees, the same aisle of the indoor concrete parking garage as in the first frame. Single continuous shot, no camera movement, no cuts. Cool fluorescent light, soft shadows. Plain grey concrete floor with plain white bay lines only. Natural motion blur, subtle sensor noise, filmed on a real camera. The silver car in the upper right bay reverses slowly out into the aisle, turns and drives out of the frame at the bottom. The red hatchback then turns and rolls forward into the freed bay next to the pillar and stops. All other parked cars stay still. A calm adult narrator says: \"The giver is told the seeker is nearby as the arrival gets close.\""
+    },
+    {
+      "id": "ai-4-seedance-voice",
+      "shot": "AI-4",
+      "model": "seedance2",
+      "endpoint": "image_to_video",
+      "seconds": 6,
+      "ratio": "720:1280",
+      "audio": true,
+      "prompt": "Real footage from the same locked-off ceiling camera, pointing straight down at ninety degrees, the same aisle of the indoor concrete parking garage as in the first frame. Single continuous shot, no camera movement, no cuts. Cool fluorescent light, soft shadows. Plain grey concrete floor with plain white bay lines only. Natural motion blur, subtle sensor noise, filmed on a real camera. The silver car in the upper right bay reverses slowly out into the aisle, turns and drives out of the frame at the bottom. The red hatchback then turns and rolls forward into the freed bay next to the pillar and stops. All other parked cars stay still. A calm adult narrator says: \"The giver is told the seeker is nearby as the arrival gets close.\""
+    },
+    {
+      "id": "ai-4-veo-voice",
+      "shot": "AI-4",
+      "model": "veo3.1_fast",
+      "endpoint": "image_to_video",
+      "seconds": 6,
+      "ratio": "720:1280",
+      "audio": true,
+      "prompt": "Real footage from the same locked-off ceiling camera, pointing straight down at ninety degrees, the same aisle of the indoor concrete parking garage as in the first frame. Single continuous shot, no camera movement, no cuts. Cool fluorescent light, soft shadows. Plain grey concrete floor with plain white bay lines only. Natural motion blur, subtle sensor noise, filmed on a real camera. The silver car in the upper right bay reverses slowly out into the aisle, turns and drives out of the frame at the bottom. The red hatchback then turns and rolls forward into the freed bay next to the pillar and stops. All other parked cars stay still. A calm adult narrator says: \"The giver is told the seeker is nearby as the arrival gets close.\""
+    }
+  ]
+}

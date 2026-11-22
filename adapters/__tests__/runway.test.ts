@@ -1,0 +1,882 @@
+/**
+ * Row A52 — unit tests for the video:tryout tool. Made-up values only; the fake caller
+ * records each URL/header it is handed and returns made-up bytes. NO REAL CALL and no paid
+ * step: globalThis.fetch is replaced (before the module under test loads) with a counter
+ * that throws, and an afterAll asserts the count stayed 0. The key reader is injected.
+ */
+
+import * as crypto from "crypto";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+
+import type { CliResult, NetCall, RunwayCaller, RunwayDeps } from "../runway";
+
+type RW = typeof import("../runway");
+type VG = typeof import("../videogen");
+
+// ── no-network fence, installed before the module under test is loaded ──────────────────
+
+let fetchCount = 0;
+const realFetch = globalThis.fetch;
+(globalThis as { fetch: typeof fetch }).fetch = (() => {
+  fetchCount++;
+  throw new Error("network is disabled in runway tests");
+}) as typeof fetch;
+
+let rw: RW;
+let vg: VG;
+
+// the Keychain lookup is faked at the module level: the builtin's execFileSync
+// property is non-configurable, so jest.mock replaces the module the adapter sees
+const mockExecCalls: { file: string; args: string[] }[] = [];
+jest.mock("child_process", () => {
+  const actual = jest.requireActual("child_process") as Record<string, unknown>;
+  return {
+    ...actual,
+    execFileSync: (file: string, args: readonly string[]): string => {
+      mockExecCalls.push({ file, args: [...args] });
+      return "rw-chain-key-not-real\n";
+    },
+  };
+});
+
+beforeAll(() => {
+  jest.isolateModules(() => {
+    rw = require("../runway");
+    vg = require("../videogen");
+  });
+});
+afterAll(() => {
+  expect(fetchCount).toBe(0);
+  (globalThis as { fetch: typeof fetch }).fetch = realFetch;
+});
+
+// ── made-up values and helpers ─────────────────────────────────────────────────────────
+
+const KEY = "rw-planted-key-not-real";
+const PNG_BYTES = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+const DL_URL = "https://cdn.made-up-host.test/made-up-clip.mp4";
+const NARRATION = 'A calm adult narrator says: "The giver is told the seeker is nearby as the arrival gets close."';
+
+const REPO = path.resolve(__dirname, "..", "..");
+const PLAN_FILE = path.join(REPO, "tools", "runway-tryout-plan.json");
+const STORYBOARD = fs.readFileSync(path.join(REPO, "storyboards", "getspace-ai-shots.md"), "utf8");
+
+interface PlanClip {
+  id: string;
+  shot: string;
+  model: string;
+  endpoint: string;
+  seconds: number;
+  ratio: string;
+  audio: boolean;
+  prompt: string;
+}
+interface PlanJson {
+  plan_id: string;
+  clips: PlanClip[];
+  models: Record<string, { prompt_text_max: number; credits_per_second: Record<string, Record<string, number>> }>;
+}
+const PLAN = JSON.parse(fs.readFileSync(PLAN_FILE, "utf8")) as PlanJson;
+
+/** The Prompt cell (and, for AI-1, the First frame cell) of one row of the shots list. */
+function storyboardRow(shot: string): { firstFrame: string; prompt: string } {
+  for (const line of STORYBOARD.split("\n")) {
+    if (!line.startsWith(`| ${shot} `)) continue;
+    const cells = line.split("|").map((c) => c.trim());
+    return { firstFrame: cells[4], prompt: cells[5] };
+  }
+  throw new Error(`the storyboard holds no row ${shot}`);
+}
+
+const sha = (b: Buffer): string => crypto.createHash("sha256").update(b).digest("hex");
+
+function mkTmp(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "a52-rw-test-"));
+}
+
+interface ArgsOpts {
+  plan?: string;
+  out?: string;
+  ledger?: string;
+  ceiling?: string;
+  clip?: string;
+  still?: string;
+  timeout?: string;
+  extra?: string[];
+  drop?: string[];
+}
+
+interface Ctx {
+  tmp: string;
+  out: string;
+  ledger: string;
+  args: (o?: ArgsOpts) => string[];
+}
+
+function makeCtx(planFile = PLAN_FILE): Ctx {
+  const tmp = mkTmp();
+  const out = path.join(tmp, "out");
+  fs.mkdirSync(out);
+  const ledger = path.join(tmp, "ledger.jsonl");
+  const args = (o: ArgsOpts = {}): string[] => {
+    const full = [
+      "--plan", o.plan ?? planFile,
+      "--out", o.out ?? out,
+      "--ledger", o.ledger ?? ledger,
+      "--ceiling-usd", o.ceiling ?? "25",
+    ];
+    if (o.clip) full.push("--clip", o.clip);
+    if (o.still) full.push("--still", o.still);
+    if (o.timeout) full.push("--timeout-seconds", o.timeout);
+    full.push(...(o.extra ?? []));
+    const drop = new Set(o.drop ?? []);
+    const res: string[] = [];
+    for (let i = 0; i < full.length; i++) {
+      if (drop.has(full[i])) {
+        i++;
+        continue;
+      }
+      res.push(full[i]);
+    }
+    return res;
+  };
+  return { tmp, out, ledger, args };
+}
+
+function writeStill(dir: string, name = "still.png", bytes = PNG_BYTES): string {
+  const p = path.join(dir, name);
+  fs.writeFileSync(p, bytes);
+  return p;
+}
+
+function readBytes(p: string): Buffer | null {
+  try {
+    return fs.readFileSync(p);
+  } catch {
+    return null;
+  }
+}
+
+function ledgerLines(p: string): Record<string, unknown>[] {
+  const raw = readBytes(p);
+  expect(raw).not.toBeNull();
+  return raw!
+    .toString("utf8")
+    .split("\n")
+    .filter((l) => l.trim() !== "")
+    .map((l) => JSON.parse(l) as Record<string, unknown>);
+}
+
+function writeLedger(p: string, lines: Record<string, unknown>[]): void {
+  fs.writeFileSync(p, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`);
+}
+
+/** A temp copy of the committed plan with one mutation applied. */
+function tempPlan(mut: (p: PlanJson) => void): string {
+  const p = JSON.parse(fs.readFileSync(PLAN_FILE, "utf8")) as PlanJson;
+  mut(p);
+  const f = path.join(mkTmp(), "plan.json");
+  fs.writeFileSync(f, JSON.stringify(p));
+  return f;
+}
+
+class FakeCaller implements RunwayCaller {
+  calls: NetCall[] = [];
+  createCount = 0;
+  statusCount = 0;
+  downloadCount = 0;
+  estimatedCost?: number; // goes in the create reply when set
+  finalCost?: number; // goes in the terminal task reply when set
+  statuses: unknown[] = []; // task-status replies, shifted; default an immediate SUCCEEDED
+  createImpl: () => Promise<unknown> = async () => ({ id: "made-up-task-1", status: "PENDING", estimatedCost: this.estimatedCost });
+  downloadBytes = Buffer.from("made-up-runway-mp4-bytes");
+
+  async create(call: NetCall): Promise<unknown> {
+    this.calls.push(call);
+    this.createCount++;
+    return this.createImpl();
+  }
+  async taskStatus(call: NetCall): Promise<unknown> {
+    this.calls.push(call);
+    this.statusCount++;
+    if (this.statuses.length > 0) return this.statuses.shift();
+    return { id: "made-up-task-1", status: "SUCCEEDED", output: [DL_URL], cost: this.finalCost };
+  }
+  async download(call: NetCall): Promise<Buffer> {
+    this.calls.push(call);
+    this.downloadCount++;
+    return this.downloadBytes;
+  }
+}
+
+/** Run with injected fakes; if the module itself throws, its text must hold no key. */
+async function run(argv: string[], fake: FakeCaller, keyReader: () => string = () => KEY): Promise<CliResult> {
+  const deps: RunwayDeps = { caller: fake, keyReader, pollIntervalMs: 1 };
+  try {
+    return await rw.runRunwayTryout(argv, deps);
+  } catch (e) {
+    expect(e instanceof Error ? e.message : String(e)).not.toContain(KEY);
+    throw e;
+  }
+}
+
+async function expectRefusal(r: CliResult, code: string, fake: FakeCaller, ledgerPath: string): Promise<void> {
+  expect(r.code).toBe(2);
+  const line = r.err.trim();
+  expect(line.split("\n").length).toBe(1); // one line
+  expect(line.split(/\s+/)[0]).toBe(code); // code first
+  expect(fake.calls.length).toBe(0); // no network step
+  expect(readBytes(ledgerPath)).toEqual(null); // ledger untouched
+}
+
+// a try-out attempt line for the retry count (service runway, same plan id and clip id)
+const runwayAttempt = (planId: string, clipId: string, cost: number): Record<string, unknown> => ({
+  kind: "attempt",
+  service: "runway",
+  cost_usd: cost,
+  sent: { plan_id: planId, clip_id: clipId },
+});
+
+// ── (1) the dry run ────────────────────────────────────────────────────────────────────
+
+describe("t1 dry run", () => {
+  it("no key, exit 0, a total line holding usd=9.360 and 9 clip lines; nothing read, sent or written", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    const keyReader = jest.fn(() => {
+      throw new Error("no key anywhere");
+    });
+    const r = await run(ctx.args(), fake, keyReader);
+    expect(r.code).toBe(0);
+    expect(r.err).toBe("");
+    expect(r.out).toContain("usd=9.360");
+    const clipLines = r.out.split("\n").filter((l) => l.startsWith("runway: clip id="));
+    expect(clipLines.length).toBe(9);
+    expect(keyReader).not.toHaveBeenCalled(); // the dry run reads no key
+    expect(fake.calls.length).toBe(0); // and calls nothing
+    expect(readBytes(ctx.ledger)).toBeNull(); // writes nothing
+    expect(fs.readdirSync(ctx.out).length).toBe(0);
+    expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false);
+    // the PR body quotes this committed-plan dry run (no key, no network)
+  });
+
+  it("with --clip prints only that one clip, with its own estimate and room-after", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic" }), fake);
+    expect(r.code).toBe(0);
+    const clipLines = r.out.split("\n").filter((l) => l.startsWith("runway: clip id="));
+    expect(clipLines.length).toBe(1);
+    expect(clipLines[0]).toContain("id=ai-1-kling3-pic");
+    expect(r.out).toContain("estimate-usd=0.540");
+    expect(r.out).toContain("usd=0.540");
+    expect(r.out).toContain("room-after usd=24.460");
+    expect(fake.calls.length).toBe(0);
+  });
+
+  it("a --still in the dry run puts the still sha256 on the image_to_video clip lines only", async () => {
+    const ctx = makeCtx();
+    const still = writeStill(ctx.tmp);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ still }), fake);
+    expect(r.code).toBe(0);
+    const lines = r.out.split("\n").filter((l) => l.startsWith("runway: clip id="));
+    expect(lines.length).toBe(9);
+    for (const l of lines) {
+      if (l.includes("endpoint=image_to_video")) expect(l).toContain(`still-sha256=${sha(PNG_BYTES)}`);
+      else expect(l).not.toContain("still-sha256=");
+    }
+  });
+});
+
+// ── (2) the cap ────────────────────────────────────────────────────────────────────────
+
+describe("t2 cap", () => {
+  it("spent 15.65 plus the plan total 9.36 is above 25: over-ceiling, exit 2, record unchanged, caller not called", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [runwayAttempt(PLAN.plan_id, "some-clip", 15.65)]);
+    const before = readBytes(ctx.ledger);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+    expect(r.err).toContain("ai-video");
+    expect(fake.calls.length).toBe(0);
+    expect(readBytes(ctx.ledger)).toEqual(before);
+  });
+
+  it("the clip estimate counts for --clip: spent 24.47 plus 0.54 is above 25, refused", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [{ kind: "attempt", service: "gemini-omni", cost_usd: 24.47 }]);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+    expect(fake.calls.length).toBe(0);
+  });
+
+  it("equal passes: spent 15.64 plus 9.36 is exactly 25, exit 0", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [{ kind: "attempt", service: "gemini-omni", cost_usd: 15.64 }]);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("usd=9.360");
+  });
+
+  it("--ceiling-usd 25.01 and 26 refuse usage; the ceiling is required", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    for (const c of ["25.01", "26", "0", "-1", "1e9", "NaN"]) {
+      const r = await run(ctx.args({ ceiling: c }), fake);
+      expect([c, r.code]).toEqual([c, 2]);
+      expect([c, r.err.trim().split(/\s+/)[0]]).toEqual([c, "usage"]);
+    }
+    const r2 = await run(ctx.args({ drop: ["--ceiling-usd"] }), fake);
+    expect(r2.code).toBe(2);
+    expect(r2.err.trim().split(/\s+/)[0]).toBe("usage");
+    expect(fake.calls.length).toBe(0);
+  });
+
+  it("--live without --clip refuses usage (at most one generation call per run)", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ extra: ["--live"] }), fake);
+    await expectRefusal(r, "usage", fake, ctx.ledger);
+  });
+});
+
+// ── (3) one cap for both tools ──────────────────────────────────────────────────────────
+
+describe("t3 cap group", () => {
+  it("a runway attempt and outcome line count in the video:gen ai-video total; paid media stays apart", () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [
+      runwayAttempt(PLAN.plan_id, "ai-1-kling3-pic", 0.54),
+      { kind: "outcome", service: "runway", cost_usd: 0.06 },
+      { kind: "attempt", service: "gemini-omni", cost_usd: 0.42 },
+      { service: "elevenlabs", cost_usd: 5 },
+    ]);
+    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(1_020_000); // 0.54 + 0.06 + 0.42
+    expect(vg.readLedgerTotal(ctx.ledger, "paid-media")).toBe(5_000_000);
+  });
+
+  it("a runway line in the record eats the try-out's own room (dry run spend line)", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [
+      runwayAttempt(PLAN.plan_id, "ai-1-kling3-pic", 0.54),
+      { kind: "outcome", service: "runway", cost_usd: 0.06 },
+    ]);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("spent usd=0.600 ceiling=25 room usd=24.400 room-after usd=15.040");
+  });
+
+  it("an unknown service in the record still refuses ledger-unreadable, dry run and live", async () => {
+    const ctx = makeCtx();
+    fs.writeFileSync(ctx.ledger, '{"cost_usd":0.1,"service":"not-a-known-service"}\n');
+    const before = readBytes(ctx.ledger);
+    let thrown = "none thrown";
+    try {
+      vg.readLedgerTotal(ctx.ledger, "ai-video");
+    } catch (e) {
+      thrown = e instanceof vg.Refusal ? e.code : `other: ${String(e)}`;
+    }
+    expect(thrown).toBe("ledger-unreadable");
+    for (const extra of [[], ["--live", "--clip", "ai-1-kling3-pic"]] as string[][]) {
+      const fake = new FakeCaller();
+      const r = await run(ctx.args({ extra }), fake);
+      expect(r.code).toBe(2);
+      expect(r.err.trim().split(/\s+/)[0]).toBe("ledger-unreadable");
+      expect(fake.calls.length).toBe(0);
+    }
+    expect(readBytes(ctx.ledger)).toEqual(before);
+  });
+});
+
+// ── (4) the key reaches no output, no file and no download host ─────────────────────────
+
+describe("t4 key containment", () => {
+  it("a good run: the key is in the Authorization header of the API calls only, never the download", async () => {
+    const ctx = makeCtx();
+    const still = writeStill(ctx.tmp);
+    const fake = new FakeCaller();
+    fake.statuses = [
+      { id: "made-up-task-1", status: "RUNNING" },
+      { id: "made-up-task-1", status: "SUCCEEDED", output: [DL_URL], cost: 54 },
+    ];
+    const r = await run(ctx.args({ clip: "ai-4-kling3-pic", still, extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    expect(fake.calls.length).toBe(4); // create, two status polls, one download
+    for (const c of fake.calls.slice(0, 3)) {
+      expect(c.url.startsWith("https://api.dev.runwayml.com/")).toBe(true);
+      expect(c.headers.Authorization).toBe(`Bearer ${KEY}`);
+    }
+    const dl = fake.calls[3];
+    expect(dl.url).toBe(DL_URL);
+    expect(Object.keys(dl.headers).some((k) => k.toLowerCase() === "authorization")).toBe(false);
+    expect(JSON.stringify(dl)).not.toContain(KEY);
+    for (const c of fake.calls) expect(c.url).not.toContain(KEY); // the key rides in no URL
+    expect(r.out + r.err).not.toContain(KEY);
+    expect(readBytes(ctx.ledger)?.toString("utf8")).not.toContain(KEY);
+    for (const f of fs.readdirSync(ctx.out)) {
+      expect(fs.readFileSync(path.join(ctx.out, f)).toString("utf8")).not.toContain(KEY);
+    }
+  });
+
+  it("a failure text that echoes the key is scrubbed from the record and stderr", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.statuses = [{ id: "made-up-task-1", status: "FAILED", failure: `made-up failure echoing ${KEY} in full` }];
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(1);
+    expect(r.err).not.toContain(KEY);
+    expect(r.err).toContain("[redacted]");
+    const text = readBytes(ctx.ledger)?.toString("utf8") ?? "";
+    expect(text).not.toContain(KEY);
+    expect(text).toContain("[redacted]");
+  });
+
+  it("a throwing create call that echoes the key is scrubbed too", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.createImpl = async () => {
+      throw new Error(`made-up create failure with ${KEY} inside`);
+    };
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(1);
+    expect(r.out + r.err).not.toContain(KEY);
+    expect(readBytes(ctx.ledger)?.toString("utf8")).not.toContain(KEY);
+    expect(fs.readdirSync(ctx.out).length).toBe(0);
+  });
+});
+
+// ── (5) the spend lines ────────────────────────────────────────────────────────────────
+
+describe("t5 spend lines", () => {
+  it("one attempt line BEFORE the call — kept when the call throws — and one outcome line after", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    let seenAtCall: string | null = null;
+    fake.createImpl = async () => {
+      seenAtCall = readBytes(ctx.ledger)?.toString("utf8") ?? null; // read at call time
+      throw new Error("made-up create failure");
+    };
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(1);
+    expect(seenAtCall).not.toBeNull();
+    expect(String(seenAtCall).endsWith("\n")).toBe(true);
+    const atCall = JSON.parse(String(seenAtCall).trim()) as Record<string, unknown>;
+    expect(atCall.kind).toBe("attempt");
+    expect(atCall.cost_usd).toBe(0.54);
+
+    const lines = ledgerLines(ctx.ledger);
+    expect(lines.length).toBe(2);
+    const att = lines[0];
+    expect(att.kind).toBe("attempt");
+    expect(att.service).toBe("runway");
+    expect(typeof att.attempt_id).toBe("string");
+    expect(new Date(String(att.time)).toString()).not.toBe("Invalid Date");
+    expect(att.sent).toEqual({
+      plan_id: PLAN.plan_id,
+      clip_id: "ai-1-kling3-pic",
+      shot: "AI-1",
+      model: "kling3.0_standard",
+      endpoint: "text_to_video",
+      seconds: 6,
+      ratio: "720:1280",
+      audio: false,
+      prompt_sha256: sha(Buffer.from(storyboardRow("AI-1").prompt, "utf8")),
+      image_sha256: null,
+    });
+    expect(att.cost_usd).toBe(0.54);
+    expect(att.cost_how).toMatchObject({ rate_usd_per_s: 0.09, credits_per_s: 9, price_read: "2026-11-22" });
+    expect(att.status).toBe("attempted");
+    const out = lines[1];
+    expect(out.kind).toBe("outcome");
+    expect(out.attempt_id).toBe(att.attempt_id);
+    expect(out.service).toBe("runway");
+    expect(out.status).toBe("error");
+    expect(out.task_id).toBeNull();
+    expect(out.file).toBeNull();
+    expect(String(out.failure)).toContain("made-up create failure");
+    expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false); // the lock is released before the call
+  });
+
+  it("a good run writes the file name and sha256, task id and both cost fields in the outcome", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.estimatedCost = 54;
+    fake.finalCost = 54;
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    const saved = fs.readdirSync(ctx.out);
+    expect(saved.length).toBe(1);
+    expect(saved[0]).toMatch(/^clip-ai-1-kling3-pic-[0-9a-f-]{36}\.mp4$/);
+    expect(sha(fs.readFileSync(path.join(ctx.out, saved[0])))).toBe(sha(fake.downloadBytes));
+    const lines = ledgerLines(ctx.ledger);
+    expect(lines.length).toBe(2);
+    const out = lines[1];
+    expect(out.status).toBe("ok");
+    expect(out.task_id).toBe("made-up-task-1");
+    expect(out.estimated_cost_credits).toBe(54);
+    expect(out.final_cost_credits).toBe(54);
+    expect(out.file).toBe(saved[0]);
+    expect(out.file_sha256).toBe(sha(fake.downloadBytes));
+    expect(out.failure).toBeNull();
+  });
+
+  it("the attempt line with the still sha256 for an image_to_video clip", async () => {
+    const ctx = makeCtx();
+    const still = writeStill(ctx.tmp);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-4-veo-pic", still, extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    const att = ledgerLines(ctx.ledger)[0];
+    expect(att.sent).toMatchObject({
+      clip_id: "ai-4-veo-pic",
+      shot: "AI-4",
+      model: "veo3.1_fast",
+      endpoint: "image_to_video",
+      image_sha256: sha(PNG_BYTES),
+    });
+    expect(att.cost_usd).toBe(0.6);
+  });
+});
+
+// ── (6) the retry limit ────────────────────────────────────────────────────────────────
+
+describe("t6 retry limit", () => {
+  it("a third attempt for a clip id refuses retry-limit, record unchanged, caller not called", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [
+      runwayAttempt(PLAN.plan_id, "ai-1-kling3-pic", 0.54),
+      { kind: "outcome", service: "runway", cost_usd: 0 },
+      runwayAttempt(PLAN.plan_id, "ai-1-kling3-pic", 0.54),
+      { kind: "outcome", service: "runway", cost_usd: 0 },
+    ]);
+    const before = readBytes(ctx.ledger);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("retry-limit");
+    expect(fake.calls.length).toBe(0);
+    expect(readBytes(ctx.ledger)).toEqual(before);
+  });
+
+  it("the second attempt (one retry) is allowed: one create call", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [runwayAttempt(PLAN.plan_id, "ai-1-kling3-pic", 0.54), { kind: "outcome", service: "runway", cost_usd: 0 }]);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    expect(fake.createCount).toBe(1);
+    expect(ledgerLines(ctx.ledger).length).toBe(4);
+  });
+
+  it("attempt lines of another plan id or clip id do not count", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [
+      runwayAttempt("another-plan", "ai-1-kling3-pic", 0.54),
+      runwayAttempt(PLAN.plan_id, "ai-4-kling3-pic", 0.54),
+      { kind: "outcome", service: "runway", cost_usd: 0 },
+      { kind: "outcome", service: "runway", cost_usd: 0 },
+    ]);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    expect(fake.createCount).toBe(1);
+  });
+});
+
+// ── (7) the plan check ─────────────────────────────────────────────────────────────────
+
+describe("t7 plan check", () => {
+  it("the AI-1 and AI-4 prompts equal the shots list cells; the voice prompt adds the narration sentence", () => {
+    const ai1 = storyboardRow("AI-1");
+    const ai4 = storyboardRow("AI-4");
+    expect(ai1.firstFrame).toBe("none"); // AI-1 uses text_to_video, first frame none
+    for (const c of PLAN.clips.filter((x) => x.shot === "AI-1")) {
+      expect([c.id, c.prompt]).toEqual([c.id, ai1.prompt]);
+    }
+    for (const c of PLAN.clips.filter((x) => x.shot === "AI-4" && !x.audio)) {
+      expect([c.id, c.prompt]).toEqual([c.id, ai4.prompt]);
+    }
+    for (const c of PLAN.clips.filter((x) => x.audio)) {
+      expect([c.id, c.prompt]).toEqual([c.id, `${ai4.prompt} ${NARRATION}`]);
+    }
+  });
+
+  it("shape: 9 clips, all 6 s at ratio 720:1280, audio an explicit boolean (6 false, 3 true), endpoints per shot", () => {
+    expect(PLAN.clips.length).toBe(9);
+    expect(PLAN.clips.filter((c) => !c.audio).length).toBe(6);
+    expect(PLAN.clips.filter((c) => c.audio).length).toBe(3);
+    for (const c of PLAN.clips) {
+      expect([c.id, c.seconds]).toEqual([c.id, 6]);
+      expect([c.id, c.ratio]).toEqual([c.id, "720:1280"]);
+      expect([c.id, typeof c.audio]).toEqual([c.id, "boolean"]);
+      if (c.shot === "AI-1") expect([c.id, c.endpoint]).toEqual([c.id, "text_to_video"]);
+      else expect([c.id, c.endpoint]).toEqual([c.id, "image_to_video"]);
+    }
+    // each of the three models appears once per picture shot and once for voice
+    for (const m of Object.keys(PLAN.models)) {
+      expect(PLAN.clips.filter((c) => c.model === m).length).toBe(3);
+    }
+  });
+
+  it("the veo3.1_fast prompts stay under its 1000 UTF-16 code unit limit", () => {
+    for (const c of PLAN.clips.filter((x) => x.model === "veo3.1_fast")) {
+      expect([c.id, c.prompt.length]).toEqual([c.id, expect.any(Number)]);
+      expect(c.prompt.length).toBeLessThanOrEqual(1000);
+    }
+  });
+
+  it("an unknown model refuses, exit 2", async () => {
+    const plan = tempPlan((p) => {
+      p.clips[0].model = "made-up-model";
+    });
+    const ctx = makeCtx(plan);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("plan-invalid");
+    expect(r.err).toContain("made-up-model");
+    expect(fake.calls.length).toBe(0);
+  });
+
+  it("a prompt of 1001 characters on veo3.1_fast refuses prompt-too-long", async () => {
+    const plan = tempPlan((p) => {
+      const c = p.clips.find((x) => x.id === "ai-1-veo-pic") as PlanClip;
+      c.prompt = "a".repeat(1001);
+    });
+    const ctx = makeCtx(plan);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    await expectRefusal(r, "prompt-too-long", fake, ctx.ledger);
+  });
+
+  it("a still whose data URI is over 5000000 characters refuses input-too-big before any key read", async () => {
+    const ctx = makeCtx();
+    const big = Buffer.concat([PNG_BYTES, Buffer.alloc(4_000_000)]); // base64 URI > 5 M chars
+    expect(big.length).toBeGreaterThan(PNG_BYTES.length);
+    const still = writeStill(ctx.tmp, "big.png", big);
+    const fake = new FakeCaller();
+    const keyReader = jest.fn(() => KEY);
+    const r = await run(ctx.args({ still }), fake, keyReader);
+    await expectRefusal(r, "input-too-big", fake, ctx.ledger);
+    expect(keyReader).not.toHaveBeenCalled();
+  });
+
+  it("a still that is not PNG or JPEG refuses input-too-big", async () => {
+    const ctx = makeCtx();
+    const notImage = path.join(ctx.tmp, "not-image.png");
+    fs.writeFileSync(notImage, "just plain text, not an image");
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ still: notImage }), fake);
+    await expectRefusal(r, "input-too-big", fake, ctx.ledger);
+  });
+
+  it("a clip whose (model, ratio, audio) has no price entry refuses price-unknown (fail closed, dry run too)", async () => {
+    const plan = tempPlan((p) => {
+      delete p.models["veo3.1_fast"].credits_per_second["720:1280"].true;
+    });
+    const ctx = makeCtx(plan);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    await expectRefusal(r, "price-unknown", fake, ctx.ledger);
+  });
+
+  it("the committed plan's estimates: pictures 5.88, voice 3.48, total 9.36", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    const r = await run(ctx.args(), fake);
+    expect(r.code).toBe(0);
+    for (const [id, usd] of [
+      ["ai-1-kling3-pic", "estimate-usd=0.540"],
+      ["ai-1-seedance-pic", "estimate-usd=1.800"],
+      ["ai-1-veo-pic", "estimate-usd=0.600"],
+      ["ai-4-kling3-pic", "estimate-usd=0.540"],
+      ["ai-4-seedance-pic", "estimate-usd=1.800"],
+      ["ai-4-veo-pic", "estimate-usd=0.600"],
+      ["ai-4-kling3-voice", "estimate-usd=0.780"],
+      ["ai-4-seedance-voice", "estimate-usd=1.800"],
+      ["ai-4-veo-voice", "estimate-usd=0.900"],
+    ] as [string, string][]) {
+      const line = r.out.split("\n").find((l) => l.includes(`id=${id}`));
+      expect([id, line]).toEqual([id, expect.stringContaining(usd)]);
+    }
+  });
+});
+
+// ── (8) the request body per endpoint ──────────────────────────────────────────────────
+
+describe("t8 request body", () => {
+  it("AI-1: POST text_to_video with model, promptText, ratio, duration and audio false; the version header", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    const call = fake.calls[0];
+    expect(call.method).toBe("POST");
+    expect(call.url).toBe("https://api.dev.runwayml.com/v1/text_to_video");
+    expect(call.headers.Authorization).toBe(`Bearer ${KEY}`);
+    expect(call.headers["X-Runway-Version"]).toBe("2024-11-06");
+    expect(call.headers["content-type"]).toBe("application/json");
+    expect(JSON.parse(call.body as string)).toEqual({
+      model: "kling3.0_standard",
+      promptText: storyboardRow("AI-1").prompt,
+      ratio: "720:1280",
+      duration: 6,
+      audio: false,
+    });
+  });
+
+  it("AI-4: POST image_to_video with promptImage as a data URI of the still", async () => {
+    const ctx = makeCtx();
+    const still = writeStill(ctx.tmp);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: "ai-4-veo-pic", still, extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    const call = fake.calls[0];
+    expect(call.url).toBe("https://api.dev.runwayml.com/v1/image_to_video");
+    const body = JSON.parse(call.body as string) as Record<string, unknown>;
+    expect(body.model).toBe("veo3.1_fast");
+    expect(body.promptText).toBe(storyboardRow("AI-4").prompt);
+    expect(body.promptImage).toBe(`data:image/png;base64,${PNG_BYTES.toString("base64")}`);
+    expect(body.audio).toBe(false);
+  });
+
+  it("every live body holds the key audio equal to the boolean of the plan (false on the 6 picture clips)", async () => {
+    let falseCount = 0;
+    for (const c of PLAN.clips) {
+      if (!c.audio) falseCount++;
+      const ctx = makeCtx();
+      const fake = new FakeCaller();
+      const o: ArgsOpts = { clip: c.id, extra: ["--live"] };
+      if (c.endpoint === "image_to_video") o.still = writeStill(ctx.tmp);
+      const r = await run(ctx.args(o), fake);
+      expect([c.id, r.code]).toEqual([c.id, 0]);
+      const body = JSON.parse(fake.calls[0].body as string) as Record<string, unknown>;
+      expect([c.id, body.audio]).toEqual([c.id, c.audio]);
+      expect(body).toHaveProperty("audio"); // explicit on every call, never left to the API default
+    }
+    expect(falseCount).toBe(6);
+  });
+
+  it("polling: PENDING then RUNNING and THROTTLED keep polling, then GET /v1/tasks/{id} and one download", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.statuses = [
+      { id: "made-up-task-1", status: "RUNNING", progress: 10 },
+      { id: "made-up-task-1", status: "THROTTLED" },
+      { id: "made-up-task-1", status: "SUCCEEDED", output: [DL_URL], cost: 54 },
+    ];
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    expect(fake.statusCount).toBe(3);
+    expect(fake.downloadCount).toBe(1);
+    expect(fake.calls.slice(1).map((c) => [c.method, c.url])).toEqual([
+      ["GET", "https://api.dev.runwayml.com/v1/tasks/made-up-task-1"],
+      ["GET", "https://api.dev.runwayml.com/v1/tasks/made-up-task-1"],
+      ["GET", "https://api.dev.runwayml.com/v1/tasks/made-up-task-1"],
+      ["GET", DL_URL],
+    ]);
+  });
+
+  it("a FAILED task is a failed outcome with the failure text; a CANCELLED task is cancelled", async () => {
+    for (const [status, expected] of [["FAILED", "failed"], ["CANCELLED", "cancelled"]] as [string, string][]) {
+      const ctx = makeCtx();
+      const fake = new FakeCaller();
+      fake.statuses = [{ id: "made-up-task-1", status, failure: `made-up ${status} detail` }];
+      const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+      expect([status, r.code]).toEqual([status, 1]);
+      expect(fake.downloadCount).toBe(0);
+      const out = ledgerLines(ctx.ledger)[1];
+      expect([status, out.status]).toEqual([status, expected]);
+      expect(String(out.failure)).toContain(`made-up ${status} detail`);
+      expect(fs.readdirSync(ctx.out).length).toBe(0);
+    }
+  });
+
+  it("a task that never lands refuses to outlive the timeout: outcome timeout, exit 1", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.statuses = Array.from({ length: 1000 }, () => ({ id: "made-up-task-1", status: "RUNNING" }));
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", timeout: "1", extra: ["--live"] }), fake);
+    expect(r.code).toBe(1);
+    expect(ledgerLines(ctx.ledger)[1].status).toBe("timeout");
+    expect(fake.downloadCount).toBe(0);
+  });
+});
+
+// ── (9) the cost rule ──────────────────────────────────────────────────────────────────
+
+describe("t9 cost", () => {
+  it("a terminal cost above the plan estimate: the outcome cost_usd is the difference and the total grows by it", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.estimatedCost = 60;
+    fake.finalCost = 66; // kling3.0_standard 6 s without audio is 54 credits in the plan
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    const lines = ledgerLines(ctx.ledger);
+    expect(lines[0].cost_usd).toBe(0.54);
+    expect(lines[1].cost_usd).toBe(0.12); // (66 - 54) x USD 0.01
+    expect(lines[1].final_cost_credits).toBe(66);
+    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(660_000); // grew by 0.66, not 0.54
+  });
+
+  it("no terminal cost, an estimatedCost above the estimate: C is the estimate of the create reply", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.estimatedCost = 60;
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    const lines = ledgerLines(ctx.ledger);
+    expect(lines[1].cost_usd).toBe(0.06); // (60 - 54) x USD 0.01
+    expect(lines[1].estimated_cost_credits).toBe(60);
+    expect(lines[1].final_cost_credits).toBeNull();
+    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(600_000);
+  });
+
+  it("a cost lower than the estimate gives 0 (never negative)", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.finalCost = 50;
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    const lines = ledgerLines(ctx.ledger);
+    expect(lines[1].cost_usd).toBe(0);
+    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(540_000);
+  });
+});
+
+// ── (10) key-missing (live only; the dry run never reads a key) ─────────────────────────
+
+describe("t10 key-missing", () => {
+  const readers: [string, () => string][] = [
+    ["a throwing reader", () => {
+      throw new Error("no key found");
+    }],
+    ["an empty key", () => ""],
+    ["a blank key", () => "  "],
+  ];
+  for (const [label, reader] of readers) {
+    it(`refuses with key-missing for ${label}, record unchanged, caller not called`, async () => {
+      const ctx = makeCtx();
+      const fake = new FakeCaller();
+      const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake, reader);
+      expect(r.code).toBe(2);
+      expect(r.err.trim().split(/\s+/)[0]).toBe("key-missing");
+      expect(fake.calls.length).toBe(0);
+      expect(readBytes(ctx.ledger)).toBeNull();
+      expect(fs.readdirSync(ctx.out).length).toBe(0);
+    });
+  }
+});
