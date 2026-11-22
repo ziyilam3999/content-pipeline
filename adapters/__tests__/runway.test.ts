@@ -1449,4 +1449,64 @@ describe("t13 round 4", () => {
     expect(seen[2].headers.Authorization).toBe(`Bearer ${KEY}`);
     expect(fetchCount).toBe(0);
   });
+
+  // ── (14) round 5: a plan price at or below 0, and the key-header host rule ─────────────
+
+  describe("t14 round 5", () => {
+    const badPrices = [0, -9, 0.00001];
+
+    /** A temp plan whose kling3.0_standard no-audio price is the given number. */
+    const pricedPlan = (price: number): string =>
+      tempPlan((p) => {
+        p.models["kling3.0_standard"].credits_per_second["720:1280"]["false"] = price;
+      });
+
+    it("P1 a plan price of 0, -9 or 0.00001 credits/s refuses the dry run with price-unknown", async () => {
+      for (const price of badPrices) {
+        const ctx = makeCtx(pricedPlan(price));
+        const fake = new FakeCaller();
+        const r = await run(ctx.args(), fake);
+        await expectRefusal(r, "price-unknown", fake, ctx.ledger);
+      }
+    });
+
+    it("P2 the same prices with --clip ai-1-kling3-pic --live refuse before the key read", async () => {
+      for (const price of badPrices) {
+        const ctx = makeCtx(pricedPlan(price));
+        const fake = new FakeCaller();
+        const keyReader = jest.fn(() => KEY);
+        const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake, keyReader);
+        await expectRefusal(r, "price-unknown", fake, ctx.ledger);
+        expect(keyReader).not.toHaveBeenCalled(); // loadPlan refuses before the key read
+        expect(readBytes(`${ctx.ledger}.lock`)).toEqual(null); // no lock file either
+      }
+    });
+
+    it("H1 a download keeps no key header on a host that is not the exact API host", async () => {
+      const rows = [
+        "https://cdn.runwayml.com/a.mp4",
+        "https://evil-runwayml.com/a.mp4",
+        "https://api.dev.runwayml.com.made-up-host.test/a.mp4",
+        "https://api.dev.runwayml.com:8443/a.mp4",
+      ];
+      const bytes = Buffer.from("made-up-t14-h1-bytes");
+      for (const url of rows) {
+        const seen: Seen[] = [];
+        let got: Buffer | undefined;
+        await withStubFetch(() => res(200, { bytes }), seen, async () => {
+          got = await rw.realRunwayCaller().download({
+            url,
+            method: "GET",
+            headers: { Authorization: `Bearer ${KEY}` },
+            timeoutMs: 1000,
+          });
+        });
+        expect([url, got?.toString("utf8")]).toEqual([url, bytes.toString("utf8")]);
+        expect([url, seen.length]).toEqual([url, 1]); // a 200 reply: one request, no hop
+        expect([url, Object.keys(seen[0].headers).some((k) => k.toLowerCase() === "authorization")]).toEqual([url, false]);
+        expect(JSON.stringify(seen[0])).not.toContain(KEY);
+        expect(fetchCount).toBe(0); // the no-network fence itself stayed uncalled
+      }
+    });
+  });
 });

@@ -20,10 +20,10 @@
  * docs.dev.runwayml.com/guides/pricing, USD 0.01 per credit); one attempt line is appended
  * BEFORE the call, under the same O_EXCL lock as video:gen; one run sends at most one
  * generation call (a retry is a new run, at most one retry per clip id); the outcome line
- * tops the record up to what Runway may charge (cost_usd = max(0, credits x USD 0.01 - the
- * attempt estimate)), so the ai-video total never under-counts. The cap itself is the one AI
- * video cap of video:gen: readLedgerTotal with group ai-video counts gemini-omni AND runway
- * lines (SERVICE_CAP_GROUPS in adapters/videogen.ts), so one cap covers both tools.
+ * tops the record up to the credits this run read back from Runway (cost_usd = max(0, C x
+ * USD 0.01 - the attempt estimate); C and its limits: see the cost rule in liveRun). The
+ * cap itself is the one AI video cap of video:gen: readLedgerTotal with group ai-video
+ * counts gemini-omni AND runway lines (SERVICE_CAP_GROUPS in videogen.ts): one cap for both.
  */
 
 import { randomUUID } from "crypto";
@@ -223,6 +223,14 @@ export function loadPlan(file: string): RunwayPlan {
       throw new Refusal("price-unknown", `no list price for model ${model} at ${ratio} audio ${audio}`);
     }
     const rateMicro = Math.round(credits * MICRO_PER_CREDIT);
+    // fail closed: a price at or below 0, or one whose whole-micro-USD rate rounds to 0,
+    // gives a 0 or negative estimate the cap checks and the attempt line cannot represent
+    if (!(credits > 0) || rateMicro <= 0) {
+      throw new Refusal(
+        "price-unknown",
+        `model ${model} at ${ratio} audio ${audio}: price ${credits} credits/s rounds to rate ${rateMicro} micro-USD/s`,
+      );
+    }
     clips.push({
       id, shot, model, endpoint, seconds: seconds as number, ratio: ratio as string, audio, prompt,
       promptSha: sha256(Buffer.from(prompt, "utf8")),
@@ -565,7 +573,7 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
   let taskId: string | null = null;
   let estimated: number | null = null;
   // a terminal cost already read survives a later failure (no output url, a download or write
-  // that fails), so the outcome still tops the record up to what Runway may charge
+  // that fails), so the outcome line below still counts it through the cost rule
   let finalCost: number | null = null;
   let o: Outcome;
   try {
@@ -639,9 +647,12 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
     o = { status, taskId, estimated, finalCost, file: null, fileSha: null, failure: msg(e) };
   }
 
-  // cost rule: max(0, C x USD 0.01 - the attempt estimate), C = the final cost credits when
-  // known, else the estimatedCost credits of the create reply, else 0 — the ai-video total
-  // never under-counts what Runway may charge
+  // cost rule: after the outcome line the record holds, for this attempt, the larger of the
+  // list estimate and C x USD 0.01. C = the cost credits of the terminal task reply when the
+  // run read one with a number; else the estimatedCost credits of the create reply; else 0.
+  // A charge above that amount is not in the record: the run read no terminal reply (the
+  // create or a status call failed, or the poll ran out) or the terminal reply held no cost.
+  // A run that ends before the outcome line leaves the list estimate only.
   const cCredits = o.finalCost ?? o.estimated ?? 0;
   const deltaMicro = Math.max(0, Math.round(cCredits * MICRO_PER_CREDIT) - clip.estimateMicro);
 
