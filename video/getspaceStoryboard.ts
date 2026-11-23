@@ -15,6 +15,8 @@
  *   - the storyboard asset is clip or ai; each beat clip is in the shot list and long enough. An ai beat is
  *     tied to the AI shots list of its own storyboard (<slug>-ai-shots.md, getspace-ai-shots.md for level3;
  *     checkAiShots). The asset screen is level3 only; still and synth are refused in all four.
+ *   - an AI list First frame cell is none, last frame of an earlier AI clip, or start still <Name>: a row of the
+ *     optional Start stills table (Name, Shows, Sha256 text); the checker holds the shape, opens no picture.
  *   - the shot list holds the 15 check-list lines, the five fixed answers, at most 12 clips, both sides of a
  *     take, and a Hide cell that names blur and the fixed-list words for the facts a clip shows.
  *   - an on-screen fact id is a fact the beat's clip shows; with all three storyboards present, each clip is
@@ -62,6 +64,7 @@ const MAX_CLIPS = 12;
 const STORYBOARD_HEADER = "| # | Beat | Dur | Asset | Clip | On-screen text | Narration |";
 const AI_HEADER = "| Id | Sec | Shows | First frame | Prompt |";
 const SCREEN_HEADER = "| Id | Shows | Facts shown |";
+const START_HEADER = "| Name | Shows | Sha256 |";
 const SHOT_HEADER = "| Clip | Side | Take | What to do | Sec | Facts shown | Hide |";
 
 // the five lines the operator answered, in fixed neutral wording
@@ -545,11 +548,11 @@ function listTextRules(where: string, text: string, fails: string[]): void {
 function checkAiShots(name: string, slug: string, raw: string, facts: Facts, fails: string[]): AiLists | null {
   const lines = readLines(name, raw, fails);
   if (!lines) return null;
-  const headings = [`# AI shots - ${slug}`, "## AI clips", "## Screens"];
-  const headers = [AI_HEADER, SCREEN_HEADER];
-  const rows: Row[][] = [[], []];
-  let hIdx = 0; // headings seen
-  let sec = -1; // table section: 0 AI clips, 1 Screens
+  const headings = [`# AI shots - ${slug}`, "## AI clips", "## Screens", "## Start stills"];
+  const headers = [AI_HEADER, SCREEN_HEADER, START_HEADER];
+  const rows: Row[][] = [[], [], []];
+  let hIdx = 0; // headings seen (the 4th, Start stills, is optional)
+  let sec = -1; // table section: 0 AI clips, 1 Screens, 2 Start stills
   let state: "none" | "header" | "rows" | "ended" | "bad" = "none";
   const closeSection = (): void => {
     if (sec >= 0 && state === "none") fails.push(`FAIL ${name}: no table under ${headings[sec + 1]}`);
@@ -563,7 +566,7 @@ function checkAiShots(name: string, slug: string, raw: string, facts: Facts, fai
       if (state === "header") fails.push(`FAIL ${name} line ${n}: separator row is not the fixed form (blank line)`);
       return;
     }
-    if (hIdx < 3 && text === headings[hIdx]) {
+    if (hIdx < 4 && text === headings[hIdx]) {
       if (hIdx >= 2) closeSection();
       hIdx++;
       if (hIdx >= 2) {
@@ -597,6 +600,31 @@ function checkAiShots(name: string, slug: string, raw: string, facts: Facts, fai
   if (hIdx < 3) fails.push(`FAIL ${name}: fixed line missing: ${headings[hIdx]}`);
   else closeSection();
 
+  // Start stills table: the set of names and the Sha256 texts seen; no picture is opened
+  const stills = new Set<string>();
+  const shaOwner = new Map<string, string>();
+  for (const row of rows[2]) {
+    const [nm, shows, sha] = row.cells;
+    if (!/^[A-Z]{1,8}$/.test(nm)) {
+      fails.push(`FAIL ${name} line ${row.n}: start still Name is not 1 to 8 capital letters`);
+      continue;
+    }
+    if (stills.has(nm)) {
+      fails.push(`FAIL ${name} line ${row.n}: start still ${nm} is listed twice`);
+      continue;
+    }
+    stills.add(nm);
+    if (!/^[0-9a-f]{64}$/.test(sha)) {
+      fails.push(`FAIL ${name} start still ${nm}: Sha256 is not 64 lowercase hex characters`);
+    } else {
+      const earlier = shaOwner.get(sha);
+      if (earlier !== undefined) fails.push(`FAIL ${name} line ${row.n}: start still ${nm} has the Sha256 of ${earlier}`);
+      else shaOwner.set(sha, nm);
+    }
+    listTextRules(`${name} start still ${nm} Shows`, shows, fails);
+  }
+  const cited = new Set<string>();
+
   const lists: AiLists = { ai: new Map(), screens: new Map() };
   rows[0].forEach((row, i) => {
     const [id, secCell, shows, first, prompt] = row.cells;
@@ -606,13 +634,20 @@ function checkAiShots(name: string, slug: string, raw: string, facts: Facts, fai
     if (/^\d+$/.test(secCell) && Number(secCell) >= 3 && Number(secCell) <= 15) secN = Number(secCell);
     else fails.push(`FAIL ${at}: Sec is not a whole number from 3 to 15`);
     const m = first.match(/^last frame of AI-(\d+)$/);
-    if (first !== "none" && !(m && Number(m[1]) >= 1 && Number(m[1]) < i + 1)) {
-      fails.push(`FAIL ${at}: First frame is not none or last frame of an earlier AI clip`);
+    const s = first.match(/^start still ([A-Z]{1,8})$/);
+    if (s) {
+      if (stills.has(s[1])) cited.add(s[1]);
+      else fails.push(`FAIL ${at}: First frame start still ${s[1]} is not in the Start stills table`);
+    } else if (first !== "none" && !(m && Number(m[1]) >= 1 && Number(m[1]) < i + 1)) {
+      fails.push(`FAIL ${at}: First frame is not none, last frame of an earlier AI clip, or start still and a name`);
     }
     listTextRules(`${at} Shows`, shows, fails);
     listTextRules(`${at} Prompt`, prompt, fails);
     lists.ai.set(id, secN);
   });
+  for (const nm of stills) {
+    if (!cited.has(nm)) fails.push(`FAIL ${name} start still ${nm}: used by no AI row`);
+  }
   rows[1].forEach((row, i) => {
     const [id, shows, shown] = row.cells;
     const at = `${name} ${id}`;

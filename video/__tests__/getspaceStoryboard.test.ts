@@ -555,7 +555,7 @@ function addScreenRow(f: Files, row: string): void {
 
 const A = (id: string, text: string): string => `FAIL getspace-ai-shots.md ${id}: ${text}`;
 const SEC_FAIL = "Sec is not a whole number from 3 to 15";
-const FIRST_FAIL = "First frame is not none or last frame of an earlier AI clip";
+const FIRST_FAIL = "First frame is not none, last frame of an earlier AI clip, or start still and a name";
 
 describe("getspace level3 - the fixture and asset kinds", () => {
   test("a valid fixture with level3 and the list file passes", () => {
@@ -875,5 +875,302 @@ describe("getspace level3 - across storyboards", () => {
     expect(isStoryboardSlug("getspace-level3")).toBe(true);
     expect(isStoryboardSlug("getspace-other")).toBe(false);
     expect(isStoryboardSlug("getspace-ai-shots")).toBe(false);
+  });
+});
+
+// ---- A57: the start still First frame cell and the Start stills table ----
+
+const START_H = "| Name | Shows | Sha256 |";
+const START_SEP = "|------|-------|--------|";
+const HEX = (c: string): string => c.repeat(64);
+const SS_FAIL_FIRST = "First frame is not none, last frame of an earlier AI clip, or start still and a name";
+const LISTN = "getspace-ai-shots.md";
+
+function stillRow(name: string, sha: string = HEX("a"), shows = "A start picture."): string {
+  return `| ${name} | ${shows} | ${sha} |`;
+}
+
+/** Add a Start stills section (heading, header, separator, rows) after the last table of a list file. */
+function addStills(f: Files, rows: string[], key: string = LIST, header: string = START_H): void {
+  f[key] = `${f[key]}\n## Start stills\n\n${header}\n${START_SEP}\n${rows.map((r) => `${r}\n`).join("")}`;
+}
+
+function setFirst(f: Files, cell: string, id = "AI-1", key: string = LIST): void {
+  const re = new RegExp(`^(\\| ${id} \\| \\d+ \\| [^|]*\\| )[^|]*( \\| .*)$`, "m");
+  f[key] = (f[key] as string).replace(re, (_m, a: string, b: string) => `${a}${cell}${b}`);
+}
+
+function lineOf(f: Files, text: string, key: string = LIST): number {
+  return (f[key] as string).split("\n").lastIndexOf(text) + 1;
+}
+
+/** level3 and its list, plus a seek storyboard with two AI beats and its own list. */
+function fixtureBoth(): Files {
+  const f = fixtureAi("seek");
+  f[SEEK] = rep(f[SEEK], "| 2 | Pin | 16 | clip | C-02 | Pin [S-02] |", "| 2 | Pin | 15 | ai | AI-2 | - |");
+  f[SEEK] = rep(f[SEEK], "| 4 | Last | 16 |", "| 4 | Last | 18 |");
+  f[SL] = rep(f[SL], "\n\n## Screens", "\n| AI-2 | 15 | Next view. | last frame of AI-1 | More plain words. |\n\n## Screens");
+  f[L3] = level3();
+  f[LIST] = aiList();
+  return f;
+}
+
+const UNKNOWN = (n: string): string => `FAIL ${LISTN} AI-1: First frame start still ${n} is not in the Start stills table`;
+
+describe("getspace start stills - what passes", () => {
+  test.each([["E"], ["D"], ["PZ"], ["ABCDEFGH"]])("the level3 list with AI-1 start still %s and its table row", (n) => {
+    const f = fixture3();
+    setFirst(f, `start still ${n}`);
+    addStills(f, [stillRow(n)]);
+    expect(run(f)).toEqual([]);
+  });
+
+  test("one name used by two AI rows", () => {
+    const f = fixture3();
+    setFirst(f, "start still D");
+    setFirst(f, "start still D", "AI-2");
+    addStills(f, [stillRow("D")]);
+    expect(run(f)).toEqual([]);
+  });
+
+  test("AI-1 start still E with AI-2 last frame of AI-1 in one file", () => {
+    const f = fixture3();
+    setFirst(f, "start still E");
+    addStills(f, [stillRow("E")]);
+    expect(f[LIST]).toContain("| last frame of AI-1 |");
+    expect(run(f)).toEqual([]);
+  });
+
+  test("the same in a seek list", () => {
+    const f = fixtureBoth();
+    setFirst(f, "start still E", "AI-1", SL);
+    addStills(f, [stillRow("E")], SL);
+    expect(f[SL]).toContain("| last frame of AI-1 |");
+    expect(run(f)).toEqual([]);
+  });
+
+  test("64 zeros pass: the checker holds the shape, not the value", () => {
+    const f = fixture3();
+    setFirst(f, "start still D");
+    addStills(f, [stillRow("D", "0".repeat(64))]);
+    expect(run(f)).toEqual([]);
+  });
+
+  test("the section with header and separator and no rows passes", () => {
+    const f = fixture3();
+    addStills(f, []);
+    expect(run(f)).toEqual([]);
+  });
+
+  test("a table passes none and last frame of AI-1 rows", () => {
+    const f = fixture3();
+    setFirst(f, "start still D");
+    addStills(f, [stillRow("D")]);
+    expect(run(f)).toEqual([]);
+    setFirst(f, "none", "AI-2");
+    expect(run(f)).toEqual([]);
+  });
+});
+
+describe("getspace start stills - table rows", () => {
+  test.each([["e"], ["E-1"], ["S4"], ["ABCDEFGHI"], ["AI-1"]])("Name %s", (n) => {
+    const f = fixture3();
+    addStills(f, [stillRow(n)]);
+    expect(run(f)).toContain(`FAIL ${LISTN} line 20: start still Name is not 1 to 8 capital letters`);
+  });
+
+  test("a Name listed twice", () => {
+    const f = fixture3();
+    setFirst(f, "start still D");
+    addStills(f, [stillRow("D"), stillRow("D", HEX("b"))]);
+    expect(run(f)).toContain(`FAIL ${LISTN} line 21: start still D is listed twice`);
+  });
+
+  test.each([
+    ["63 characters", "a".repeat(63)],
+    ["65 characters", "a".repeat(65)],
+    ["one upper case letter", `A${"a".repeat(63)}`],
+    ["one letter g", `g${"a".repeat(63)}`],
+    ["a sha256: prefix", `sha256:${"a".repeat(64)}`],
+  ])("Sha256 with %s", (_n, sha) => {
+    const f = fixture3();
+    addStills(f, [stillRow("D", sha)]);
+    expect(run(f)).toContain(`FAIL ${LISTN} start still D: Sha256 is not 64 lowercase hex characters`);
+  });
+
+  test("a bad Sha256 cited by an AI row is the only line", () => {
+    const f = fixture3();
+    setFirst(f, "start still D");
+    addStills(f, [stillRow("D", "a".repeat(63))]);
+    expect(run(f)).toEqual([`FAIL ${LISTN} start still D: Sha256 is not 64 lowercase hex characters`]);
+  });
+
+  test("one Sha256 under two names", () => {
+    const f = fixture3();
+    setFirst(f, "start still D");
+    setFirst(f, "start still P", "AI-2");
+    addStills(f, [stillRow("D"), stillRow("P")]);
+    expect(run(f)).toContain(`FAIL ${LISTN} line 21: start still P has the Sha256 of D`);
+  });
+
+  test.each([
+    ["a digit", "A picture 4 here."],
+    ["a slash", "A/B picture."],
+    ["a tilde", "A ~B picture."],
+  ])("Shows with %s", (_n, shows) => {
+    const f = fixture3();
+    setFirst(f, "start still D");
+    addStills(f, [stillRow("D", HEX("a"), shows)]);
+    expect(run(f).some((l) => l.startsWith(`FAIL ${LISTN} start still D Shows:`))).toBe(true);
+  });
+
+  test("a Name that no AI row cites", () => {
+    const f = fixture3();
+    addStills(f, [stillRow("D")]);
+    expect(run(f)).toContain(`FAIL ${LISTN} start still D: used by no AI row`);
+  });
+
+  test("a name cited only by an AI row no beat uses gives the used-by-no-beat line only", () => {
+    const f = fixture3();
+    addAiRow(f, "| AI-3 | 5 | Another view. | start still D | More plain words. |");
+    addStills(f, [stillRow("D")]);
+    const out = run(f);
+    expect(out).toContain(`FAIL ${LISTN} AI-3: used by no beat`);
+    expect(out.some((l) => l.includes("start still"))).toBe(false);
+  });
+
+  test("a seek list with a refused SCR row keeps that line and adds none for a cited row", () => {
+    const f = fixtureBoth();
+    f[SL] = `${f[SL]}| SCR-1 | A made-up match screen. | S-02 |\n`;
+    setFirst(f, "start still E", "AI-1", SL);
+    addStills(f, [stillRow("E")], SL);
+    const out = run(f);
+    expect(out).toContain(`FAIL ${SL} SCR-1: a screen row is not allowed in this list, only ai clips`);
+    expect(out.some((l) => l.includes("start still"))).toBe(false);
+  });
+});
+
+describe("getspace start stills - section shape", () => {
+  test("the section before ## Screens", () => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "## Screens", "## Start stills\n\n## Screens");
+    expect(run(f)).toContain(`FAIL ${LISTN} line ${lineOf(f, "## Start stills")}: text outside the fixed lines and the tables`);
+  });
+
+  test("the heading given a second time", () => {
+    const f = fixture3();
+    addStills(f, []);
+    f[LIST] = `${f[LIST]}\n## Start stills\n`;
+    expect(run(f)).toContain(`FAIL ${LISTN} line ${lineOf(f, "## Start stills")}: text outside the fixed lines and the tables`);
+  });
+
+  test("the heading given a second time starts no new table", () => {
+    const f = fixture3();
+    addStills(f, []);
+    f[LIST] = `${f[LIST]}\n## Start stills\n\n${START_H}\n${START_SEP}\n${stillRow("D")}\n`;
+    const out = run(f);
+    expect(out).toContain(`FAIL ${LISTN} line ${lineOf(f, "## Start stills")}: text outside the fixed lines and the tables`);
+    expect(out.some((l) => l.includes("start still D"))).toBe(false);
+  });
+
+  test.each([["## start stills"], ["## Start stills "]])("the heading %j", (h) => {
+    const f = fixture3();
+    addStills(f, []);
+    f[LIST] = rep(f[LIST], "## Start stills", h);
+    expect(run(f)).toContain(`FAIL ${LISTN} line 16: text outside the fixed lines and the tables`);
+  });
+
+  test("the heading with no table", () => {
+    const f = fixture3();
+    f[LIST] = `${f[LIST]}\n## Start stills\n`;
+    expect(run(f)).toContain(`FAIL ${LISTN}: no table under ## Start stills`);
+  });
+
+  test("another header", () => {
+    const f = fixture3();
+    addStills(f, [], LIST, "| Name | Shows | Hash |");
+    expect(run(f)).toContain(`FAIL ${LISTN} line 18: table header is not the fixed header`);
+  });
+
+  test("a row of 2 cells", () => {
+    const f = fixture3();
+    addStills(f, ["| D | A start picture. |"]);
+    expect(run(f)).toContain(`FAIL ${LISTN} line 20: row has 2 cells, the header has 3`);
+  });
+});
+
+describe("getspace start stills - First frame refusals", () => {
+  test("an unknown name when the file has no Start stills section", () => {
+    const f = fixture3();
+    setFirst(f, "start still E");
+    expect(run(f)).toContain(UNKNOWN("E"));
+  });
+
+  test("an unknown name when the section lacks it", () => {
+    const f = fixture3();
+    setFirst(f, "start still E");
+    setFirst(f, "start still D", "AI-2");
+    addStills(f, [stillRow("D")]);
+    expect(run(f)).toContain(UNKNOWN("E"));
+  });
+
+  test("a name that is a row of the seek list only", () => {
+    const f = fixtureBoth();
+    setFirst(f, "start still E");
+    setFirst(f, "start still E", "AI-1", SL);
+    addStills(f, [stillRow("E")], SL);
+    expect(run(f)).toContain(UNKNOWN("E"));
+  });
+
+  test.each([
+    ["the table lists D and the cell cites DX", "D", "DX"],
+    ["the table lists DX and the cell cites D", "DX", "D"],
+  ])("a prefix of a name is not the name: %s", (_n, tabled, cited) => {
+    const f = fixture3();
+    setFirst(f, `start still ${cited}`);
+    setFirst(f, `start still ${tabled}`, "AI-2");
+    addStills(f, [stillRow(tabled)]);
+    expect(run(f)).toEqual([UNKNOWN(cited)]);
+  });
+
+  test.each([
+    ["start still"], ["start still d"], ["Start still D"], ["start still  D"], ["start stillD"], ["still D"],
+    ["start still D."], ["start still E-1"], ["start still S4"], ["start still ABCDEFGHI"],
+    ["start still D to PZ"], ["start still D, P"], ["x start still D"],
+  ])("a malformed cell %j", (cell) => {
+    const f = fixture3();
+    setFirst(f, cell);
+    setFirst(f, "start still D", "AI-2");
+    addStills(f, [stillRow("D")]);
+    expect(run(f)).toEqual([A("AI-1", SS_FAIL_FIRST)]);
+  });
+
+  test("a malformed cell is not a use of the name", () => {
+    const f = fixture3();
+    setFirst(f, "start still D to PZ");
+    addStills(f, [stillRow("D")]);
+    expect(run(f)).toContain(`FAIL ${LISTN} start still D: used by no AI row`);
+  });
+
+  test("a padded empty name is refused by the row parser", () => {
+    const f = fixture3();
+    f[LIST] = rep(f[LIST], "| none |", "| start still  |");
+    expect(run(f)).toContain(`FAIL ${LISTN} line 7: row holds an empty, padded or bar-holding cell`);
+  });
+});
+
+describe("getspace start stills - none and last frame as before", () => {
+  test.each([["last frame of E"], ["last frame of AI-1"], ["None"], ["NONE"]])("AI-1 holding %s", (cell) => {
+    const f = fixture3();
+    setFirst(f, cell);
+    expect(run(f)).toContain(A("AI-1", FIRST_FAIL));
+  });
+
+  test("with a table, last frame of a later clip still fails", () => {
+    const f = fixture3();
+    setFirst(f, "start still D");
+    setFirst(f, "last frame of AI-3", "AI-2");
+    addStills(f, [stillRow("D")]);
+    expect(run(f)).toContain(A("AI-2", FIRST_FAIL));
   });
 });
