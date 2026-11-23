@@ -128,7 +128,12 @@ export interface RunwayModelInfo {
   ratiosByEndpoint?: Readonly<Record<string, string[]>>;
   /** ratio -> audio "true"/"false" -> list credits per second (docs.dev.runwayml.com/guides/pricing). */
   creditsPerSecond: Readonly<Record<string, Readonly<Record<string, number>>>>;
+  /** The plan lists the model as taking a last frame (a convenience list, not a safety guard). */
+  lastFrame: boolean;
 }
+
+/** Models the docs say take no last frame: a plan cannot set last_frame true on them. */
+const NO_LAST_FRAME_MODELS = new Set(["kling_4_flash"]);
 
 export interface RunwayClip {
   id: string;
@@ -145,6 +150,7 @@ export interface RunwayClip {
   estimateMicro: number; // whole micro-USD for the clip
   roundedUp: boolean; // the clip charge was rounded up to whole credits
   sendAudioKey: boolean; // false for a model with no audio switch: the body holds no audio key
+  lastFrame: boolean; // the plan lists the model as taking a last frame
 }
 
 export interface RunwayPlan {
@@ -199,6 +205,13 @@ export function loadPlan(file: string): RunwayPlan {
     if (mo.round_up_credits !== undefined && typeof mo.round_up_credits !== "boolean") {
       throw new Refusal("plan-invalid", `model ${name}: round_up_credits must be true or false`);
     }
+    if (mo.last_frame !== undefined && typeof mo.last_frame !== "boolean") {
+      throw new Refusal("plan-invalid", `model ${name}: last_frame must be true or false`);
+    }
+    const lastFrame = mo.last_frame === true;
+    if (lastFrame && NO_LAST_FRAME_MODELS.has(name)) {
+      throw new Refusal("plan-invalid", `model ${name}: the docs say it takes no last frame, last_frame cannot be true`);
+    }
     let ratiosByEndpoint: Record<string, string[]> | undefined;
     if (mo.ratios_by_endpoint !== undefined) {
       const rbe = asObj(mo.ratios_by_endpoint);
@@ -213,6 +226,7 @@ export function loadPlan(file: string): RunwayPlan {
     models[name] = {
       name, promptMax, promptMin, ratios, durations, audioFlag: mo.audio_flag === true, audioAlways,
       roundUpCredits: mo.round_up_credits === true, ratiosByEndpoint, creditsPerSecond: prices,
+      lastFrame,
     };
   }
   if (Object.keys(models).length === 0) throw new Refusal("plan-invalid", "the plan holds no models");
@@ -285,6 +299,7 @@ export function loadPlan(file: string): RunwayPlan {
       estimateMicro,
       roundedUp: m.roundUpCredits,
       sendAudioKey: !m.audioAlways,
+      lastFrame: m.lastFrame,
     });
   }
   return { planId, clips, totalMicro: clips.reduce((s, c) => s + c.estimateMicro, 0) };
@@ -298,26 +313,26 @@ export interface StillImage {
 }
 
 /** Read and check the still BEFORE any key read: PNG or JPEG only, data URI at most 5 M chars. */
-export function readStill(file: string): StillImage {
+export function readStill(file: string, label = "still image"): StillImage {
   let bytes: Buffer;
   try {
     bytes = fs.readFileSync(file);
   } catch {
-    throw new Refusal("input-missing", `still image ${file} is not readable`);
+    throw new Refusal("input-missing", `${label} ${file} is not readable`);
   }
   const png = bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
   const jpg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  if (!png && !jpg) throw new Refusal("input-too-big", `still image ${file} is neither PNG nor JPEG, so it cannot go in a promptImage data URI`);
+  if (!png && !jpg) throw new Refusal("input-too-big", `${label} ${file} is neither PNG nor JPEG, so it cannot go in a promptImage data URI`);
   const dataUri = `data:${png ? "image/png" : "image/jpeg"};base64,${bytes.toString("base64")}`;
   if (dataUri.length > MAX_DATA_URI_CHARS) {
-    throw new Refusal("input-too-big", `still image ${file} as a data URI is ${dataUri.length} characters, above the ${MAX_DATA_URI_CHARS} limit`);
+    throw new Refusal("input-too-big", `${label} ${file} as a data URI is ${dataUri.length} characters, above the ${MAX_DATA_URI_CHARS} limit`);
   }
   return { dataUri, sha: sha256(bytes) };
 }
 
 // ── args ───────────────────────────────────────────────────────────────────────────────
 
-const VALUE_FLAGS = new Set(["--plan", "--ledger", "--out", "--ceiling-usd", "--clip", "--still", "--timeout-seconds"]);
+const VALUE_FLAGS = new Set(["--plan", "--ledger", "--out", "--ceiling-usd", "--clip", "--still", "--last-still", "--timeout-seconds"]);
 const CEILING_RE = /^(?:\d+(?:\.\d+)?|\.\d+)$/; // a plain number: no sign, exponent or separators
 
 export interface RunwayArgs {
@@ -327,6 +342,7 @@ export interface RunwayArgs {
   ceilingUsd: number;
   clip?: string;
   still?: string;
+  lastStill?: string;
   timeoutSeconds: number;
   live: boolean;
 }
@@ -341,7 +357,12 @@ export function parseRunwayArgs(argv: string[]): RunwayArgs {
       continue;
     }
     if (!VALUE_FLAGS.has(k) || i + 1 >= argv.length) throw new Refusal("usage", `bad or incomplete argument ${k}`);
+    if (k === "--last-still" && k in vals) throw new Refusal("usage", "--last-still is given twice; one last frame only");
     vals[k] = argv[++i];
+  }
+  if ("--last-still" in vals) {
+    if (!vals["--clip"]) throw new Refusal("usage", "--last-still needs one --clip");
+    if (!vals["--still"]) throw new Refusal("usage", "--last-still needs --still: exactly one first frame, no last-only array is sent");
   }
   for (const req of ["--plan", "--out", "--ledger", "--ceiling-usd"]) {
     if (!vals[req]) throw new Refusal("usage", `missing required argument ${req}`);
@@ -366,6 +387,7 @@ export function parseRunwayArgs(argv: string[]): RunwayArgs {
     ceilingUsd,
     clip: vals["--clip"],
     still: vals["--still"],
+    lastStill: vals["--last-still"],
     timeoutSeconds,
     live,
   };
@@ -403,6 +425,7 @@ export interface RunwayBuilt {
   plan: RunwayPlan;
   clip?: RunwayClip;
   still?: StillImage;
+  lastStill?: StillImage;
   ceilingUsd: number;
   spentMicro: number;
   outReal: string;
@@ -414,10 +437,15 @@ export function buildRun(a: RunwayArgs): RunwayBuilt {
   const plan = loadPlan(a.planFile);
   const clip = a.clip ? plan.clips.find((c) => c.id === a.clip) : undefined;
   if (a.clip && !clip) throw new Refusal("plan-invalid", `the plan holds no clip ${a.clip}`);
+  if (a.lastStill !== undefined && clip) {
+    if (!clip.lastFrame) throw new Refusal("usage", `clip ${clip.id}: model ${clip.model} is not listed in the plan as taking a last frame (last_frame)`);
+    if (clip.endpoint === "text_to_video") throw new Refusal("usage", `clip ${clip.id} is text_to_video and takes no --last-still`);
+  }
   const still = a.still ? readStill(a.still) : undefined;
   if (still && clip && clip.endpoint === "text_to_video") {
     throw new Refusal("usage", `clip ${clip.id} is text_to_video and takes no --still`);
   }
+  const lastStill = a.lastStill !== undefined ? readStill(a.lastStill, "last still image") : undefined;
   if (a.live && clip && clip.endpoint === "image_to_video" && !still) {
     throw new Refusal("usage", `clip ${clip.id} is image_to_video and needs --still`);
   }
@@ -437,7 +465,7 @@ export function buildRun(a: RunwayArgs): RunwayBuilt {
   if (a.live && clip && countAttempts(ledgerReal, plan.planId, clip.id) >= 2) {
     throw new Refusal("retry-limit", `clip ${clip.id} already has 2 try-out attempt lines in plan ${plan.planId}`);
   }
-  return { plan, clip, still, ceilingUsd: a.ceilingUsd, spentMicro, outReal, ledgerReal, lockPath };
+  return { plan, clip, still, lastStill, ceilingUsd: a.ceilingUsd, spentMicro, outReal, ledgerReal, lockPath };
 }
 
 // ── network caller (one injected object behind each network step) ──────────────────────
@@ -581,6 +609,7 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
       audio: clip.audio,
       prompt_sha256: clip.promptSha,
       image_sha256: b.still ? b.still.sha : null,
+      ...(b.lastStill ? { last_image_sha256: b.lastStill.sha } : {}),
     },
     cost_usd: clip.estimateMicro / 1e6,
     cost_how: {
@@ -636,7 +665,13 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
     // named explicitly on every call: the API default is true; a model with no audio switch
     // (Kling 4.0) gets no key, its schema refuses unknown keys
     if (clip.sendAudioKey) body.audio = clip.audio;
-    if (clip.endpoint === "image_to_video") body.promptImage = (b.still as StillImage).dataUri;
+    if (clip.endpoint === "image_to_video") {
+      const first = (b.still as StillImage).dataUri;
+      // with a last still: the documented array, exactly one first frame and one last frame
+      body.promptImage = b.lastStill
+        ? [{ uri: first, position: "first" }, { uri: b.lastStill.dataUri, position: "last" }]
+        : first;
+    }
 
     const createReply = asObj(
       await caller.create({
@@ -740,8 +775,10 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
 
 // ── dry run (the default: reads no key, sends nothing, writes nothing) ──────────────────
 
-function clipLine(c: RunwayClip, still?: StillImage): string {
-  const stillPart = still && c.endpoint === "image_to_video" ? ` still-sha256=${still.sha}` : "";
+function clipLine(c: RunwayClip, still?: StillImage, lastStill?: StillImage): string {
+  const stillPart =
+    (still && c.endpoint === "image_to_video" ? ` still-sha256=${still.sha}` : "") +
+    (lastStill && c.endpoint === "image_to_video" ? ` last-still-sha256=${lastStill.sha}` : "");
   return (
     `runway: clip id=${c.id} shot=${c.shot} model=${c.model} endpoint=${c.endpoint}` +
     ` seconds=${c.seconds} ratio=${c.ratio} audio=${c.audio} prompt-sha256=${c.promptSha}${stillPart}` +
@@ -755,7 +792,7 @@ function dryRunOutput(b: RunwayBuilt): string {
   const roomMicro = usdToMicro(b.ceilingUsd) - b.spentMicro;
   const lines = [
     "runway: dry-run (no request sent, no key read, nothing written)",
-    ...clips.map((c) => clipLine(c, b.still)),
+    ...clips.map((c) => clipLine(c, b.still, b.lastStill)),
     `runway: total clips=${clips.length} usd=${formatUsdMicro(plannedMicro)}`,
     `runway: spend group=ai-video spent usd=${formatUsdMicro(b.spentMicro)} ceiling=${b.ceilingUsd}` +
       ` room usd=${formatUsdMicroDown(roomMicro)} room-after usd=${formatUsdMicroDown(roomMicro - plannedMicro)}`,

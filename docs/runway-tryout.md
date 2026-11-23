@@ -109,6 +109,57 @@ the result is one observation.
 - The Kling 4.0 AI-4 clips use ratio `auto_720p`, so the frame follows the still (the first-run
   still is 720 x 1280).
 
+## Last frame (Kling 4.0)
+
+Not tested live. Nothing here was sent to Runway yet.
+
+- Flag: `--last-still <file>` of `npm run video:tryout`, given once. It needs `--clip` and
+  `--still` (the first frame is `--still`); the clip must be `image_to_video` and its model
+  must have `"last_frame": true` in the plan model table (missing = false). Flag order does
+  not matter: `--still` is always the first frame, `--last-still` the last.
+- Runway docs (docs.dev.runwayml.com/llms-full.txt, research record
+  a52d-runway-research-20261122.md): "promptImage is one image, or an array with exactly one
+  first frame, up to 8 middle frames in array order, and an optional last frame";
+  kling_4_flash "takes one first frame, not middle or last frames". With a last still the
+  body holds `promptImage: [{uri: first, position: "first"}, {uri: last, position: "last"}]`;
+  without it the string form is sent as before. No middle frames are sent.
+- `last_frame` is a convenience list, NOT a safety guard: the plan is any local file, so any
+  plan can set it on any model. The one code-side guard is a deny for `kling_4_flash`: a plan
+  that sets `last_frame` true on it refuses `plan-invalid`.
+- `tools/runway-tryout-plan-b.json` sets `last_frame` true on `kling_4` only. A local plan for
+  the redo clips must copy the `kling_4` entry with `last_frame` true and its own durations
+  (plan-b keeps `[6]`; the docs allow 3-30 s).
+- Refusals (exit 2, before any key read, attempt line or call, dry run and `--live`): a clip
+  whose model has no `last_frame` true, a `text_to_video` clip, `--last-still` without `--still`
+  (exactly one first frame; a last-only array is never sent), without `--clip`, or given twice
+  (`usage`); a bad last still (missing or unreadable `input-missing`; not PNG or JPEG, or a
+  data URI over 5000000 characters, `input-too-big`; the text names the last still).
+- Live pass mark, written before the first paid last-frame clip: the generated last frame
+  matches the last still by eye, side by side (A3-4 of shot plan a52d).
+- AI-3 forward needs its first still (E) made beforehand, because a last-only array is not
+  sent.
+- Dry run prints `still-sha256=` and ` last-still-sha256=`. The attempt line has
+  `image_sha256` (first) and, only with a last still, `last_image_sha256`. Tracking run record:
+  note the last-still sha256 next to the still sha256.
+- Risks, not measured:
+  - An API refusal of the array (for example HTTP 400) leaves the attempt line at the list
+    estimate and uses up one of the 2 attempts of that clip id.
+  - The retry count (2 attempt lines per clip id per plan) counts runs with and without a last
+    still together.
+  - Two stills near the 5000000-character limit make a request body of about 10 MB; the docs
+    give a per-image limit, not a body limit.
+  - A last still of a different size or ratio than the first: the effect is not documented and
+    not checked.
+  - `--last-still --live` takes `--live` as the file name, so the run is a dry run that
+    refuses `input-missing`.
+  - `readStill` reads the whole file before the size check, so a huge file, or a symlink to
+    /dev/zero or a FIFO, is read into memory or hangs (as for the first still, now for two
+    files).
+- Price: the estimate is the same with and without a last still (no image charge was found in
+  the docs; the billed charge is not measured). kling_4 720p is 12.56 credits/s until
+  2026-11-30 UTC (20% off) and 15.7 list from 2026-12-01; the plan keeps 15.7, so the estimate
+  and the cap check over-state the charge by about 25% this week.
+
 ## Tracking
 
 - The spend record lines (attempt ids) in the shared paid-media spend record.

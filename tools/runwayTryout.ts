@@ -9,6 +9,8 @@
  * Optional:
  *   --clip <id> — one clip of the plan
  *   --still <file> — the still image of an image_to_video clip
+ *   --last-still <file> — the last frame of an image_to_video clip whose model the plan lists
+ *     with last_frame true (needs --clip and --still; given once)
  *   --timeout-seconds <n> — the limit of each call and of the poll (default 900)
  *   --live — send the one call (needs --clip)
  * Dry run is the default: it reads no key, sends nothing and writes nothing.

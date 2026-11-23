@@ -1792,3 +1792,266 @@ describe("t18 plan-b dry run total and cap", () => {
     expect(r2.code).toBe(0);
   });
 });
+
+// ── (A52e) --last-still: the first + last promptImage array of a last_frame model ───────
+
+const LF_CLIP = "ai-4-kling4-pic";
+const LF_PNG_A = PNG_BYTES;
+const LF_PNG_B = Buffer.concat([PNG_BYTES, Buffer.from("last-frame-made-up-trailer")]);
+const uriOf = (b: Buffer): string => `data:image/png;base64,${b.toString("base64")}`;
+
+interface PlanBJson {
+  plan_id: string;
+  models: Record<string, Record<string, unknown>>;
+  clips: PlanClip[];
+}
+
+/** A temp copy of plan-b with one mutation applied. */
+function lfTempPlan(mut: (p: PlanBJson) => void): string {
+  const p = JSON.parse(fs.readFileSync(PLAN_B_FILE, "utf8")) as PlanBJson;
+  mut(p);
+  const f = path.join(mkTmp(), "plan-b-lf.json");
+  fs.writeFileSync(f, JSON.stringify(p));
+  return f;
+}
+
+/** Run a refusal case on the dry run and on --live: exit 2 before any key read, record unchanged. */
+async function refuseBoth(
+  planFile: string,
+  clip: string,
+  extra: string[],
+  code: string,
+  mention?: string,
+): Promise<void> {
+  for (const live of [false, true]) {
+    const ctx = makeCtx(planFile);
+    const fake = new FakeCaller();
+    const keyReader = jest.fn(() => KEY);
+    const r = await run(ctx.args({ clip, extra: [...extra, ...(live ? ["--live"] : [])] }), fake, keyReader);
+    await expectRefusal(r, code, fake, ctx.ledger);
+    expect(keyReader).not.toHaveBeenCalled();
+    if (mention) expect(r.err).toContain(mention);
+  }
+}
+
+function lfFiles(): { dir: string; a: string; b: string } {
+  const dir = mkTmp();
+  return { dir, a: writeStill(dir, "a.png", LF_PNG_A), b: writeStill(dir, "b.png", LF_PNG_B) };
+}
+
+describe("a52e last-still: plan and dry run", () => {
+  it("plan-b loads with 7 clip lines; last_frame is true only on kling_4", async () => {
+    const ctx = makeCtx(PLAN_B_FILE);
+    const r = await run(ctx.args(), new FakeCaller());
+    expect(r.code).toBe(0);
+    expect(r.out.split("\n").filter((l) => l.startsWith("runway: clip id=")).length).toBe(7);
+    for (const f of [PLAN_FILE, PLAN_B_FILE]) {
+      const p = JSON.parse(fs.readFileSync(f, "utf8")) as PlanBJson;
+      for (const [name, m] of Object.entries(p.models)) {
+        expect([name, m.last_frame === true]).toEqual([name, f === PLAN_B_FILE && name === "kling_4"]);
+      }
+    }
+  });
+
+  it("last_frame \"yes\" refuses plan-invalid naming the model, dry and live", async () => {
+    const plan = lfTempPlan((p) => {
+      p.models.kling_4.last_frame = "yes";
+    });
+    await refuseBoth(plan, LF_CLIP, [], "plan-invalid", "kling_4");
+  });
+
+  it("dry run prints both hashes after the first one, exit 0, nothing written", async () => {
+    const { a, b } = lfFiles();
+    const ctx = makeCtx(PLAN_B_FILE);
+    const fake = new FakeCaller();
+    const keyReader = jest.fn(() => KEY);
+    const base = (await run(ctx.args({ clip: LF_CLIP, still: a }), fake, keyReader)).out
+      .split("\n").find((l) => l.startsWith("runway: clip id="))!;
+    const r = await run(ctx.args({ clip: LF_CLIP, still: a, extra: ["--last-still", b] }), fake, keyReader);
+    expect(r.code).toBe(0);
+    const line = r.out.split("\n").find((l) => l.startsWith("runway: clip id="))!;
+    expect(line).toBe(
+      base.replace(` still-sha256=${sha(LF_PNG_A)}`, ` still-sha256=${sha(LF_PNG_A)} last-still-sha256=${sha(LF_PNG_B)}`),
+    );
+    expect(line).not.toBe(base);
+    expect(line).toContain(` still-sha256=${sha(LF_PNG_A)} last-still-sha256=${sha(LF_PNG_B)} rate-usd-per-s=`);
+    expect(keyReader).not.toHaveBeenCalled();
+    expect(fake.calls.length).toBe(0);
+    expect(readBytes(ctx.ledger)).toBeNull();
+    expect(fs.readdirSync(ctx.out).length).toBe(0);
+  });
+
+  it("without --last-still the clip line is today's line, no last-still-sha256", async () => {
+    const { a } = lfFiles();
+    const ctx = makeCtx(PLAN_B_FILE);
+    const r = await run(ctx.args({ clip: LF_CLIP, still: a }), new FakeCaller());
+    const prompt = (JSON.parse(fs.readFileSync(PLAN_B_FILE, "utf8")) as PlanBJson).clips.find((c) => c.id === LF_CLIP)!.prompt;
+    const today =
+      `runway: clip id=${LF_CLIP} shot=AI-4 model=kling_4 endpoint=image_to_video seconds=6 ratio=auto_720p audio=false` +
+      ` prompt-sha256=${sha(Buffer.from(prompt, "utf8"))} still-sha256=${sha(LF_PNG_A)}` +
+      ` rate-usd-per-s=0.157 estimate-usd=0.950`;
+    expect(r.out.split("\n").find((l) => l.startsWith("runway: clip id="))).toBe(today);
+    expect(r.out).not.toContain("last-still-sha256=");
+  });
+
+  it("the same file for --still and --last-still is allowed, two equal hashes", async () => {
+    const { a } = lfFiles();
+    const ctx = makeCtx(PLAN_B_FILE);
+    const r = await run(ctx.args({ clip: LF_CLIP, still: a, extra: ["--last-still", a] }), new FakeCaller());
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(` still-sha256=${sha(LF_PNG_A)} last-still-sha256=${sha(LF_PNG_A)} `);
+  });
+
+  it("flag order does not matter: A stays first, B stays last", async () => {
+    const { a, b } = lfFiles();
+    const ctx = makeCtx(PLAN_B_FILE);
+    const r1 = await run(ctx.args({ clip: LF_CLIP, still: a, extra: ["--last-still", b] }), new FakeCaller());
+    const r2 = await run(ctx.args({ clip: LF_CLIP, extra: ["--last-still", b, "--still", a] }), new FakeCaller());
+    expect(r2.code).toBe(0);
+    expect(r2.out).toBe(r1.out);
+    expect(r2.out).toContain(` still-sha256=${sha(LF_PNG_A)} last-still-sha256=${sha(LF_PNG_B)} `);
+  });
+
+  it("the estimate with a last still equals the estimate without one", async () => {
+    const { a, b } = lfFiles();
+    const ctx = makeCtx(PLAN_B_FILE);
+    const est = (out: string): string => /estimate-usd=(\S+)/.exec(out.split("\n").find((l) => l.startsWith("runway: clip id="))!)![1];
+    const without = await run(ctx.args({ clip: LF_CLIP, still: a }), new FakeCaller());
+    const withLast = await run(ctx.args({ clip: LF_CLIP, still: a, extra: ["--last-still", b] }), new FakeCaller());
+    expect(est(withLast.out)).toBe(est(without.out));
+    expect(est(without.out)).toBe("0.950");
+  });
+});
+
+describe("a52e last-still: live body and attempt line", () => {
+  const promptOf = (): string =>
+    (JSON.parse(fs.readFileSync(PLAN_B_FILE, "utf8")) as PlanBJson).clips.find((c) => c.id === LF_CLIP)!.prompt;
+  const sentToday = (): Record<string, unknown> => ({
+    plan_id: "a52b-runway-tryout-2026-11-22",
+    clip_id: LF_CLIP,
+    shot: "AI-4",
+    model: "kling_4",
+    endpoint: "image_to_video",
+    seconds: 6,
+    ratio: "auto_720p",
+    audio: false,
+    prompt_sha256: sha(Buffer.from(promptOf(), "utf8")),
+    image_sha256: sha(LF_PNG_A),
+  });
+
+  for (const order of ["still-first", "last-first"]) {
+    it(`sends the first + last array and records both hashes (${order})`, async () => {
+      const { a, b } = lfFiles();
+      const ctx = makeCtx(PLAN_B_FILE);
+      const fake = new FakeCaller();
+      const extra =
+        order === "still-first" ? ["--still", a, "--last-still", b, "--live"] : ["--last-still", b, "--still", a, "--live"];
+      const r = await run(ctx.args({ clip: LF_CLIP, extra }), fake);
+      expect(r.code).toBe(0);
+      expect(fake.createCount).toBe(1);
+      expect(fake.calls[0].url).toBe("https://api.dev.runwayml.com/v1/image_to_video");
+      expect(JSON.parse(String(fake.calls[0].body))).toEqual({
+        model: "kling_4",
+        promptText: promptOf(),
+        ratio: "auto_720p",
+        duration: 6,
+        promptImage: [
+          { uri: uriOf(LF_PNG_A), position: "first" },
+          { uri: uriOf(LF_PNG_B), position: "last" },
+        ],
+      });
+      const att = ledgerLines(ctx.ledger)[0];
+      expect(att.kind).toBe("attempt");
+      expect(att.sent).toEqual({ ...sentToday(), last_image_sha256: sha(LF_PNG_B) });
+    });
+  }
+
+  it("without a last still the body keeps the string form and the attempt keys are today's", async () => {
+    const { a } = lfFiles();
+    const ctx = makeCtx(PLAN_B_FILE);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: LF_CLIP, still: a, extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(String(fake.calls[0].body))).toEqual({
+      model: "kling_4",
+      promptText: promptOf(),
+      ratio: "auto_720p",
+      duration: 6,
+      promptImage: uriOf(LF_PNG_A),
+    });
+    expect(ledgerLines(ctx.ledger)[0].sent).toEqual(sentToday());
+  });
+});
+
+describe("a52e last-still: refusals", () => {
+  it("(a) a model with no last_frame true: usage (seedance2_5, veo3.1_fast)", async () => {
+    const { a, b } = lfFiles();
+    for (const clip of ["ai-4-seedance25-pic", "ai-4-veo-newprompt-pic"]) {
+      await refuseBoth(PLAN_B_FILE, clip, ["--still", a, "--last-still", b], "usage");
+    }
+  });
+
+  it("(b) kling_4_flash with last_frame true is plan-invalid; without it plus --last-still is usage", async () => {
+    const { a, b } = lfFiles();
+    const withFlash = (lf: boolean) =>
+      lfTempPlan((p) => {
+        const m = JSON.parse(JSON.stringify(p.models.kling_4)) as Record<string, unknown>;
+        if (lf) m.last_frame = true;
+        else delete m.last_frame;
+        p.models.kling_4_flash = m;
+        const c = p.clips.find((x) => x.id === LF_CLIP)!;
+        p.clips.push({ ...c, id: "flash-clip", model: "kling_4_flash" });
+      });
+    await refuseBoth(withFlash(true), "flash-clip", ["--still", a, "--last-still", b], "plan-invalid", "kling_4_flash");
+    await refuseBoth(withFlash(true), "flash-clip", ["--still", a], "plan-invalid", "kling_4_flash");
+    await refuseBoth(withFlash(false), "flash-clip", ["--still", a, "--last-still", b], "usage");
+  });
+
+  it("(c) a text_to_video clip: usage", async () => {
+    const { a, b } = lfFiles();
+    await refuseBoth(PLAN_B_FILE, "ai-1-kling4-pic", ["--still", a, "--last-still", b], "usage");
+  });
+
+  it("(d) --last-still without --still: usage", async () => {
+    const { b } = lfFiles();
+    await refuseBoth(PLAN_B_FILE, LF_CLIP, ["--last-still", b], "usage");
+  });
+
+  it("(e) --last-still without --clip: usage", async () => {
+    const { a, b } = lfFiles();
+    for (const live of [false, true]) {
+      const ctx = makeCtx(PLAN_B_FILE);
+      const fake = new FakeCaller();
+      const keyReader = jest.fn(() => KEY);
+      const r = await run(ctx.args({ still: a, extra: ["--last-still", b, ...(live ? ["--live"] : [])] }), fake, keyReader);
+      await expectRefusal(r, "usage", fake, ctx.ledger);
+      expect(keyReader).not.toHaveBeenCalled();
+    }
+  });
+
+  it("(f) --last-still given twice: usage", async () => {
+    const { a, b } = lfFiles();
+    await refuseBoth(PLAN_B_FILE, LF_CLIP, ["--still", a, "--last-still", b, "--last-still", a], "usage");
+    await refuseBoth(PLAN_B_FILE, LF_CLIP, ["--still", a, "--last-still", a, "--last-still", b], "usage");
+  });
+});
+
+describe("a52e last-still: a bad last still", () => {
+  const cases: { name: string; make: (dir: string) => string; code: string }[] = [
+    { name: "missing", make: (d) => path.join(d, "no-such-last.png"), code: "input-missing" },
+    { name: "not an image", make: (d) => writeStill(d, "last.txt", Buffer.from("plain text, not an image")), code: "input-too-big" },
+    {
+      name: "data URI over 5000000 characters",
+      make: (d) => writeStill(d, "huge.png", Buffer.concat([PNG_BYTES, Buffer.alloc(3_800_000, 1)])),
+      code: "input-too-big",
+    },
+  ];
+  for (const c of cases) {
+    it(`${c.name}: ${c.code}, names the last still`, async () => {
+      const dir = mkTmp();
+      const a = writeStill(dir, "first-ok.png");
+      const bad = c.make(dir);
+      await refuseBoth(PLAN_B_FILE, LF_CLIP, ["--still", a, "--last-still", bad], c.code, `last still image ${bad}`);
+    });
+  }
+});
