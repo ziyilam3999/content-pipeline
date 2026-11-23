@@ -600,7 +600,7 @@ function checkAiShots(name: string, slug: string, raw: string, facts: Facts, fai
   if (hIdx < 3) fails.push(`FAIL ${name}: fixed line missing: ${headings[hIdx]}`);
   else closeSection();
 
-  // Start stills table: name -> row; the shape of the Sha256 text only, no picture is opened
+  // Start stills table: the set of names and the Sha256 texts seen; no picture is opened
   const stills = new Set<string>();
   const shaOwner = new Map<string, string>();
   for (const row of rows[2]) {
