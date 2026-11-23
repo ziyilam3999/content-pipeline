@@ -80,7 +80,8 @@ the result is one observation.
 | ai-4-kling4-voice      | kling_4           |                                           |                                                     |                                               |     |     |     |     |
 
 - The narration sentence the voice clips carry: "The giver is told the seeker is nearby as
-  the arrival gets close." (storyboards/getspace-level3.md beat 8).
+  the arrival gets close." (this was beat 8 of the storyboard approved on 2026-11-21,
+  before story 1).
 - A **lip or mouth match is not required** (top-down car shot).
 - Voice pass = V1 usable AND V2 yes. The voice clip picture is also marked P1 to P4 in the
   row above.

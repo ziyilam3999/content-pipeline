@@ -67,7 +67,6 @@ const NARRATION = 'A calm adult narrator says: "The giver is told the seeker is 
 
 const REPO = path.resolve(__dirname, "..", "..");
 const PLAN_FILE = path.join(REPO, "tools", "runway-tryout-plan.json");
-const STORYBOARD = fs.readFileSync(path.join(REPO, "storyboards", "getspace-ai-shots.md"), "utf8");
 
 interface PlanClip {
   id: string;
@@ -86,14 +85,11 @@ interface PlanJson {
 }
 const PLAN = JSON.parse(fs.readFileSync(PLAN_FILE, "utf8")) as PlanJson;
 
-/** The Prompt cell (and, for AI-1, the First frame cell) of one row of the shots list. */
-function storyboardRow(shot: string): { firstFrame: string; prompt: string } {
-  for (const line of STORYBOARD.split("\n")) {
-    if (!line.startsWith(`| ${shot} `)) continue;
-    const cells = line.split("|").map((c) => c.trim());
-    return { firstFrame: cells[4], prompt: cells[5] };
-  }
-  throw new Error(`the storyboard holds no row ${shot}`);
+/** The prompt of one clip of the try-out plan file, by clip id. */
+function planPrompt(id: string): string {
+  const c = PLAN.clips.find((x) => x.id === id);
+  if (!c) throw new Error(`the plan holds no clip ${id}`);
+  return c.prompt;
 }
 
 const sha = (b: Buffer): string => crypto.createHash("sha256").update(b).digest("hex");
@@ -517,7 +513,7 @@ describe("t5 spend lines", () => {
       seconds: 6,
       ratio: "720:1280",
       audio: false,
-      prompt_sha256: sha(Buffer.from(storyboardRow("AI-1").prompt, "utf8")),
+      prompt_sha256: sha(Buffer.from(planPrompt("ai-1-kling3-pic"), "utf8")),
       image_sha256: null,
     });
     expect(att.cost_usd).toBe(0.54);
@@ -623,18 +619,27 @@ describe("t6 retry limit", () => {
 // ── (7) the plan check ─────────────────────────────────────────────────────────────────
 
 describe("t7 plan check", () => {
-  it("the AI-1 and AI-4 prompts equal the shots list cells; the voice prompt adds the narration sentence", () => {
-    const ai1 = storyboardRow("AI-1");
-    const ai4 = storyboardRow("AI-4");
-    expect(ai1.firstFrame).toBe("none"); // AI-1 uses text_to_video, first frame none
-    for (const c of PLAN.clips.filter((x) => x.shot === "AI-1")) {
-      expect([c.id, c.prompt]).toEqual([c.id, ai1.prompt]);
-    }
-    for (const c of PLAN.clips.filter((x) => x.shot === "AI-4" && !x.audio)) {
-      expect([c.id, c.prompt]).toEqual([c.id, ai4.prompt]);
+  it("the prompt of each of the 9 plan clips is pinned by clip id (sha256); the voice prompt ends with the narration sentence", () => {
+    const AI1 = "da2ede5f73dab035d3ca0c45e04416dfbc5f6d4b36a0c58adc23199ab83903dc";
+    const AI4 = "fb427a065ae777b904aff31b1c8d7cc1948243f2c4133388189fb37835334f96";
+    const AI4_VOICE = "5f239472c4f5ae9a860250ece6fac4ca7b20f49de7a82a4a8151040507718c04"; // the AI-4 text, one space, NARRATION
+    const PINNED: Record<string, string> = {
+      "ai-1-kling3-pic": AI1,
+      "ai-1-seedance-pic": AI1,
+      "ai-1-veo-pic": AI1,
+      "ai-4-kling3-pic": AI4,
+      "ai-4-seedance-pic": AI4,
+      "ai-4-veo-pic": AI4,
+      "ai-4-kling3-voice": AI4_VOICE,
+      "ai-4-seedance-voice": AI4_VOICE,
+      "ai-4-veo-voice": AI4_VOICE,
+    };
+    expect(PLAN.clips.map((c) => c.id).sort()).toEqual(Object.keys(PINNED).sort());
+    for (const c of PLAN.clips) {
+      expect([c.id, sha(Buffer.from(c.prompt, "utf8"))]).toEqual([c.id, PINNED[c.id]]);
     }
     for (const c of PLAN.clips.filter((x) => x.audio)) {
-      expect([c.id, c.prompt]).toEqual([c.id, `${ai4.prompt} ${NARRATION}`]);
+      expect([c.id, c.prompt.endsWith(` ${NARRATION}`)]).toEqual([c.id, true]);
     }
   });
 
@@ -755,7 +760,7 @@ describe("t8 request body", () => {
     expect(call.headers["content-type"]).toBe("application/json");
     expect(JSON.parse(call.body as string)).toEqual({
       model: "kling3.0_standard",
-      promptText: storyboardRow("AI-1").prompt,
+      promptText: planPrompt("ai-1-kling3-pic"),
       ratio: "720:1280",
       duration: 6,
       audio: false,
@@ -772,7 +777,7 @@ describe("t8 request body", () => {
     expect(call.url).toBe("https://api.dev.runwayml.com/v1/image_to_video");
     const body = JSON.parse(call.body as string) as Record<string, unknown>;
     expect(body.model).toBe("veo3.1_fast");
-    expect(body.promptText).toBe(storyboardRow("AI-4").prompt);
+    expect(body.promptText).toBe(planPrompt("ai-4-veo-pic"));
     expect(body.promptImage).toBe(`data:image/png;base64,${PNG_BYTES.toString("base64")}`);
     expect(body.audio).toBe(false);
   });

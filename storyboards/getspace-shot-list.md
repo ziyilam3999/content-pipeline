@@ -21,7 +21,7 @@
 
 | Clip | Side | Take | What to do | Sec | Facts shown | Hide |
 |------|------|------|------------|-----|-------------|------|
-| C-01 | seeker | T-1 | On the home screen, hold on the Find Parking tile, then tap it. | 8 | S-01 | blur: own name, amount |
+| C-01 | seeker | T-1 | On the home screen, hold on the Find Parking tile, then tap it. | 8 | S-01 | no blur on this home screen in the level three video, the operator chose so: own name and credit amount stay shown; the seek and helps videos and other screens keep the blur |
 | C-02 | seeker | T-1 | On the map screen, tap the swap spot, then tap Choose this location. | 12 | S-02 | blur: position |
 | C-03 | seeker | T-1 | On the Confirmation screen, hold on the deposit row and the Total row. | 12 | S-05, S-06 | blur: credit balance, position |
 | C-04 | seeker | T-1 | Hold on the searching screen with its Cancel button. | 6 | S-07 | blur: position |
