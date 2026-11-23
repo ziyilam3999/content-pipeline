@@ -1966,6 +1966,27 @@ describe("a52e last-still: live body and attempt line", () => {
     });
   }
 
+  it("the same file as first and last still sends the two-item array, not the plain string", async () => {
+    const { a } = lfFiles();
+    const ctx = makeCtx(PLAN_B_FILE);
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ clip: LF_CLIP, still: a, extra: ["--last-still", a, "--live"] }), fake);
+    expect(r.code).toBe(0);
+    expect(fake.createCount).toBe(1);
+    expect(JSON.parse(String(fake.calls[0].body))).toEqual({
+      model: "kling_4",
+      promptText: promptOf(),
+      ratio: "auto_720p",
+      duration: 6,
+      promptImage: [
+        { uri: uriOf(LF_PNG_A), position: "first" },
+        { uri: uriOf(LF_PNG_A), position: "last" },
+      ],
+    });
+    const att = ledgerLines(ctx.ledger)[0];
+    expect(att.sent).toEqual({ ...sentToday(), last_image_sha256: sha(LF_PNG_A) });
+  });
+
   it("without a last still the body keeps the string form and the attempt keys are today's", async () => {
     const { a } = lfFiles();
     const ctx = makeCtx(PLAN_B_FILE);
@@ -2007,9 +2028,15 @@ describe("a52e last-still: refusals", () => {
     await refuseBoth(withFlash(false), "flash-clip", ["--still", a, "--last-still", b], "usage");
   });
 
-  it("(c) a text_to_video clip: usage", async () => {
+  it("(c) a text_to_video clip: usage, the text names --last-still, before the first still is read", async () => {
     const { a, b } = lfFiles();
-    await refuseBoth(PLAN_B_FILE, "ai-1-kling4-pic", ["--still", a, "--last-still", b], "usage");
+    // the t2v --last-still refusal (runway.ts:442) runs before the "takes no --still" check,
+    // so the text is the --last-still one; a mutant that drops it answers "takes no --still"
+    await refuseBoth(PLAN_B_FILE, "ai-1-kling4-pic", ["--still", a, "--last-still", b], "usage", "takes no --last-still");
+    // the check also runs BEFORE readStill of the first still: a missing first still is still
+    // usage, not input-missing (with the check deleted, readStill refuses input-missing first)
+    const missingFirst = path.join(mkTmp(), "no-such-first.png");
+    await refuseBoth(PLAN_B_FILE, "ai-1-kling4-pic", ["--still", missingFirst, "--last-still", b], "usage", "takes no --last-still");
   });
 
   it("(d) --last-still without --still: usage", async () => {
