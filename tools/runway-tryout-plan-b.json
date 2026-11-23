@@ -24,6 +24,7 @@
       "audio_flag": false,
       "audio_always": true,
       "round_up_credits": true,
+      "last_frame": true,
       "credits_per_second": {
         "720:1280": { "false": 15.7, "true": 15.7 },
         "auto_720p": { "false": 15.7, "true": 15.7 }
