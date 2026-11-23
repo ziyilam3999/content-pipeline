@@ -1123,9 +1123,20 @@ describe("getspace start stills - First frame refusals", () => {
   });
 
   test.each([
+    ["the table lists D and the cell cites DX", "D", "DX"],
+    ["the table lists DX and the cell cites D", "DX", "D"],
+  ])("a prefix of a name is not the name: %s", (_n, tabled, cited) => {
+    const f = fixture3();
+    setFirst(f, `start still ${cited}`);
+    setFirst(f, `start still ${tabled}`, "AI-2");
+    addStills(f, [stillRow(tabled)]);
+    expect(run(f)).toEqual([UNKNOWN(cited)]);
+  });
+
+  test.each([
     ["start still"], ["start still d"], ["Start still D"], ["start still  D"], ["start stillD"], ["still D"],
     ["start still D."], ["start still E-1"], ["start still S4"], ["start still ABCDEFGHI"],
-    ["start still D to PZ"], ["start still D, P"],
+    ["start still D to PZ"], ["start still D, P"], ["x start still D"],
   ])("a malformed cell %j", (cell) => {
     const f = fixture3();
     setFirst(f, cell);
