@@ -11,7 +11,22 @@ import * as path from "path";
 
 import { buildGraph, runCli, type ClipEditSpec } from "../clipEdit";
 import { runCheckCli } from "../clipCheck";
-import { fixtureSpec, makeEditFixture, makeMixedFixture, makeZoomFixture, mixedSpec, zoomSpec, type EditFixture, type SpecFixture } from "../clipEditFixture";
+import {
+  OTHER_ATTEMPT,
+  STILL_SERVICE,
+  fixtureSpec,
+  makeAiMixedFixture,
+  makeEditFixture,
+  makeMixedFixture,
+  makeZoomFixture,
+  mixedSpec,
+  outcomeLine,
+  writeLines,
+  zoomSpec,
+  type AiFixture,
+  type EditFixture,
+  type SpecFixture,
+} from "../clipEditFixture";
 import { hasSystemFfmpeg, resolveSystemFfmpeg } from "../contactSheet";
 
 jest.setTimeout(120000);
@@ -594,5 +609,128 @@ describe("clip:edit check", () => {
     const r = check(g.spec, g.f.clipsDir, out);
     expect(r.out).toContain("PASS shape zoom-cut\n");
     expectFail(r, "FAIL zoom zoom-cut");
+  });
+
+  // ── the ai-clip source kind: the check verb follows the spend record (A57) ──────────────────
+
+  /** The --spend arguments of a call, one pair for each file. */
+  function spendArgs(files: string[]): string[] {
+    return files.flatMap((p) => ["--spend", p]);
+  }
+  function appliedAi(f: AiFixture, spec: string, spend: string[], name: string): string {
+    const out = tmp(name);
+    const r = runCli(["apply", "--spec", spec, "--clips", f.clipsDir, "--intake", f.intakeDir, "--out", out, ...spendArgs(spend)]);
+    if (r.code !== 0) throw new Error(`the apply of ${name} failed: ${r.err}`);
+    return out;
+  }
+  /** A refusal of check: exit 2, one line with the code, no PASS line. */
+  function refusedBySpend(r: { code: number; out: string; err: string }, code: string): void {
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    expect(r.err.split("\n").filter((l) => l !== "")).toEqual([expect.stringMatching(new RegExp(`^${code}: `))]);
+  }
+
+  let aiGood: { f: AiFixture; spend: string; out: string } | null = null;
+  /** The ai-mixed fixture (makeAiMixedFixture says what it holds) with a good apply of its spec,
+   *  made with --spend of one made-up outcome line. */
+  function aiOnce(): { f: AiFixture; spend: string; out: string } {
+    if (!aiGood) {
+      const f = makeAiMixedFixture();
+      fixtures.push(f);
+      const spend = writeLines(f.spendDir, "record.jsonl", [outcomeLine(f.aiSha256)]);
+      aiGood = { f, spend, out: appliedAi(f, f.specPath, [spend], "ai-good") };
+    }
+    return aiGood;
+  }
+
+  let asTakeGood: { spec: string; out: string } | null = null;
+  /** The AI clip listed as a recorded take (an intake record written by hand), cut without --spend:
+   *  the take's crop (output.crop_top, 80) is taken on it. */
+  function asTakeOnce(): { spec: string; out: string } {
+    if (!asTakeGood) {
+      const { f } = aiOnce();
+      const s = clone(f.spec);
+      const ai = s.sources[1] as unknown as Record<string, unknown>;
+      delete ai.kind;
+      delete ai.attempt_id;
+      fs.writeFileSync(
+        path.join(f.intakeDir, `${f.aiSha256}.intake.json`),
+        JSON.stringify({ schema: "clip-intake/1", file_name: "ai.mp4", sha256: f.aiSha256 }) + "\n",
+      );
+      const spec = specAt(f, "as-take.json", s);
+      asTakeGood = { spec, out: appliedAi(f, spec, [], "ai-as-take") };
+    }
+    return asTakeGood;
+  }
+
+  ffTest("(45) ai-mixed: check with --spend on the good output exits 0 with fail=0 and PASS zoom among the seven parts (9 lines); the record file is only read", () => {
+    const g = aiOnce();
+    const text = fs.readFileSync(g.spend, "utf8");
+    const r = check(g.f.specPath, g.f.clipsDir, g.out, spendArgs([g.spend]));
+    expectPass(r, "ai-mixed", ["shape", "blur", "cut", "bars", "crop", "still", "zoom"]);
+    expect(fs.readFileSync(g.spend, "utf8")).toBe(text);
+  });
+
+  ffTest("(46) check refuses spend-hash-mismatch: one hex character of the outcome line's file_sha256 changed in a copy of the record; also spend-not-video and not-in-spend (another attempt id, another status, kind attempt), each one line and no PASS line", () => {
+    const g = aiOnce();
+    const line = outcomeLine(g.f.aiSha256);
+    const hash = line.file_sha256 as string;
+    const changed = writeLines(g.f.spendDir, "changed.jsonl", [{ ...line, file_sha256: `${hash.slice(0, -1)}${hash.endsWith("0") ? "1" : "0"}` }]);
+    expect(changed).not.toBe(g.spend);
+    refusedBySpend(check(g.f.specPath, g.f.clipsDir, g.out, spendArgs([changed])), "spend-hash-mismatch");
+    const still = writeLines(g.f.spendDir, "still.jsonl", [outcomeLine(g.f.aiSha256, { service: STILL_SERVICE })]);
+    refusedBySpend(check(g.f.specPath, g.f.clipsDir, g.out, spendArgs([still])), "spend-not-video");
+    const other = writeLines(g.f.spendDir, "other.jsonl", [outcomeLine(g.f.aiSha256, { attempt_id: OTHER_ATTEMPT })]);
+    refusedBySpend(check(g.f.specPath, g.f.clipsDir, g.out, spendArgs([other])), "not-in-spend");
+    // an outcome line of another status, and a line of kind attempt with all else fitting
+    const notOk = writeLines(g.f.spendDir, "not-ok.jsonl", [outcomeLine(g.f.aiSha256, { status: "failed" })]);
+    refusedBySpend(check(g.f.specPath, g.f.clipsDir, g.out, spendArgs([notOk])), "not-in-spend");
+    const attemptKind = writeLines(g.f.spendDir, "attempt-kind.jsonl", [outcomeLine(g.f.aiSha256, { kind: "attempt", status: "ok" })]);
+    refusedBySpend(check(g.f.specPath, g.f.clipsDir, g.out, spendArgs([attemptKind])), "not-in-spend");
+    // the same call with the record as it was passes
+    expect(check(g.f.specPath, g.f.clipsDir, g.out, spendArgs([changed, g.spend])).code).toBe(0);
+  });
+
+  ffTest("(47) check without --spend on a spec with an ai-clip source is refused with spend-missing; a --spend without a file is usage", () => {
+    const g = aiOnce();
+    refusedBySpend(check(g.f.specPath, g.f.clipsDir, g.out), "spend-missing");
+    expectRefused(check(g.f.specPath, g.f.clipsDir, g.out, ["--spend"]), "usage");
+  });
+
+  ffTest("(48) check with --spend on a spec that lists the AI clip file as a recorded-clip source is refused with ai-as-recorded", () => {
+    const g = aiOnce();
+    const t = asTakeOnce();
+    refusedBySpend(check(t.spec, g.f.clipsDir, t.out, spendArgs([g.spend])), "ai-as-recorded");
+    // without --spend the intake folder is trusted: the output cut as a take passes with its own spec
+    expect(check(t.spec, g.f.clipsDir, t.out).code).toBe(0);
+  });
+
+  ffTest("(49) FAIL crop: the ai-mixed spec checked on an output in which the AI clip was cut with the recorded source's crop", () => {
+    const g = aiOnce();
+    const t = asTakeOnce();
+    expectFail(check(g.f.specPath, g.f.clipsDir, t.out, spendArgs([g.spend])), "FAIL crop ai-mixed");
+  });
+
+  ffTest("(50) check holds an ai-clip source that --only leaves unused to the spend rule", () => {
+    const g = aiOnce();
+    const s = clone(g.f.spec);
+    const takeOnly = clone(s).videos[0];
+    takeOnly.slug = "take-only";
+    takeOnly.beats = [takeOnly.beats[0]];
+    s.videos.push(takeOnly);
+    const spec = specAt(g.f, "two.json", s);
+    refusedBySpend(check(spec, g.f.clipsDir, g.out, ["--only", "take-only"]), "spend-missing");
+    const other = writeLines(g.f.spendDir, "take-only-other.jsonl", [outcomeLine(g.f.aiSha256, { attempt_id: OTHER_ATTEMPT })]);
+    refusedBySpend(check(spec, g.f.clipsDir, g.out, [...spendArgs([other]), "--only", "take-only"]), "not-in-spend");
+    // check still takes no --intake
+    expectRefused(check(g.f.specPath, g.f.clipsDir, g.out, ["--intake", g.f.intakeDir]), "usage");
+  });
+
+  ffTest("(51) check with a missing --spend file is refused with spend-unreadable, also for a spec with no ai-clip source", () => {
+    const g = aiOnce();
+    refusedBySpend(check(g.f.specPath, g.f.clipsDir, g.out, spendArgs([path.join(g.f.spendDir, "gone.jsonl")])), "spend-unreadable");
+    const b = goodOnce();
+    const out = tmp("spend-no-ai");
+    refusedBySpend(check(b.specPa, b.f.clipsDir, b.out, spendArgs([path.join(out, "gone.jsonl")])), "spend-unreadable");
   });
 });

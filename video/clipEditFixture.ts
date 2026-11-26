@@ -9,6 +9,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
+import { SERVICE_CAP_GROUPS } from "../adapters/videogen";
 import type { ClipEditSpec } from "./clipEdit";
 import { resolveSystemFfmpeg } from "./contactSheet";
 
@@ -96,12 +97,14 @@ function folders(): { root: string; clipsDir: string; intakeDir: string; outDir:
   return { root, clipsDir, intakeDir, outDir };
 }
 
-/** A small test clip (the ffmpeg arguments after the log level) with its intake record; returns its sha256. */
-export function makeSource(f: { clipsDir: string; intakeDir: string }, file: string, args: string[]): string {
+/** A small test clip (the ffmpeg arguments after the log level) with its intake record (none for
+ *  intake false, the AI clip of the ai-mixed fixture); returns its sha256. */
+export function makeSource(f: { clipsDir: string; intakeDir: string }, file: string, args: string[], intake = true): string {
   const clipFile = path.join(f.clipsDir, file);
   const res = spawnSync(resolveSystemFfmpeg(), ["-y", "-hide_banner", "-loglevel", "error", ...args, clipFile], { encoding: "utf8" });
   if (res.status !== 0) throw new Error(`fixture clip ${file} failed: ${res.stderr}`);
   const sha256 = crypto.createHash("sha256").update(fs.readFileSync(clipFile)).digest("hex");
+  if (!intake) return sha256;
   fs.writeFileSync(
     path.join(f.intakeDir, `${sha256}.intake.json`),
     JSON.stringify({ schema: "clip-intake/1", file_name: file, sha256 }) + "\n",
@@ -195,6 +198,127 @@ export function makeMixedFixture(): SpecFixture {
   fs.writeFileSync(specPath, JSON.stringify(spec, null, 2) + "\n");
   const clipOf = { band: path.join(f.clipsDir, "band.mp4"), sound: path.join(f.clipsDir, "sound.mp4") };
   return { ...f, specPath, spec, sha256: band, clipFile: clipOf.band, clipOf, cleanup: () => fs.rmSync(f.root, { recursive: true, force: true }) };
+}
+
+// ── the ai-mixed fixture: a recorded take beside an ai-clip source ─────────────────────────
+
+/** A made-up attempt id of the AI clip of the ai-mixed fixture, and one of another attempt. */
+export const AI_ATTEMPT = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
+export const OTHER_ATTEMPT = "9f8e7d6c-5b4a-4938-8271-6f5e4d3c2b1a";
+
+/** A service of the AI video cap group and one outside it, read from the exported table. */
+const serviceOfGroup = (group: string): string => {
+  const service = Object.keys(SERVICE_CAP_GROUPS).find((k) => SERVICE_CAP_GROUPS[k] === group);
+  if (service === undefined) throw new Error(`the service table has no service of the cap group ${group}`);
+  return service;
+};
+export const VIDEO_SERVICE = serviceOfGroup("ai-video");
+export const STILL_SERVICE = serviceOfGroup("ai-image");
+
+/** A made-up outcome line of a video clip whose file has `sha256`; a test plants its faults in `over`. */
+export function outcomeLine(sha256: string, over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    kind: "outcome",
+    attempt_id: AI_ATTEMPT,
+    time: "2026-01-01T00:00:00.000Z",
+    service: VIDEO_SERVICE,
+    cost_usd: 0.1,
+    status: "ok",
+    file: "made-up-clip.mp4",
+    file_sha256: sha256,
+    ...over,
+  };
+}
+
+/** Write `lines` as JSON lines (each ending with a newline) to <dir>/<name>; returns its path. */
+export function writeLines(dir: string, name: string, lines: unknown[]): string {
+  const p = path.join(dir, name);
+  fs.writeFileSync(p, lines.map((l) => `${JSON.stringify(l)}\n`).join(""));
+  return p;
+}
+
+/** One video of 90 frames (3 s at 30 fps): a recorded take of 360x500 with a green band on its top
+ *  80 rows and no crop_top of its own (so output.crop_top, 80, cuts the band), then an ai-clip source
+ *  of 240x400 with a blue band on its top 80 rows (used whole), a stretch and a zoom piece. Both
+ *  sources are 1:1 at the output width 360 with crop 0, and the AI clip also with output.crop_top
+ *  taken, as a spec that lists it as a recorded take does. */
+export function aiMixedSpec(takeSha: string, aiSha: string, slug = "ai-mixed"): ClipEditSpec {
+  return {
+    schema: "clip-edit/1",
+    output: { width: 360, height: 640, fps: 30, crop_top: 80, pad_color: "#FFFFFF" },
+    sources: [
+      { id: "take", file: "take.mp4", sha256: takeSha, width: 360, height: 500, blur: [], cut: [] },
+      { id: "ai", file: "ai.mp4", sha256: aiSha, kind: "ai-clip", attempt_id: AI_ATTEMPT, width: 240, height: 400, blur: [], cut: [] },
+    ],
+    videos: [
+      {
+        slug,
+        beats: [
+          { n: 1, clip: "one", dur: 1, pieces: [{ src: "take", from: 0, to: 1 }] },
+          { n: 2, clip: "two", dur: 2, pieces: [{ src: "ai", from: 0, to: 1 }, { src: "ai", from: 1, to: 2, zoom_to: 1.12 }] },
+        ],
+      },
+    ],
+  };
+}
+
+export interface AiFixture extends SpecFixture {
+  /** The sha256 of the AI clip (sha256 is the take's). */
+  aiSha256: string;
+  /** A folder for the made-up spend record files the tests write. */
+  spendDir: string;
+}
+
+/** The clips of aiMixedSpec: the take at 25 fps, the AI clip at 24 fps with a sound track and no
+ *  intake record. */
+export function makeAiMixedFixture(): AiFixture {
+  const f = folders();
+  const spendDir = path.join(f.root, "spend");
+  fs.mkdirSync(spendDir);
+  const take = makeSource(f, "take.mp4", [
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=0x808080:s=360x500:r=25:d=3",
+    "-vf",
+    "noise=alls=20:allf=t,drawbox=x=0:y=0:w=iw:h=80:color=0x00FF00:t=fill",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+  ]);
+  const aiSha256 = makeSource(
+    f,
+    "ai.mp4",
+    [
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=240x400:rate=24:duration=4",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=4",
+      "-vf",
+      "noise=alls=40:allf=t+u,drawbox=x=0:y=0:w=iw:h=80:color=0x2040E0:t=fill",
+      "-map",
+      "0:v",
+      "-map",
+      "1:a",
+      "-c:a",
+      "aac",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+    ],
+    false,
+  );
+  const spec = aiMixedSpec(take, aiSha256);
+  const specPath = path.join(f.root, "spec.json");
+  fs.writeFileSync(specPath, JSON.stringify(spec, null, 2) + "\n");
+  const clipOf = { take: path.join(f.clipsDir, "take.mp4"), ai: path.join(f.clipsDir, "ai.mp4") };
+  return { ...f, spendDir, specPath, spec, sha256: take, clipFile: clipOf.take, clipOf, aiSha256, cleanup: () => fs.rmSync(f.root, { recursive: true, force: true }) };
 }
 
 /** A zoom video of one piece: the detail clip 0 .. to s, ending at zoom_to. 30 fps. */
