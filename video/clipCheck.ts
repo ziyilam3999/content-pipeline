@@ -1,9 +1,9 @@
 /**
  * Row A41-clip-cut — clip:edit check proves an edited clip from outside: the shape, blur, cut,
  * bars, crop and still parts read pixels of <out>/<slug>.mp4 with the system ffmpeg and hold
- * them against the spec; a video with a zoom piece gets a zoom part (A57). Each part reads a
- * source with the size, crop_top and pad of its own source. It reads the spec, the source clips
- * and the mp4, and writes nothing.
+ * them against the spec; a video with a zoom piece gets a zoom part (A57). The blur, cut, bars,
+ * crop, still and zoom parts use the checked source's size, crop_top and pad.
+ * It reads the spec, the source clips and the mp4, and writes nothing.
  */
 
 import { spawnSync } from "child_process";

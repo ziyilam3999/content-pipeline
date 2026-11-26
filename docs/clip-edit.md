@@ -5,15 +5,18 @@ Two verbs, both reading one spec file (schema `clip-edit/1`) and the source clip
     npm run clip:edit -- apply --spec <file> --clips <dir> --intake <dir> --out <dir> [--only <slug>]
     npm run clip:edit -- check --spec <file> --clips <dir> --out <dir> [--only <slug>]
 
-`apply` writes `<slug>.mp4`, `<slug>.edit.json` and a contact sheet under `review/` in `--out`
-(both folders outside any git work tree). `check` reads the mp4 from outside, writes nothing,
-and prints one `PASS` or `FAIL` line per part. Exit 2 is a refusal, exit 1 a failed part.
+`apply` writes `<slug>.mp4`, `<slug>.edit.json` and a contact sheet under `review/` in `--out`.
+It needs `--clips` and `--out` to be outside any git work tree. `check` reads the mp4 from
+outside, writes nothing, and prints one `PASS` or `FAIL` line per part. Exit 2 is a refusal,
+exit 1 a failed part.
 
 ## The spec
 
 - `output` — `width`, `height`, `fps` (whole, 1..60), `crop_top` (even, from 0), `pad_color` (`#RRGGBB`).
 - `sources[]` — `id`, `file`, `sha256`, `width`, `height`, `blur[]` (boxes that hide private data
-  while they play), `cut[]` (stretches not played, each with a `prove_absent` window for the check).
+  while they play), `cut[]` (stretches not played; the `prove_absent` window of a cut is optional
+  in the spec, but a cut on a played source needs one to pass the check, which else prints
+  `FAIL cut: unproven`).
 - `videos[]` — `slug` and `beats[]` (`n`, `clip`, `dur`, `pieces[]`): a piece is a stretch
   `{src, from, to}` or a held frame `{src, still, sec}`.
 
@@ -44,20 +47,22 @@ New codes of `validateSpec` (apply and check exit 2):
 
 A source's crop feeds the same checks as `output.crop_top`: `box-above-crop`, `content-too-tall`.
 
-`apply` has one refusal of its own for mixed sizes:
+The codes that were there before: `bad-schema`, `unknown-key`, `bad-number`, `bad-id`, `bad-slug`,
+`bad-file`, `bad-sha`, `src-twice`, `slug-twice`, `bad-output`, `bad-box`, `box-above-crop`,
+`content-too-tall`, `bad-time`, `unknown-src`, `piece-in-cut`, `still-in-cut`, `beat-order`,
+`beat-length`; `spec-invalid` (a spec that cannot be read or does not pass these checks; in
+`apply` also a graph filter outside the allowed list); in `apply` after the spec: `inside-repo`,
+`out-missing`, `source-missing`, `source-changed`, `not-in-intake`, `ffmpeg-missing`,
+`ffprobe-missing`, `shape-mismatch`, `piece-past-end`, `ffmpeg-failed`, `usage`; in `check` also
+`nothing-to-check` and `output-missing`.
+
+`shape-mismatch` covers a source that cannot be probed, and a source whose size or rotation
+differs from the spec. A57 added its pixel-shape meaning, in `apply`:
 
 - `shape-mismatch` — the sources of a video differ in pixel shape, so their joined parts would
   not line up. The pixel shape of a source is 1:1 at the output width, else
   (width x scaled height) : (output width x kept rows), reduced: 240x426 beside a 360 wide
   source gives 640:639 and is refused; 240x428 gives 1:1 and is cut. Nothing is written in `--out`.
-
-The codes that were there before: `bad-schema`, `unknown-key`, `bad-number`, `bad-id`, `bad-slug`,
-`bad-file`, `bad-sha`, `src-twice`, `slug-twice`, `bad-output`, `bad-box`, `box-above-crop`,
-`content-too-tall`, `bad-time`, `unknown-src`, `piece-in-cut`, `still-in-cut`, `beat-order`,
-`beat-length`; `spec-invalid` (a spec that cannot be read or does not pass these checks); in
-`apply` after the spec: `inside-repo`, `out-missing`, `source-missing`, `source-changed`,
-`not-in-intake`, `ffmpeg-missing`, `ffprobe-missing`, `piece-past-end`, `ffmpeg-failed`, `usage`;
-in `check` also `nothing-to-check` and `output-missing`.
 
 ## An example (made-up values)
 
@@ -85,8 +90,9 @@ Two sources of different sizes in one video, a zoom on the end of the second sho
 
 ## The check
 
-Six parts on a video without a zoom piece: `shape`, `blur`, `cut`, `bars`, `crop`, `still`. Each
-part reads a source with the size, `crop_top` and pad of that source. A video with a zoom piece
+Six parts on a video without a zoom piece: `shape`, `blur`, `cut`, `bars`, `crop`, `still`.
+`shape` is an ffprobe of the mp4 and reads no source. The pixel parts (the other five, and
+`zoom`) use the size, `crop_top` and pad of the source they check. A video with a zoom piece
 gets a seventh part, `PASS zoom` or `FAIL zoom`: the first frame of the piece must be nearest to
 the source frame with no zoom, the last frame nearest to that frame scaled by `zoom_to` and cut
 around the centre.
