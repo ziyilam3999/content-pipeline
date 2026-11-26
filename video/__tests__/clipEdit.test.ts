@@ -11,6 +11,7 @@ import * as os from "os";
 import * as path from "path";
 
 import { buildGraph, buildManifest, filterNames, pixelShape, runCli, validateSpec, zoomAt, type ClipEditSpec } from "../clipEdit";
+import { runCli as runIntakeCli } from "../clipIntake";
 import {
   AI_ATTEMPT,
   OTHER_ATTEMPT,
@@ -21,16 +22,23 @@ import {
   makeAiMixedFixture,
   makeEditFixture,
   makeMixedFixture,
+  makeSecondTake,
   makeSource,
   makeZoomFixture,
   mixedSpec,
+  openChecklist,
   outcomeLine,
+  readyChecklist,
   twoAiSpec,
+  twoTakeSpec,
+  writeChecklist,
   writeLines,
+  writeTakeFiles,
   zoomSpec,
   type AiFixture,
   type EditFixture,
   type SpecFixture,
+  type TestChecklist,
 } from "../clipEditFixture";
 import { hasSystemFfmpeg, resolveSystemFfmpeg } from "../contactSheet";
 
@@ -926,10 +934,7 @@ describe("clip:edit", () => {
     delete ai.kind;
     delete ai.attempt_id;
     expect(validateSpec(asTake)).toEqual([]);
-    fs.writeFileSync(
-      path.join(f.intakeDir, `${f.aiSha256}.intake.json`),
-      JSON.stringify({ schema: "clip-intake/1", file_name: "ai.mp4", sha256: f.aiSha256 }) + "\n",
-    );
+    writeTakeFiles(f.intakeDir, "ai.mp4", f.clipOf.ai, f.aiSha256);
     const asTakePath = writeSpec(f, "as-take.json", asTake);
     const oneLine = (lines: unknown[], name: string): void => {
       const out = tmp(name);
@@ -1088,5 +1093,253 @@ describe("clip:edit", () => {
     expect(r.code).toBe(2);
     expect(r.out).toBe("");
     expect(fs.readdirSync(f.outDir)).toEqual([]);
+  });
+
+  // ── the check list of a recorded take (A59) ─────────────────────────────────────────────────
+
+  /** The check list file of the fixture take. */
+  const listPath = (f: EditFixture): string => path.join(f.intakeDir, `${f.sha256}.checklist.json`);
+  /** The check list of the fixture take as the fixture wrote it. */
+  const readList = (f: EditFixture): TestChecklist => JSON.parse(fs.readFileSync(listPath(f), "utf8")) as TestChecklist;
+  /** The fixture take's check list after `change` worked on it. */
+  const changeList = (f: EditFixture, change: (c: TestChecklist) => void): void => {
+    const c = readList(f);
+    change(c);
+    writeChecklist(f.intakeDir, c);
+  };
+  /** The fixture take's check list with the lines of `kinds` answered `answer`. */
+  const answered = (f: EditFixture, answer: string, kinds: string[]): void => {
+    changeList(f, (c) => {
+      expect(c.lines.filter((l) => kinds.includes(l.kind))).toHaveLength(kinds.length);
+      for (const l of c.lines) if (kinds.includes(l.kind)) l.answer = answer;
+    });
+  };
+  /** The intake record of the fixture take with `sourcePath` at its source_path key. */
+  const recordWithPath = (f: EditFixture, sourcePath: string | null): void => {
+    const rec: Record<string, unknown> = { schema: "clip-intake/1", file_name: "fixture.mp4", sha256: f.sha256 };
+    if (sourcePath !== null) rec.source_path = sourcePath;
+    fs.writeFileSync(path.join(f.intakeDir, `${f.sha256}.intake.json`), `${JSON.stringify(rec)}\n`);
+  };
+  /** A refusal of apply for the check list of source `id`: exit 2, the one stderr line, an empty stdout and nothing in --out. */
+  const expectNotReady = (r: { code: number; out: string; err: string }, f: EditFixture, reasons: string, id = "a"): void => {
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    expect(r.err).toBe(`checklist-not-ready: source ${id}: ${reasons}\n`);
+    expect(fs.readdirSync(f.outDir)).toEqual([]);
+  };
+  /** A cut of the fixture take: exit 0 and the mp4 written. */
+  const expectCut = (r: { code: number; out: string; err: string }, f: EditFixture): void => {
+    expect(r.err).toBe("");
+    expect(r.code).toBe(0);
+    expect(r.out).toBe("clip-edit: wrote test-cut frames=75 sec=2.5\n");
+    expect(fs.existsSync(path.join(f.outDir, "test-cut.mp4"))).toBe(true);
+  };
+
+  /** The lists clip intake check calls not ready, each planted on the fixture take: its tag, the
+   *  reason codes of the check in its order, the plant, and what it is. */
+  const NOT_READY: [string, string, (f: EditFixture) => void, string][] = [
+    ["a", "checklist-missing", (f) => fs.rmSync(listPath(f)), "no check list file"],
+    [
+      "b",
+      "checklist-unreadable",
+      (f) => {
+        fs.rmSync(listPath(f));
+        fs.mkdirSync(listPath(f));
+      },
+      "a folder at the name of the check list file",
+    ],
+    ["c", "checklist-unreadable", (f) => fs.writeFileSync(listPath(f), "not json\n"), "a file that is not JSON"],
+    [
+      "d",
+      "checklist-unreadable",
+      (f) =>
+        fs.writeFileSync(
+          listPath(f),
+          `${JSON.stringify({ schema: "clip-checklist/1", sha256: f.sha256, file_name: "fixture.mp4", looked_by: "made-up looker" })}\n`,
+        ),
+      "JSON with no lines key",
+    ],
+    ["e", "open-lines", (f) => writeChecklist(f.intakeDir, openChecklist(f.sha256, "fixture.mp4")), "the list as intake writes it, 15 lines not checked"],
+    ["f", "present-lines", (f) => answered(f, "present", ["number-plate-vehicle"]), "one line present"],
+    ["g", "no-looker", (f) => changeList(f, (c) => void (c.looked_by = "")), "the lines answered and no looker"],
+    ["h", "shown-no-decision", (f) => answered(f, "shown", ["own-name"]), "one line shown with no note"],
+    [
+      "i",
+      "sha-mismatch",
+      (f) => fs.writeFileSync(listPath(f), `${JSON.stringify({ ...readList(f), sha256: "cd".repeat(32) })}\n`),
+      "a list whose sha256 key names another take",
+    ],
+    [
+      "j",
+      "source-missing",
+      (f) => {
+        // the record names a copy of the take, and that copy is gone; the take in --clips stays
+        const copy = path.join(f.clipsDir, "moved.mp4");
+        fs.copyFileSync(f.clipFile, copy);
+        recordWithPath(f, copy);
+        fs.rmSync(copy);
+      },
+      "a good list and the file at the source_path of the intake record removed",
+    ],
+    [
+      "n",
+      "present-lines, no-looker",
+      (f) => {
+        answered(f, "present", ["number-plate-vehicle"]);
+        changeList(f, (c) => void (c.looked_by = ""));
+      },
+      "one line present and no looker, two reasons in the order of the check",
+    ],
+    ["o", "intake-missing", (f) => recordWithPath(f, null), "a good list beside an intake record with no source_path"],
+  ];
+  for (const [tag, reasons, plant, what] of NOT_READY) {
+    ffTest(`(33${tag}) A59 not ready, ${what}: apply exits 2 with the one line checklist-not-ready (${reasons}) and nothing in --out`, () => {
+      const f = fixture();
+      plant(f);
+      expectNotReady(apply(f), f, reasons);
+    });
+  }
+
+  ffTest("(33p) A59 the reasons of apply are the ones clip intake check prints for the take, in its order; a ready list passes both", () => {
+    const checkVerdicts = (f: EditFixture): Record<string, string[]> => {
+      const written: string[] = [];
+      const write = jest.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+        written.push(String(chunk));
+        return true;
+      });
+      try {
+        runIntakeCli(["check", "--out", f.intakeDir]);
+      } finally {
+        write.mockRestore();
+      }
+      const out: Record<string, string[]> = {};
+      for (const line of written) {
+        const r = JSON.parse(line) as { sha256?: string; reasons?: string[] };
+        if (r.sha256 !== undefined) out[r.sha256] = r.reasons ?? [];
+      }
+      return out;
+    };
+    for (const [tag, , plant] of NOT_READY) {
+      const f = fixture();
+      plant(f);
+      const r = apply(f);
+      expect(r.code).toBe(2);
+      const printed = checkVerdicts(f)[f.sha256];
+      expect(printed).toBeDefined();
+      expect(r.err).toBe(`checklist-not-ready: source a: ${printed.join(", ")}\n`);
+    }
+    const f = fixture();
+    expect(checkVerdicts(f)[f.sha256]).toEqual([]);
+    expectCut(apply(f), f);
+  });
+
+  ffTest("(33k) A59 ready: 15 lines clear and a looker (the list of the fixture): the take is cut", () => {
+    const f = fixture();
+    expect(readList(f).lines.map((l) => l.answer)).toEqual(new Array(15).fill("clear"));
+    expect(readList(f).looked_by).not.toBe("");
+    expectCut(apply(f), f);
+  });
+
+  ffTest("(33l) A59 ready: two lines cut, the rest clear: the take is cut", () => {
+    const f = fixture();
+    answered(f, "cut", ["number-plate-vehicle", "phone-number"]);
+    expectCut(apply(f), f);
+  });
+
+  ffTest("(33m) A59 ready: own-name shown, the rest clear, under a good note for getspace-level3 and C-01: the take is cut", () => {
+    const f = fixture();
+    answered(f, "shown", ["own-name"]);
+    changeList(f, (c) => {
+      c.shown = { sha256: f.sha256, video: "getspace-level3", clips: ["C-01"], decision: "Made-up review board, decided 2026-01-05, written in the made-up minutes." };
+    });
+    expectCut(apply(f), f);
+  });
+
+  ffTest("(33q) A59 the order of the codes: not-in-intake of a source comes before checklist-not-ready, also before that of a later take", () => {
+    const f = fixture();
+    const b = makeSecondTake(f);
+    const spec = writeSpec(f, "two-take.json", twoTakeSpec(f.sha256, b));
+    writeChecklist(f.intakeDir, openChecklist(b, "second.mp4"));
+    const refused = (): void => {
+      const r = apply(f, [], { spec });
+      expect(r.code).toBe(2);
+      expect(r.out).toBe("");
+      expect(r.err).toBe("not-in-intake: source a has no clip-intake/1 record in --intake\n");
+      expect(fs.readdirSync(f.outDir)).toEqual([]);
+    };
+    // the first take's record is gone, its good list stays
+    fs.rmSync(path.join(f.intakeDir, `${f.sha256}.intake.json`));
+    refused();
+    // the second take's record is gone too, its open list stays: the line still names the first
+    fs.rmSync(path.join(f.intakeDir, `${b}.intake.json`));
+    refused();
+  });
+
+  ffTest("(34) second-open: two takes, the first with a ready list and the second with an open list: exit 2 naming the second; --only does not narrow it; with both ready both runs exit 0", () => {
+    const f = fixture();
+    const b = makeSecondTake(f);
+    const spec = writeSpec(f, "two-take.json", twoTakeSpec(f.sha256, b));
+    expect(validateSpec(JSON.parse(fs.readFileSync(spec, "utf8")) as ClipEditSpec)).toEqual([]);
+    writeChecklist(f.intakeDir, openChecklist(b, "second.mp4"));
+    const line = "checklist-not-ready: source b: open-lines\n";
+    const r = apply(f, [], { spec });
+    expectNotReady(r, f, "open-lines", "b");
+    // the video named by --only plays the first take alone: the second is asked all the same
+    const only = apply(f, ["--only", "first-cut"], { spec });
+    expectNotReady(only, f, "open-lines", "b");
+    // both lists ready: both runs cut
+    writeChecklist(f.intakeDir, readyChecklist(b, "second.mp4"));
+    const both = apply(f, [], { spec });
+    expect(both.err).toBe("");
+    expect(both.code).toBe(0);
+    expect(both.out).toBe("clip-edit: wrote first-cut frames=30 sec=1\nclip-edit: wrote second-cut frames=30 sec=1\n");
+    const onlyOut = tmp("second-open-only");
+    const onlyCut = apply(f, ["--only", "first-cut"], { spec, out: onlyOut });
+    expect(onlyCut.err).toBe("");
+    expect(onlyCut.code).toBe(0);
+    expect(onlyCut.out).toBe("clip-edit: wrote first-cut frames=30 sec=1\n");
+    expect(fs.existsSync(path.join(onlyOut, "first-cut.mp4"))).toBe(true);
+  });
+
+  ffTest("(35) open-beside-ai: a take with an open list and an ai-clip source whose attempt id is in no line of --spend: checklist-not-ready for the take, in both source orders; before it spend-missing and spend-unreadable; the ai-clip source is not asked for a list", () => {
+    const f = aiMixed();
+    writeChecklist(f.intakeDir, openChecklist(f.sha256, "take.mp4"));
+    const other = writeLines(f.spendDir, "other.jsonl", [outcomeLine(f.aiSha256, { attempt_id: OTHER_ATTEMPT })]);
+    const expectOpen = (r: { code: number; out: string; err: string }, out: string): void => {
+      expect(r.code).toBe(2);
+      expect(r.out).toBe("");
+      expect(r.err).toBe("checklist-not-ready: source take: open-lines\n");
+      expect(fs.readdirSync(out)).toEqual([]);
+    };
+    // the take first in the spec: its line, not the ai-clip source's not-in-spend
+    expectOpen(apply(f, spendArgs([other])), f.outDir);
+    // the ai-clip source first in the spec: the same line
+    const aiFirst = clone(f.spec);
+    aiFirst.sources = [aiFirst.sources[1], aiFirst.sources[0]];
+    expect(validateSpec(aiFirst)).toEqual([]);
+    const aiFirstPath = writeSpec(f, "ai-first.json", aiFirst);
+    const out = tmp("open-beside-ai");
+    expectOpen(apply(f, spendArgs([other]), { spec: aiFirstPath, out }), out);
+    // the ai-clip source has no check list and is not asked for one: with the take's list ready its own code is given
+    writeChecklist(f.intakeDir, readyChecklist(f.sha256, "take.mp4"));
+    const spendOut = tmp("open-beside-ai-spend");
+    const spendFault = apply(f, spendArgs([other]), { spec: aiFirstPath, out: spendOut });
+    expect(spendFault.code).toBe(2);
+    expect(spendFault.out).toBe("");
+    expect(spendFault.err).toBe("not-in-spend: source ai has no outcome line of status ok for its attempt_id in --spend\n");
+    expect(fs.readdirSync(spendOut)).toEqual([]);
+    // given before the pass: no --spend, and a --spend file that is not JSON lines
+    const missingOut = tmp("open-beside-ai-missing");
+    const missing = apply(f, [], { spec: aiFirstPath, out: missingOut });
+    expect(missing.code).toBe(2);
+    expect(missing.out).toBe("");
+    expect(missing.err).toBe("spend-missing: the spec holds an ai-clip source and --spend names no file\n");
+    const torn = path.join(f.spendDir, "torn.jsonl");
+    fs.writeFileSync(torn, '{"kind": "outcome"');
+    const unreadable = apply(f, spendArgs([torn]), { spec: aiFirstPath, out: missingOut });
+    expect(unreadable.code).toBe(2);
+    expect(unreadable.out).toBe("");
+    expect(unreadable.err).toBe("spend-unreadable: torn.jsonl has no final newline\n");
+    expect(fs.readdirSync(missingOut)).toEqual([]);
   });
 });

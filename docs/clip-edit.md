@@ -1,4 +1,4 @@
-# clip:edit — cut sources into a silent video (A41, A57)
+# clip:edit — cut sources into a silent video (A41, A57, A59)
 
 Two verbs, both reading one spec file (schema `clip-edit/1`) and the source clips:
 
@@ -108,13 +108,41 @@ attempt id, the rule reads the lines of status `ok`. Each is exit 2 with one lin
 `--out`, in `check` no part line is printed. A `recorded-clip` source still needs its intake
 record (`not-in-intake`).
 
+### The check list of a recorded take (A59)
+
+A `recorded-clip` source needs a ready check list in `--intake`: `<sha256>.checklist.json` (schema
+`clip-checklist/1`), the file `clip intake` writes beside the intake record and a person answers.
+`apply` refuses the run unless the list is ready, by the rule of `clip intake check`: it refuses
+when `clip intake check --out <that folder>` prints `ready false` for the sha256 of the take, and
+cuts when it prints `ready true` (the other checks of `apply` passing). Exit 2, stdout empty, one
+stderr line:
+
+- `checklist-not-ready: source <id>: <reasons>` — the reason codes `clip intake check` prints for
+  that take, in its order, joined by a comma and a space (`checklist-missing`, `checklist-unreadable`,
+  `open-lines`, `present-lines`, `no-looker`, `shown-no-decision`, `source-missing`,
+  `intake-missing`, `sha-mismatch`, and the other codes of the check). Here `source-missing` is the
+  check's reason (the path in the intake record is gone); the apply code `source-missing` below is a
+  spec source not found in `--clips`. Nothing is written in `--out`.
+
+Each recorded-clip source of the spec is asked, in spec order, also one that `--only` leaves
+unused; the line names the first whose list is not ready. The line is given in the per-source pass,
+right after `not-in-intake` of the same source: after `spend-missing` and `spend-unreadable`, and
+before the spend codes of an `ai-clip` source (`not-in-spend`, `spend-not-video`,
+`spend-hash-mismatch`). An `ai-clip` source is not asked for a check list, and `check` takes no
+`--intake` and reads no check list.
+
+The ready rule reads the `source_path` of the intake record and the file it names: the bytes there
+must still hash to the recorded sha256. An intake record written by hand needs that key, naming a
+file with the bytes of the take; one with no `source_path` is refused (`checklist-not-ready` with
+`intake-missing`).
+
 The codes that were there before: `bad-schema`, `unknown-key`, `bad-number`, `bad-id`, `bad-slug`,
 `bad-file`, `bad-sha`, `src-twice`, `slug-twice`, `bad-output`, `bad-box`, `box-above-crop`,
 `content-too-tall`, `bad-time`, `unknown-src`, `piece-in-cut`, `still-in-cut`, `beat-order`,
 `beat-length`; `spec-invalid` (a spec that cannot be read or does not pass these checks; in
 `apply` also a graph filter outside the allowed list); in `apply` after the spec: `inside-repo`,
-`out-missing`, `source-missing`, `source-changed`, `not-in-intake`, `ffmpeg-missing`,
-`ffprobe-missing`, `shape-mismatch`, `piece-past-end`, `ffmpeg-failed`, `usage`; in `check` also
+`out-missing`, `source-missing`, `source-changed`, `not-in-intake`, `checklist-not-ready`,
+`ffmpeg-missing`, `ffprobe-missing`, `shape-mismatch`, `piece-past-end`, `ffmpeg-failed`, `usage`; in `check` also
 `nothing-to-check` and `output-missing`.
 
 `shape-mismatch` covers a source that cannot be probed, and a source whose size or rotation
@@ -174,7 +202,8 @@ A recorded take beside an AI clip in one video (made-up values):
 
     npm run clip:edit -- apply --spec <file> --clips <dir> --intake <dir> --spend <record> --spend <archive> --out <dir>
 
-`take-a` needs a `clip-intake/1` record in `--intake` and is cut by `output.crop_top` (80).
+`take-a` needs a `clip-intake/1` record in `--intake` and a ready check list beside it, and is cut
+by `output.crop_top` (80).
 `clip-b` needs none; it is used whole (240x400 scaled to 360x600) and is accepted when one line
 of the two record files has `"kind": "outcome"`, `"status": "ok"`, its `attempt_id`, a service
 of the AI video group and its `sha256` as `file_sha256`.
@@ -211,6 +240,15 @@ around the centre.
 - A clip of the `video:gen` tool has no `file_sha256` in the record (its outcome line carries a
   file name), so it is refused as `ai-clip` with `spend-hash-mismatch` and is not caught by
   `ai-as-recorded`.
+- A take whose file at the intake record's `source_path` was moved or removed is refused
+  (`checklist-not-ready` with `source-missing`), though `--clips` holds the same bytes. Putting the
+  file back at the recorded path clears it. An intake record with no `source_path` is refused the
+  same way (`intake-missing`).
+- A ready check list with shown lines passes the cut of a video other than the one its note names:
+  `apply` asks for a ready list and does not compare the video and the clips of the note with the
+  cut it makes.
 - Without `--spend` a recorded-clip run still trusts the intake folder: an AI clip listed as a
-  `recorded-clip` source, with a `clip-intake/1` record written by hand, is cut as a take, with
-  the take's crop.
+  `recorded-clip` source, with a `clip-intake/1` record and a ready check list written by hand, is
+  cut as a take, with the take's crop. The record needs a `source_path` that names a file with the
+  bytes of the take; one with no `source_path` is refused (`checklist-not-ready` with
+  `intake-missing`).

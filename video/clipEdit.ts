@@ -10,6 +10,9 @@
  * stretch piece may end at zoom_to (zoomAt).
  * Row A57 (A49-cut-kind): a source of kind ai-clip is tied to the spend record by the sha256 of its
  * file and its attempt id, needs no intake record, and is used whole (crop_top 0).
+ * Row A59: a recorded take is cut only under a ready check list in --intake (the verdict of
+ * video/clipIntake.ts, the one clip intake check prints); the cut does not compare the video and clips
+ * of a shown note with the cut.
  */
 
 import { spawnSync } from "child_process";
@@ -18,7 +21,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 import { SERVICE_CAP_GROUPS } from "../adapters/videogen";
-import { resolveProbeTool } from "./clipIntake";
+import { checklistVerdict, resolveProbeTool } from "./clipIntake";
 import { generateContactSheet, hasSystemFfmpeg, resolveSystemFfmpeg, type ContactSheetBeat } from "./contactSheet";
 
 export const SPEC_SCHEMA = "clip-edit/1";
@@ -924,8 +927,8 @@ export function applyEdit(opts: ApplyOpts): string[] {
   if (read !== undefined && "unreadable" in read) throw new Refusal("spend-unreadable", read.unreadable);
   const spendLines = read === undefined ? undefined : read.lines;
 
-  // The source files: present, unchanged, and known to intake (a recorded take) or to the spend
-  // record (an AI clip, by attempt id and sha256).
+  // The source files: present, unchanged, and known to intake (a recorded take, with a ready
+  // check list) or to the spend record (an AI clip, by attempt id and sha256).
   const paths = new Map<string, string>();
   const spendFaults: { id: string; code: SpendCode }[] = []; // in spec order
   for (const s of sp.sources) {
@@ -950,6 +953,9 @@ export function applyEdit(opts: ApplyOpts): string[] {
         known = false;
       }
       if (!known) throw new Refusal("not-in-intake", `source ${s.id} has no ${INTAKE_SCHEMA} record in --intake`);
+      // Each recorded-clip source of the spec is asked, also one that --only leaves unused
+      const verdict = checklistVerdict(opts.intake, s.sha256);
+      if (!verdict.ready) throw new Refusal("checklist-not-ready", `source ${s.id}: ${verdict.reasons.join(", ")}`);
     }
     paths.set(s.id, file);
   }

@@ -606,7 +606,7 @@ function buildIntakeJson(f: ProbeFacts, tool: ProbeTool): Record<string, unknown
 }
 
 /** <sha256>.checklist.json — the 15 personal-data lines, each answered by a person editing this file outside every repo. */
-function buildChecklist(sha: string, fileName: string): Record<string, unknown> {
+export function buildChecklist(sha: string, fileName: string): Record<string, unknown> {
   return {
     schema: CHECKLIST_SCHEMA,
     sha256: sha,
@@ -618,7 +618,7 @@ function buildChecklist(sha: string, fileName: string): Record<string, unknown> 
 
 // ── the check verb ───────────────────────────────────────────────────────────────────────
 
-interface CheckResult {
+export interface CheckResult {
   sha256: string;
   ready: boolean;
   reasons: CheckReason[];
@@ -719,6 +719,19 @@ function shownVerdict(c: ParsedChecklist, shaName: string): ShownVerdict {
   return { notAllowed, noDecision, badScope, kinds, note: goodNote };
 }
 
+/** The verdict of the check list of the take `sha256` in an intake folder, read only: what the
+ *  check verb prints for it. clip:edit apply asks it here; the check verb uses it for a missing list. */
+export function checklistVerdict(outDir: string, sha256: string): CheckResult {
+  let there = true;
+  try {
+    fs.lstatSync(path.join(outDir, `${sha256}.checklist.json`));
+  } catch {
+    there = false;
+  }
+  if (!there) return { sha256, ready: false, reasons: ["checklist-missing"], cut_tasks: [] };
+  return evaluateChecklist(outDir, `${sha256}.checklist.json`);
+}
+
 /** Ready = all 15 lines clear/cut/shown under a good note, a real looker, the kinds in order, and the source bytes still hash to the recorded sha. */
 function evaluateChecklist(outDir: string, fileName: string): CheckResult {
   const shaName = fileName.slice(0, -".checklist.json".length);
@@ -817,7 +830,9 @@ function printUsage(): void {
       '"shown" note with four keys: sha256 (the take\'s), video (getspace-level3), clips (its story 1\n' +
       "clip ids of one phone) and decision (a text with a YYYY-MM-DD date that no other digit\n" +
       "touches and at least one letter; the first date shape in the text is the one read;\n" +
-      "write in it who decided and where that is recorded). The cut does not read the note.\n" +
+      "write in it who decided and where that is recorded). The cut (clip:edit apply) asks for a\n" +
+      "ready check list of each recorded take and does not compare the video and the clips of the\n" +
+      "note with the cut it makes.\n" +
       "Honest limit: the tool proves that a person answered every line, not that the answers are true.\n",
   );
 }
@@ -954,7 +969,7 @@ function runCheck(realOut: string): number {
     if (!n.endsWith(".intake.json")) continue;
     const sha = n.slice(0, -".intake.json".length);
     if (names.includes(`${sha}.checklist.json`)) continue;
-    results.push({ sha256: sha, ready: false, reasons: ["checklist-missing"], cut_tasks: [] });
+    results.push(checklistVerdict(realOut, sha));
   }
   results.sort((a, b) => byteCompare(a.sha256, b.sha256));
   let ready = 0;

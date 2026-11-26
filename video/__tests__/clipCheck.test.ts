@@ -23,6 +23,7 @@ import {
   outcomeLine,
   twoAiSpec,
   writeLines,
+  writeTakeFiles,
   zoomSpec,
   type AiFixture,
   type EditFixture,
@@ -654,10 +655,7 @@ describe("clip:edit check", () => {
       const ai = s.sources[1] as unknown as Record<string, unknown>;
       delete ai.kind;
       delete ai.attempt_id;
-      fs.writeFileSync(
-        path.join(f.intakeDir, `${f.aiSha256}.intake.json`),
-        JSON.stringify({ schema: "clip-intake/1", file_name: "ai.mp4", sha256: f.aiSha256 }) + "\n",
-      );
+      writeTakeFiles(f.intakeDir, "ai.mp4", f.clipOf.ai, f.aiSha256);
       const spec = specAt(f, "as-take.json", s);
       asTakeGood = { spec, out: appliedAi(f, spec, [], "ai-as-take") };
     }
