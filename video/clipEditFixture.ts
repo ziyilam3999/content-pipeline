@@ -109,9 +109,16 @@ export function makeSource(f: { clipsDir: string; intakeDir: string }, file: str
   return sha256;
 }
 
+/** The cut window of the second mixed source, 1.5 s up to (not including) 1.8 s: black and white
+ *  bands of 50 rows down its 400 rows. A read with another crop moves the bands, so the cut proof
+ *  of the check depends on the crop (a one-colour window would look the same under another crop). */
+const BAND_WINDOW_VF = [0, 50, 100, 150, 200, 250, 300, 350]
+  .map((y, i) => `drawbox=x=0:y=${y}:w=iw:h=50:color=${i % 2 === 0 ? "black" : "white"}:t=fill:enable='gte(t,1.5)*lt(t,1.8)'`)
+  .join(",");
+
 /** Two sources that differ in size, frame rate and crop_top, one video of 90 frames (3 s at 30 fps):
  *  a 360x500 25 fps gray noise clip with a green band on its top 80 rows (crop_top 80), and a 240x400
- *  24 fps noise clip with a sound track, a blur box that plays, a magenta window with prove_absent
+ *  24 fps noise clip with a sound track, a blur box that plays, a window of bands with prove_absent
  *  and a held frame (crop_top 0). output.crop_top (40) is neither source's crop. */
 export function mixedSpec(bandSha: string, soundSha: string, slug = "mixed-cut"): ClipEditSpec {
   return {
@@ -171,7 +178,7 @@ export function makeMixedFixture(): SpecFixture {
     "-i",
     "sine=frequency=440:duration=4",
     "-vf",
-    "noise=alls=40:allf=t+u,drawbox=x=0:y=0:w=iw:h=ih:color=magenta:t=fill:enable='gte(t,1.5)*lt(t,1.8)'",
+    `noise=alls=40:allf=t+u,${BAND_WINDOW_VF}`,
     "-map",
     "0:v",
     "-map",

@@ -94,8 +94,8 @@ around the centre.
 - The zoom is centred and eased in over the whole piece. The scaled size moves in 4 px steps, so
   the end zoom can sit a few pixels short of `zoom_to`: at `zoom_to` 1.12 a 360 wide picture
   ends at 400 wide (1.111), a 1080 wide one at 1208 (1.1185).
-- The zoom is built with scale (`eval=frame`) and crop, both reading the frame time. It was
-  measured on ffmpeg 8.1.1 on a Mac only.
+- The zoom is built with scale (`eval=frame`) and crop, both reading the frame time. The zoom
+  tests were run with ffmpeg 8.1.1 on a Mac and with ffmpeg 6.1.1 in the ubuntu CI job.
 - The sources of one video need the same pixel shape. A source narrower than the output width
   gets a shape of its own when its scaled height had to be rounded: 720x1280 with `crop_top` 110
   scaled to 1080 is 1756:1755. A `crop_top` that is a multiple of 4 keeps 1:1 on a height that is.

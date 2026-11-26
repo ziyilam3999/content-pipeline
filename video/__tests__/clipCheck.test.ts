@@ -489,6 +489,7 @@ describe("clip:edit check", () => {
   });
 
   ffTest("(39) mixed FAIL cut: an output that plays the second source straight through its cut", () => {
+    // The window is bands: it is found only when the cut part reads with the second source's own crop
     const g = mixedOnce();
     const out = tmp("mixed-straight");
     ff([
