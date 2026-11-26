@@ -1,6 +1,7 @@
 /**
  * Test fixture for clip:edit — a small clip made at test time by the system ffmpeg in a folder
- * under the OS temp dir, plus a spec and a minimal intake record. No clip file lives in the repo.
+ * under the OS temp dir, plus a spec and a minimal intake record, beside it a ready check list.
+ * No clip file lives in the repo.
  */
 
 import { spawnSync } from "child_process";
@@ -11,6 +12,7 @@ import * as path from "path";
 
 import { SERVICE_CAP_GROUPS } from "../adapters/videogen";
 import type { ClipEditSpec } from "./clipEdit";
+import { buildChecklist } from "./clipIntake";
 import { resolveSystemFfmpeg } from "./contactSheet";
 
 export interface EditFixture {
@@ -23,6 +25,44 @@ export interface EditFixture {
   sha256: string;
   clipFile: string;
   cleanup: () => void;
+}
+
+/** A check list as the tests read and change one. */
+export interface TestChecklist {
+  schema: string;
+  sha256: string;
+  file_name: string;
+  looked_by: string;
+  lines: { kind: string; answer: string; note: string }[];
+  shown?: unknown;
+}
+
+/** The check list of a take as clip intake writes it: the 15 lines not checked, no looker. */
+export function openChecklist(sha256: string, fileName: string): TestChecklist {
+  return buildChecklist(sha256, fileName) as unknown as TestChecklist;
+}
+
+/** A ready check list of a made-up take: the 15 lines clear and a made-up looker. */
+export function readyChecklist(sha256: string, fileName: string): TestChecklist {
+  const c = openChecklist(sha256, fileName);
+  return { ...c, looked_by: "made-up looker", lines: c.lines.map((l) => ({ ...l, answer: "clear" })) };
+}
+
+/** Write a check list of a take into an intake folder (its name is <sha256>.checklist.json). */
+export function writeChecklist(intakeDir: string, list: TestChecklist): string {
+  const p = path.join(intakeDir, `${list.sha256}.checklist.json`);
+  fs.writeFileSync(p, JSON.stringify(list) + "\n");
+  return p;
+}
+
+/** The intake record of a made-up take (with the path of its clip, as intake writes it) and its
+ *  ready check list, both into the intake folder. */
+export function writeTakeFiles(intakeDir: string, fileName: string, clipFile: string, sha256: string): void {
+  fs.writeFileSync(
+    path.join(intakeDir, `${sha256}.intake.json`),
+    JSON.stringify({ schema: "clip-intake/1", file_name: fileName, source_path: clipFile, sha256 }) + "\n",
+  );
+  writeChecklist(intakeDir, readyChecklist(sha256, fileName));
 }
 
 /** The fixture spec for a clip with this sha256: 2 beats, 75 frames, 2.5 s at 30 fps. */
@@ -77,10 +117,7 @@ export function makeEditFixture(): EditFixture {
   );
   if (res.status !== 0) throw new Error(`fixture clip failed: ${res.stderr}`);
   const sha256 = crypto.createHash("sha256").update(fs.readFileSync(clipFile)).digest("hex");
-  fs.writeFileSync(
-    path.join(intakeDir, `${sha256}.intake.json`),
-    JSON.stringify({ schema: "clip-intake/1", file_name: "fixture.mp4", sha256, video: { width: 360, height: 568, rotation: 0 } }) + "\n",
-  );
+  writeTakeFiles(intakeDir, "fixture.mp4", clipFile, sha256);
   const spec = fixtureSpec(sha256);
   const specPath = path.join(root, "spec.json");
   fs.writeFileSync(specPath, JSON.stringify(spec, null, 2) + "\n");
@@ -97,19 +134,37 @@ function folders(): { root: string; clipsDir: string; intakeDir: string; outDir:
   return { root, clipsDir, intakeDir, outDir };
 }
 
-/** A small test clip (the ffmpeg arguments after the log level) with its intake record (none for
- *  intake false, the AI clip of the ai-mixed fixture); returns its sha256. */
+/** A small test clip (the ffmpeg arguments after the log level) with its intake record and ready
+ *  check list (neither for intake false, the AI clip of the ai-mixed fixture); returns its sha256. */
 export function makeSource(f: { clipsDir: string; intakeDir: string }, file: string, args: string[], intake = true): string {
   const clipFile = path.join(f.clipsDir, file);
   const res = spawnSync(resolveSystemFfmpeg(), ["-y", "-hide_banner", "-loglevel", "error", ...args, clipFile], { encoding: "utf8" });
   if (res.status !== 0) throw new Error(`fixture clip ${file} failed: ${res.stderr}`);
   const sha256 = crypto.createHash("sha256").update(fs.readFileSync(clipFile)).digest("hex");
-  if (!intake) return sha256;
-  fs.writeFileSync(
-    path.join(f.intakeDir, `${sha256}.intake.json`),
-    JSON.stringify({ schema: "clip-intake/1", file_name: file, sha256 }) + "\n",
-  );
+  if (intake) writeTakeFiles(f.intakeDir, file, clipFile, sha256);
   return sha256;
+}
+
+/** A second made-up take (second.mp4, 360x568, 30 fps, 2 s) beside the clip of a fixture, with its
+ *  intake record and ready check list; returns its sha256. */
+export function makeSecondTake(f: { clipsDir: string; intakeDir: string }): string {
+  return makeSource(f, "second.mp4", ["-f", "lavfi", "-i", "testsrc2=size=360x568:rate=30:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p"]);
+}
+
+/** A spec of two takes, a and b, and two videos: first-cut plays a alone, second-cut plays b alone. */
+export function twoTakeSpec(aSha: string, bSha: string): ClipEditSpec {
+  return {
+    schema: "clip-edit/1",
+    output: { width: 360, height: 640, fps: 30, crop_top: 80, pad_color: "#FFFFFF" },
+    sources: [
+      { id: "a", file: "fixture.mp4", sha256: aSha, width: 360, height: 568, blur: [], cut: [] },
+      { id: "b", file: "second.mp4", sha256: bSha, width: 360, height: 568, blur: [], cut: [] },
+    ],
+    videos: [
+      { slug: "first-cut", beats: [{ n: 1, clip: "one", dur: 1, pieces: [{ src: "a", from: 0, to: 1 }] }] },
+      { slug: "second-cut", beats: [{ n: 1, clip: "one", dur: 1, pieces: [{ src: "b", from: 0, to: 1 }] }] },
+    ],
+  };
 }
 
 /** The cut window of the second mixed source, 1.5 s up to (not including) 1.8 s: black and white
