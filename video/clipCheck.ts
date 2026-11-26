@@ -3,7 +3,8 @@
  * <out>/<slug>.mp4 against the spec: the shape part is an ffprobe of the mp4; the blur, cut, bars,
  * crop and still parts read pixels with the system ffmpeg, as does the zoom part of a video with
  * a zoom piece (A57). These pixel parts use the checked source's size, crop_top and pad.
- * It reads the spec, the source clips and the mp4, and writes nothing.
+ * It reads the spec, the source clips and the mp4, and writes nothing. An ai-clip source of the spec
+ * is held to the spend record named by --spend, as in apply, before any part line is printed.
  */
 
 import { spawnSync } from "child_process";
@@ -11,11 +12,13 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 
+import { SERVICE_CAP_GROUPS } from "../adapters/videogen";
 import { resolveProbeTool } from "./clipIntake";
 import { hasSystemFfmpeg, resolveSystemFfmpeg } from "./contactSheet";
 import {
   buildGraph,
   pieceFrames,
+  readSpend,
   sourceShape,
   validateSpec,
   zoomOf,
@@ -25,10 +28,11 @@ import {
   type Piece,
   type Source,
   type SourceShape,
+  type SpendLine,
   type VideoSpec,
 } from "./clipEdit";
 
-// ── own copies of the two lookups apply holds too (clipEdit.ts keeps its own) ─────────────
+// ── own copies of the lookups apply holds too (clipEdit.ts keeps its own) ──────────────────
 
 class Refusal extends Error {
   constructor(
@@ -72,6 +76,48 @@ function resolveProbe(ffmpeg: string): ProbeBin {
   } catch (err) {
     throw new Refusal("ffprobe-missing", err instanceof Error ? err.message : String(err));
   }
+}
+
+// ── the spend record (the rule of apply, held to each ai-clip source of the spec) ────────────
+
+const isAi = (s: Source): boolean => s.kind === "ai-clip";
+
+/** Is the service of a line in the AI video cap group (the table's own keys only)? */
+function isVideoService(service: unknown): boolean {
+  return typeof service === "string" && Object.prototype.hasOwnProperty.call(SERVICE_CAP_GROUPS, service) && SERVICE_CAP_GROUPS[service] === "ai-video";
+}
+
+/** The codes of spendRefusal, in the order given when the sources of a spec differ. */
+const SPEND_ORDER = ["not-in-spend", "spend-not-video", "spend-hash-mismatch"];
+
+/** The refusal of an ai-clip source that is not in the spend lines: the source is accepted when one
+ *  line holds kind outcome, status ok, the attempt_id of the source, a service of the AI video group
+ *  and the sha256 of the clip file. */
+function spendRefusal(s: Source, lines: SpendLine[]): Refusal | undefined {
+  const ok = lines.filter(
+    (l) => l.kind === "outcome" && // a line of another kind does not count
+      l.status === "ok" && // an outcome of another status does not count
+      l.attempt_id === s.attempt_id, // a line of another attempt does not count
+  );
+  if (ok.length === 0) return new Refusal("not-in-spend", `source ${s.id} has no outcome line of status ok for its attempt_id in --spend`);
+  const video = ok.filter((l) => isVideoService(l.service)); // a line of a service outside the AI video group does not count
+  if (video.length === 0) return new Refusal("spend-not-video", `source ${s.id} has no outcome line of status ok of a service of the AI video group in --spend`);
+  if (!video.some((l) => l.file_sha256 === s.sha256)) {
+    return new Refusal("spend-hash-mismatch", `source ${s.id} has no outcome line of status ok with the sha256 of the clip file in --spend`);
+  }
+  return undefined;
+}
+
+/** The lines of the --spend files, or the refusal: a spec that holds an ai-clip source needs --spend,
+ *  also when --only leaves that source unused; a named file is read also for a spec without one. */
+function spendLinesOf(sp: ClipEditSpec, files: string[] | undefined): SpendLine[] | undefined {
+  if (files === undefined || files.length === 0) {
+    if (sp.sources.some(isAi)) throw new Refusal("spend-missing", "the spec holds an ai-clip source and --spend names no file");
+    return undefined;
+  }
+  const read = readSpend(files);
+  if ("unreadable" in read) throw new Refusal("spend-unreadable", read.unreadable);
+  return read.lines;
 }
 
 // ── pixel reads (system ffmpeg, rawvideo to stdout, argument arrays) ─────────────────────
@@ -471,6 +517,8 @@ export interface CheckOpts {
   clips: string;
   out: string;
   only?: string;
+  /** The JSON-lines files of the spend record; a spec with an ai-clip source needs them. */
+  spend?: string[];
 }
 
 function checkEdit(opts: CheckOpts): { lines: string[]; fail: number } {
@@ -494,12 +542,28 @@ function checkEdit(opts: CheckOpts): { lines: string[]; fail: number } {
     if (v.beats.length === 0) throw new Refusal("nothing-to-check", `video ${v.slug} has no beats`);
   }
 
+  // The spend record, before any part line is printed: each source is held to it, also one that
+  // --only leaves unused.
+  const spendLines = spendLinesOf(sp, opts.spend);
+
   const clips = new Map<string, string>();
+  const spendRefused: Refusal[] = []; // in spec order
   for (const s of sp.sources) {
     const file = path.join(opts.clips, s.file);
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new Refusal("source-missing", `source ${s.id} is not in --clips`);
     if (sha256Streamed(file) !== s.sha256) throw new Refusal("source-changed", `source ${s.id} differs from the spec sha256`);
+    if (isAi(s)) {
+      const refused = spendRefusal(s, spendLines ?? []);
+      if (refused) spendRefused.push(refused);
+    } else if (spendLines !== undefined && spendLines.some((l) => l.file_sha256 === s.sha256)) {
+      throw new Refusal("ai-as-recorded", `source ${s.id} is a recorded-clip source whose sha256 is the file_sha256 of a line in --spend`);
+    }
     clips.set(s.id, file);
+  }
+  // One order over the ai-clip sources of the spec; the line names the first source with the code
+  for (const code of SPEND_ORDER) {
+    const first = spendRefused.find((r) => r.code === code);
+    if (first !== undefined) throw first;
   }
 
   try {
@@ -532,21 +596,23 @@ function checkEdit(opts: CheckOpts): { lines: string[]; fail: number } {
   return { lines, fail };
 }
 
-const USAGE = "usage: clipEdit check --spec <file> --clips <dir> --out <dir> [--only <slug>]\n";
+const USAGE = "usage: clipEdit check --spec <file> --clips <dir> --out <dir> [--spend <file>]... [--only <slug>]\n";
 
 export function runCheckCli(argv: string[]): CliResult {
   if (argv[0] !== "check") return { code: 2, out: "", err: USAGE };
   const vals: Record<string, string> = {};
+  const spend: string[] = [];
   for (let i = 1; i < argv.length; i += 2) {
     const k = argv[i];
-    if (!["--spec", "--clips", "--out", "--only"].includes(k) || i + 1 >= argv.length) {
+    if (!["--spec", "--clips", "--out", "--only", "--spend"].includes(k) || i + 1 >= argv.length) {
       return { code: 2, out: "", err: USAGE };
     }
-    vals[k] = argv[i + 1];
+    if (k === "--spend") spend.push(argv[i + 1]); // may be named more than once
+    else vals[k] = argv[i + 1];
   }
   if (!vals["--spec"] || !vals["--clips"] || !vals["--out"]) return { code: 2, out: "", err: USAGE };
   try {
-    const r = checkEdit({ spec: vals["--spec"], clips: vals["--clips"], out: vals["--out"], only: vals["--only"] });
+    const r = checkEdit({ spec: vals["--spec"], clips: vals["--clips"], out: vals["--out"], only: vals["--only"], spend });
     return { code: r.fail === 0 ? 0 : 1, out: r.lines.map((l) => `${l}\n`).join(""), err: "" };
   } catch (err) {
     if (err instanceof Refusal) return { code: 2, out: "", err: `${err.message}\n` };
