@@ -14,7 +14,9 @@ The tool reads no key, sends no request and reads no spend record; it needs the 
 - `--spec <file>` the `clip-sound/1` spec.
 - `--media <dir>` the folder of the picture, the line files and the bed.
 - `--out <dir>` an existing folder for the four files, not `--media`; both outside a git work tree.
-- `--dry` the checks and the measurements only: nothing is written into `--out`.
+- `--dry` the checks and the measurements only: nothing is written into `--out`. A dry run prints
+  no fade length: its lines are those of a spec without the fade keys, and a fade the tool cannot
+  lay shows by its refusal.
 
 A good run prints
 `clip-sound: wrote <slug> sec=<n> lines=<n> voice-lufs=<n> mix-lufs=<n> mix-peak-db=<n>` and
@@ -39,6 +41,12 @@ These keys and no other.
   `0 <= from <= at < to` and `to` not beyond the picture's end. It is copied to the sound record;
   the words are not judged against it here.
 - `bed` — `file`, `sha256`, `level_lufs` (a number from -40 to -18).
+- `bed.fade_in_sec`, `bed.fade_out_sec` — each on its own, if wanted: a number above 0 and up to
+  10, with at most 3 decimals (the step of `at`). `fade_in_sec` is the length of a straight-line
+  rise of the bed from its first sample; `fade_out_sec` is the length of a straight-line fall that
+  ends with the last sample of the laid bed. A key that is not there means no fade on that side;
+  a key that is there is read as it stands (0, `null` and `false` are refused). The two together
+  may not be longer than the laid bed (`fade-too-long`).
 - `file` — a bare file name in `--media`, 1 to 200 characters, with no path separator and no `..`,
   not starting with a dot or a dash. `sha256` is 64 lower-case hex characters.
 
@@ -56,7 +64,8 @@ These keys and no other.
           { "id": "line-two", "file": "line-two.wav", "sha256": "<sha256 of the file>", "at": 7.25 }
         ]
       },
-      "bed": { "file": "bed.mp3", "sha256": "<sha256 of the file>", "level_lufs": -28 }
+      "bed": { "file": "bed.mp3", "sha256": "<sha256 of the file>", "level_lufs": -28,
+        "fade_in_sec": 0.5, "fade_out_sec": 2 }
     }
 
 ## Refusal codes
@@ -83,6 +92,8 @@ A refusal exits 2, the first stderr line starts with the code, and no file of th
 - `line-past-end` — `at` plus the end of the words is beyond the picture's end.
 - `line-overlap` — the words of a line end after the next line starts; a silent tail may reach into it.
 - `bed-too-short` — the bed ends more than 0.05 s before the picture does.
+- `fade-too-long` — the two bed fades together are longer than the laid bed (the picture, or the
+  bed when it is shorter); `--dry` refuses too.
 - `ffmpeg-missing` — no system ffmpeg or ffprobe.
 - `ffmpeg-failed` — ffmpeg or ffprobe exits with an error, or a measure cannot be read.
 
@@ -96,6 +107,8 @@ The reason lines of `spec-invalid`, as `<code>: <detail>`:
 - `bad-file` — a `file` is not a bare file name as above.
 - `bad-sha` — a `sha256` is not 64 lower-case hex characters.
 - `bad-level` — `target_lufs` or `level_lufs` is not a number in its range.
+- `bad-fade` — `fade_in_sec` or `fade_out_sec` is not a number above 0 and up to 10 with at most
+  3 decimals.
 - `no-lines` — the list of lines is empty.
 - `too-many-lines` — more than 40 lines.
 - `bad-time` — an `at` is not a number of 0 or more with at most 3 decimals.
@@ -113,7 +126,8 @@ An error outside these codes exits 1 with a `clip-sound: error:` line.
 - `picture` — `file`, `sha256`, `video_stream_sha256`, `frames`, `sec`.
 - `lines[]` — `id`, `file`, `sha256`, `at`, `sec`, `words_end` (seconds from the line's start),
   `in_lufs`, `gain_db`, `out_lufs`, and `window` (`from`, `to`) when the spec gave one.
-- `bed` — `file`, `sha256`, `sec`, `in_lufs`, `gain_db`.
+- `bed` — `file`, `sha256`, `sec`, `in_lufs`, `gain_db`, and `fade_in_sec`, `fade_out_sec` when
+  the spec gave them, each with the number of the spec.
 - `mix` — `target_lufs`, `level_lufs`, `line_limit`, `line_attack_ms`, `line_release_ms`,
   `duck_threshold`, `duck_ratio`, `duck_attack_ms`, `duck_release_ms`, `sum_limit`,
   `sum_attack_ms`, `sum_release_ms`, `sample_rate`, `aac_kbps`.
@@ -134,7 +148,13 @@ The numbers are those of the mix the operator passed on 2026-11-26 (scratch scri
    file end. The tail behind it is not used.
 3. The voice track: the lines at their `at` times, mono, 48 kHz, 16-bit, as long as the picture.
 4. The bed: its first sound stream, stereo at 48 kHz, a plain gain of `level_lufs` minus its
-   loudness (read over the whole stream), cut at the picture's end.
+   loudness (read over the whole stream), cut at the picture's end, or at its own end when it is up
+   to 0.05 s shorter. On the cut bed lie the fades the spec asks for, and only those: a straight
+   line (`afade`, curve `tri`) from 0 to 1 over `fade_in_sec` from the first sample, and a
+   straight line from 1 to 0 over `fade_out_sec` that ends with the last laid sample. Each length
+   is a whole count of samples at 48 kHz, rounded to the nearest one. The fade stands on the bed
+   after its resample, its gain and its cut, and before the duck of step 5: the voice track, the
+   key of the duck and the sum are not faded, and the numbers of the duck and of the limiters stay.
 5. Ducking: the voice track as stereo (each channel 3 dB lower) keys a side-chain compressor on
    the bed: threshold 0.03, ratio 4, attack 20 ms, release 500 ms.
 6. The sum of the stereo voice and the ducked bed, no level change, then a limiter: limit 0.84,
@@ -146,9 +166,12 @@ The numbers are those of the mix the operator passed on 2026-11-26 (scratch scri
 ## Known limits
 
 - One bed, and it is not looped or padded. A bed up to 0.05 s short is taken as it is.
-- No fade is added.
+- The fade is the bed's only: a straight line, up to 10 s a side, and none without the keys. The
+  narrator and the sum are not faded, and the bed is not looped, padded or stretched to make room
+  for a fade.
 - The clips' own sound is not used.
-- The numbers of the mix are fixed.
+- The numbers of the mix are fixed; the two levels and the fade lengths are what a spec sets.
+- For a carded cut the fade lengths are a choice of the spec: the tool does not read a card record.
 - Words shorter than 1 s are refused.
 - The tool measures and prints; the pass or fail lines belong to the later film check (ticket V4).
 - A hot mix can read above -1 dB true peak after the AAC step (a probe on a made-up bed read
