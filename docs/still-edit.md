@@ -7,17 +7,38 @@ default; `--live` sends at most one POST, to the plan's model, at
 (header `x-goog-api-key`, that host only, no retry inside a run).
 
     npm run still:edit -- --plan tools/still-edit-plan.json --item ai-4-no-pillars \
-      --in <png or jpeg> --out <dir> --ledger <file> --ceiling-usd 1 [--timeout-seconds <n>] [--live]
+      --in <png or jpeg> --out <dir> --ledger <file> --ceiling-usd 46 [--timeout-seconds <n>] [--live]
 
 - `--plan <file>` — the run plan (prompts are plan data, never code); one run handles one `--item`.
 - `--item <id>` — one item of the plan; `needs_input` true requires `--in`, false refuses it.
 - `--out <dir>` / `--ledger <file>` — where the image and the spend lines go (outside the repo, or in its `out/`).
-- `--ceiling-usd <n>` — the AI image cap for this run, at most USD 1 (25 calls at list).
+- `--ceiling-usd <n>` — a ceiling on the total of the spend record for this run, at most 46
+  (see Spend cap).
 - `--in <png or jpeg>` — the still to edit; PNG or JPEG by its first bytes, at most 8 MB (a guess), no symlink.
 - `--timeout-seconds <n>` — the call limit (default 120). `--live` — send the one call.
 
-Spend group `ai-image` (its own cap, apart from `ai-video`): lines carry service
-`gemini-image`; `--ceiling-usd` is capped at USD 1. Price read 2026-11-22 on
+## Spend cap
+
+There is one cap, USD 46, over the whole spend record.
+The record is written and read by three tools: `video:gen`, `video:tryout` and `still:edit`.
+Every line of the record counts, whatever tool wrote it.
+`--ceiling-usd` is a ceiling on the total of the spend record for this run, at most 46.
+A value under the total already spent refuses.
+The number sits in `PAID_SPEND_CAP_USD` in `adapters/videogen.ts`.
+The operator raises it when needed.
+
+Two things went with the old split. The USD 1 guard on image spend is gone.
+One tool can now use all the room.
+An unknown service in the record refuses each of the three tools.
+
+Known limit: two adapters make paid calls, write no spend line and check no cap.
+They are `adapters/voice.ts` (ElevenLabs voice, `fetch` at line 135) and
+`adapters/genart.ts` (Gemini art, `fetch` at line 178).
+Their spend is outside this cap until a ticket adds them.
+
+## Price and billing
+
+The lines of this tool carry service `gemini-image`. Price read 2026-11-22 on
 https://ai.google.dev/gemini-api/docs/pricing (redirects to aistudio.google.com/docs/pricing):
 Gemini 2.5 Flash Image, paid tier only, "$0.039 per image" output; the estimate is USD 0.040
 per call = 0.039 output + 0.001 input (a guess on the high side; the input token count of a
