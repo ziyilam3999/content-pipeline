@@ -11,7 +11,8 @@
  * Row A57 (A49-cut-kind): a source of kind ai-clip is tied to the spend record by the sha256 of its
  * file and its attempt id, needs no intake record, and is used whole (crop_top 0).
  * Row A59: a recorded take is cut only under a ready check list in --intake (the verdict of
- * video/clipIntake.ts, the one clip intake check prints); the cut does not read the note of a shown line.
+ * video/clipIntake.ts, the one clip intake check prints); the cut does not compare the video and clips
+ * of a shown note with the cut.
  */
 
 import { spawnSync } from "child_process";

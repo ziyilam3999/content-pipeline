@@ -720,7 +720,7 @@ function shownVerdict(c: ParsedChecklist, shaName: string): ShownVerdict {
 }
 
 /** The verdict of the check list of the take `sha256` in an intake folder, read only: what the
- *  check verb prints for it. The check verb and clip:edit apply both get it here: one rule for both. */
+ *  check verb prints for it. clip:edit apply asks it here; the check verb uses it for a missing list. */
 export function checklistVerdict(outDir: string, sha256: string): CheckResult {
   let there = true;
   try {

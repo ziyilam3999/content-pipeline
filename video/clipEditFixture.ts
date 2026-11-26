@@ -55,7 +55,7 @@ export function writeChecklist(intakeDir: string, list: TestChecklist): string {
   return p;
 }
 
-/** The intake record of a made-up take (with the path of its clip, as intake writes it) and its
+/** The intake record of a made-up take (intake's shape, with the tmp path of its clip) and its
  *  ready check list, both into the intake folder. */
 export function writeTakeFiles(intakeDir: string, fileName: string, clipFile: string, sha256: string): void {
   fs.writeFileSync(

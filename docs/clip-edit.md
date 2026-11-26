@@ -120,7 +120,9 @@ stderr line:
 - `checklist-not-ready: source <id>: <reasons>` — the reason codes `clip intake check` prints for
   that take, in its order, joined by a comma and a space (`checklist-missing`, `checklist-unreadable`,
   `open-lines`, `present-lines`, `no-looker`, `shown-no-decision`, `source-missing`,
-  `intake-missing`, `sha-mismatch`, and the other codes of the check). Nothing is written in `--out`.
+  `intake-missing`, `sha-mismatch`, and the other codes of the check). Here `source-missing` is the
+  check's reason (the path in the intake record is gone); the apply code `source-missing` below is a
+  spec source not found in `--clips`. Nothing is written in `--out`.
 
 Each recorded-clip source of the spec is asked, in spec order, also one that `--only` leaves
 unused; the line names the first whose list is not ready. The line is given in the per-source pass,
