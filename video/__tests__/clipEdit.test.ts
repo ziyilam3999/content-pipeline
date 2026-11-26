@@ -743,6 +743,33 @@ describe("clip:edit", () => {
     expect(validateSpec(asTake)).toEqual([]);
   });
 
+  test("(20b) validateSpec: an attempt id with one hex character less or one more in a group is refused with bad-attempt-id, each of the five groups in turn", () => {
+    const good = aiMixedSpec(SHA, "cd".repeat(32));
+    expect(validateSpec(good)).toEqual([]);
+    expect(good.sources[1].attempt_id).toBe("1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d");
+    // [the group and its count, the id written out]
+    const ids: [string, string][] = [
+      ["first group, 7", "1a2b3c4-5e6f-4a7b-8c9d-0e1f2a3b4c5d"],
+      ["first group, 9", "1a2b3c4d0-5e6f-4a7b-8c9d-0e1f2a3b4c5d"],
+      ["second group, 3", "1a2b3c4d-5e6-4a7b-8c9d-0e1f2a3b4c5d"],
+      ["second group, 5", "1a2b3c4d-5e6f0-4a7b-8c9d-0e1f2a3b4c5d"],
+      ["third group, 3", "1a2b3c4d-5e6f-4a7-8c9d-0e1f2a3b4c5d"],
+      ["third group, 5", "1a2b3c4d-5e6f-4a7b0-8c9d-0e1f2a3b4c5d"],
+      ["fourth group, 3", "1a2b3c4d-5e6f-4a7b-8c9-0e1f2a3b4c5d"],
+      ["fourth group, 5", "1a2b3c4d-5e6f-4a7b-8c9d0-0e1f2a3b4c5d"],
+      ["last group, 11", "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5"],
+      ["last group, 13", "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d0"],
+    ];
+    for (const [named, id] of ids) {
+      const s = clone(good);
+      s.sources[1].attempt_id = id;
+      expect([named, validateSpec(s)]).toEqual([
+        named,
+        [`bad-attempt-id: sources[1].attempt_id is "${id}", not lower-case hex in the layout 8-4-4-4-12`],
+      ]);
+    }
+  });
+
   test("(21) the crop of an ai-clip source is 0 in the validator: with output.crop_top 80 an AI clip 360x60 passes and a recorded one of that shape does not; 360x660 fits the output height only after the crop; a box in the top 80 rows", () => {
     const base = aiMixedSpec(SHA, "cd".repeat(32));
     expect(base.output.crop_top).toBe(80); // 80 of the 640 output rows
