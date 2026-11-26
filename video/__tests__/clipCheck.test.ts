@@ -572,4 +572,27 @@ describe("clip:edit check", () => {
     const out = appliedTo(f, spec, "flat-cut");
     expectFail(check(spec, f.clipsDir, out), "FAIL zoom flat-cut", 1);
   });
+
+  ffTest("(44) zoom FAIL: an output zoomed from its first frame (1.12 held for the whole piece)", () => {
+    const g = zoomOnce();
+    const out = tmp("zoom-held");
+    // 400x536 is the size apply gives this picture at zoom 1.12; the cut is centred, the pad is apply's
+    ff([
+      "-i",
+      g.f.clipFile,
+      "-vf",
+      "setpts=PTS-STARTPTS,fps=30,scale=400:536,crop=360:480:20:28,pad=360:640:0:80:color=0xFFFFFF,format=yuv420p",
+      "-frames:v",
+      "30",
+      "-an",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      path.join(out, "zoom-cut.mp4"),
+    ]);
+    const r = check(g.spec, g.f.clipsDir, out);
+    expect(r.out).toContain("PASS shape zoom-cut\n");
+    expectFail(r, "FAIL zoom zoom-cut");
+  });
 });
