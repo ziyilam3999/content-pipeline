@@ -1,7 +1,9 @@
 /**
- * Row A41-clip-cut — clip:edit check proves an edited clip from outside: the shape, blur, cut,
- * bars, crop and still parts read pixels of <out>/<slug>.mp4 with the system ffmpeg and hold
- * them against the spec. It reads the spec, the source clips and the mp4, and writes nothing.
+ * Row A41-clip-cut — clip:edit check proves an edited clip from outside and holds
+ * <out>/<slug>.mp4 against the spec: the shape part is an ffprobe of the mp4; the blur, cut, bars,
+ * crop and still parts read pixels with the system ffmpeg, as does the zoom part of a video with
+ * a zoom piece (A57). These pixel parts use the checked source's size, crop_top and pad.
+ * It reads the spec, the source clips and the mp4, and writes nothing.
  */
 
 import { spawnSync } from "child_process";
@@ -13,14 +15,16 @@ import { resolveProbeTool } from "./clipIntake";
 import { hasSystemFfmpeg, resolveSystemFfmpeg } from "./contactSheet";
 import {
   buildGraph,
-  contentHeight,
   pieceFrames,
+  sourceShape,
   validateSpec,
+  zoomOf,
   type BlurBox,
   type ClipEditSpec,
   type CliResult,
   type Piece,
   type Source,
+  type SourceShape,
   type VideoSpec,
 } from "./clipEdit";
 
@@ -108,6 +112,8 @@ function mad(a: Buffer, b: Buffer): number {
 interface PieceRun {
   p: Piece;
   start: number; // first output frame of the piece
+  firstSrc: number; // source frame (apply's grid) the first output frame shows
+  lastSrc: number; // source frame the last output frame shows
   frames: number;
   midOut: number; // middle output frame of the piece
   midSrc: number; // source frame (apply's grid) the middle output frame shows
@@ -123,14 +129,18 @@ function pieceRuns(video: VideoSpec, fps: number): PieceRun[] {
       const frames = pieceFrames(p, fps);
       let midSrc: number;
       let midOut: number;
+      let firstSrc: number;
+      let lastSrc: number;
       if ("still" in p) {
-        midSrc = Math.round(p.still * fps);
+        lastSrc = firstSrc = midSrc = Math.round(p.still * fps);
         midOut = start + Math.floor((frames - 1) / 2);
       } else {
+        firstSrc = Math.round(p.from * fps);
+        lastSrc = Math.round(p.to * fps) - 1;
         midSrc = Math.round(((p.from + p.to) / 2) * fps);
-        midOut = start + midSrc - Math.round(p.from * fps);
+        midOut = start + midSrc - firstSrc;
       }
-      runs.push({ p, start, frames, midOut, midSrc });
+      runs.push({ p, start, firstSrc, lastSrc, frames, midOut, midSrc });
       start += frames;
     }
   }
@@ -147,9 +157,6 @@ interface Ctx {
   w: number;
   h: number;
   fps: number;
-  ch: number; // content height after crop and scale
-  padTop: number;
-  cropTop: number;
   totalFrames: number;
   padGray: number; // gray value of a solid pad_color frame
   sizeOk: boolean; // the mp4 has the spec size; set by the shape part
@@ -158,6 +165,10 @@ interface Ctx {
 
 function srcOf(c: Ctx, id: string): Source {
   return c.spec.sources.find((s) => s.id === id) as Source;
+}
+
+function shapeOf(c: Ctx, id: string): SourceShape {
+  return sourceShape(srcOf(c, id), c.spec.output);
 }
 
 /** Output frame n, the whole gray frame (tail "") or with a crop/scale tail. */
@@ -184,12 +195,14 @@ function srcFrame(c: Ctx, id: string, k: number, tail: string, unit: number): Bu
   return b;
 }
 
-/** The content area (between the pad bands) of each output frame as 32x32 gray, in one call. */
-function outContentFrames(c: Ctx): Buffer {
-  const key = "out:content";
+/** The content area (between the pad bands) of each output frame as 32x32 gray, in one call.
+ *  The bands are those of the given source: its parts sit at its own pad_top. */
+function outContentFrames(c: Ctx, id: string): Buffer {
+  const key = `out:content:${id}`;
   let b = c.cache.get(key);
   if (!b) {
-    const vf = `crop=${c.w}:${c.ch}:0:${c.padTop},scale=32:32,format=gray`;
+    const sh = shapeOf(c, id);
+    const vf = `crop=${c.w}:${sh.ch}:0:${sh.padTop},scale=32:32,format=gray`;
     b = ffmpegRaw(c.ffmpeg, ["-i", c.mp4, "-vf", vf], 1024, `the content frames of ${c.slug}`);
     c.cache.set(key, b);
   }
@@ -200,17 +213,20 @@ function outContentFrames(c: Ctx): Buffer {
  *  -fps_mode passthrough: the rawvideo muxer otherwise pads to a constant rate. */
 function srcNativeFrames(c: Ctx, id: string, from: number, to: number): Buffer {
   const s = srcOf(c, id);
-  const vf = `crop=${s.width}:${s.height - c.cropTop}:0:${c.cropTop},trim=start=${from}:end=${to},scale=32:32,format=gray`;
+  const ct = shapeOf(c, id).cropTop;
+  const vf = `crop=${s.width}:${s.height - ct}:0:${ct},trim=start=${from}:end=${to},scale=32:32,format=gray`;
   return ffmpegRaw(c.ffmpeg, ["-i", c.clip(id), "-vf", vf, "-fps_mode", "passthrough"], 0, `native frames ${from}-${to} of ${id}`);
 }
 
-/** A source box on output pixels: (x*W/srcW, (y-crop_top)*ch/(srcH-crop_top) + pad_top). */
+/** A source box on output pixels: (x*W/srcW, (y-crop_top)*ch/(srcH-crop_top) + pad_top), with the
+ *  crop and the pad of the box's own source. */
 function mapBox(c: Ctx, s: Source, box: BlurBox): { x: number; y: number; w: number; h: number } {
+  const sh = shapeOf(c, s.id);
   const kx = s.width / c.w;
-  const ky = (s.height - c.cropTop) / c.ch;
+  const ky = (s.height - sh.cropTop) / sh.ch;
   const x = Math.min(Math.max(Math.round(box.x / kx), 0), c.w - 2);
-  const y = Math.min(Math.max(Math.round((box.y - c.cropTop) / ky) + c.padTop, c.padTop), c.padTop + c.ch - 2);
-  return { x, y, w: Math.min(Math.max(Math.round(box.w / kx), 2), c.w - x), h: Math.min(Math.max(Math.round(box.h / ky), 2), c.padTop + c.ch - y) };
+  const y = Math.min(Math.max(Math.round((box.y - sh.cropTop) / ky) + sh.padTop, sh.padTop), sh.padTop + sh.ch - 2);
+  return { x, y, w: Math.min(Math.max(Math.round(box.w / kx), 2), c.w - x), h: Math.min(Math.max(Math.round(box.h / ky), 2), sh.padTop + sh.ch - y) };
 }
 
 /** The gray value the read path gives for a solid pad_color frame. */
@@ -221,7 +237,7 @@ function padGrayValue(ffmpeg: string, padColor: string): number {
   return sum / b.length;
 }
 
-// ── the six parts, each returns its PASS or FAIL line without the slug ────────────────────
+// ── the seven parts, each returns its PASS or FAIL line without the slug ──────────────────
 
 function partShape(c: Ctx, video: VideoSpec): string {
   const expected = buildGraph(c.spec, video).frames;
@@ -293,10 +309,10 @@ function partBlur(c: Ctx, video: VideoSpec, runs: PieceRun[]): string {
  *  prove nothing (a longer read only adds frames to compare). Only the sources this video plays are looked at. */
 function partCut(c: Ctx, video: VideoSpec): string {
   const srcIds = [...new Set(video.beats.flatMap((b) => b.pieces.map((p) => p.src)))];
-  const out = outContentFrames(c);
-  const nOut = Math.floor(out.length / 1024);
-  if (nOut < c.totalFrames) return "FAIL cut: short-read"; // a longer read only adds frames to compare
   for (const id of srcIds) {
+    const out = outContentFrames(c, id);
+    const nOut = Math.floor(out.length / 1024);
+    if (nOut < c.totalFrames) return "FAIL cut: short-read"; // a longer read only adds frames to compare
     for (const cut of srcOf(c, id).cut) {
       if (!cut.prove_absent) return "FAIL cut: unproven";
       const nat = srcNativeFrames(c, id, cut.prove_absent.from, cut.prove_absent.to);
@@ -316,10 +332,11 @@ function partCut(c: Ctx, video: VideoSpec): string {
 /** The pad bands (minus the 16 rows next to the picture, which x264 rings) hold the pad color. */
 function partBars(c: Ctx, runs: PieceRun[]): string {
   for (const run of runs) {
+    const sh = shapeOf(c, run.p.src);
     const fr = outFrame(c, run.midOut, "", c.w * c.h);
     const bands: [number, number][] = [
-      [0, c.padTop - 16],
-      [c.padTop + c.ch + 16, c.h],
+      [0, sh.padTop - 16],
+      [sh.padTop + sh.ch + 16, c.h],
     ];
     for (const [r0, r1] of bands) {
       for (let r = r0; r < r1; r++) {
@@ -339,15 +356,24 @@ function partBars(c: Ctx, runs: PieceRun[]): string {
   return "PASS bars";
 }
 
-/** The top of the picture shows source rows below crop_top, not rows 0..32 of the source. */
+/** The top of the picture shows the source rows below the crop of its own source, not rows 0..
+ *  A zoom piece is read at its first frame, where the zoom is 1. With crop_top 0 the rows are the
+ *  same read, so only the match of the output to rows 0.. is left to hold. */
 function partCrop(c: Ctx, runs: PieceRun[]): string {
   for (const run of runs) {
     const s = srcOf(c, run.p.src);
-    const out = outFrame(c, run.midOut, `crop=${c.w}:32:0:${c.padTop},scale=32:8`, 256);
-    const below = srcFrame(c, run.p.src, run.midSrc, `crop=${s.width}:32:0:${c.cropTop},scale=32:8`, 256);
-    const top = srcFrame(c, run.p.src, run.midSrc, `crop=${s.width}:32:0:0,scale=32:8`, 256);
+    const sh = shapeOf(c, run.p.src);
+    const zoomed = zoomOf(run.p) !== undefined;
+    const outN = zoomed ? run.start : run.midOut;
+    const srcK = zoomed ? run.firstSrc : run.midSrc;
+    const rows = 2 * Math.round((32 * s.width) / c.w / 2); // the source rows behind 32 output rows
+    const out = outFrame(c, outN, `crop=${c.w}:32:0:${sh.padTop},scale=32:8`, 256);
+    const below = srcFrame(c, s.id, srcK, `crop=${s.width}:${rows}:0:${sh.cropTop},scale=32:8`, 256);
     const dBelow = mad(out, below);
-    if (dBelow >= 8 || dBelow >= mad(out, top)) return "FAIL crop";
+    if (dBelow >= 8) return "FAIL crop";
+    if (sh.cropTop === 0) continue;
+    const top = srcFrame(c, s.id, srcK, `crop=${s.width}:${rows}:0:0,scale=32:8`, 256);
+    if (dBelow >= mad(out, top)) return "FAIL crop";
   }
   return "PASS crop";
 }
@@ -357,11 +383,46 @@ function partStill(c: Ctx, runs: PieceRun[]): string {
   for (const run of runs) {
     if (!("still" in run.p)) continue;
     const s = srcOf(c, run.p.src);
-    const out = outFrame(c, run.midOut, `crop=${c.w}:${c.ch}:0:${c.padTop},scale=32:32`, 1024);
-    const held = srcFrame(c, run.p.src, run.midSrc, `crop=${s.width}:${s.height - c.cropTop}:0:${c.cropTop},scale=32:32`, 1024);
+    const sh = shapeOf(c, s.id);
+    const out = outFrame(c, run.midOut, `crop=${c.w}:${sh.ch}:0:${sh.padTop},scale=32:32`, 1024);
+    const held = srcFrame(c, s.id, run.midSrc, `crop=${s.width}:${s.height - sh.cropTop}:0:${sh.cropTop},scale=32:32`, 1024);
     if (mad(out, held) >= 3) return "FAIL still";
   }
   return "PASS still";
+}
+
+const ZOOM_SIDE = 64;
+/** Below this mean difference (64x64 gray) the picture with no zoom and the zoomed one cannot be told apart. */
+const ZOOM_FLAT = 3;
+
+/** Each zoom piece, read from pixels (64x64 gray of the picture area): the first frame is nearest
+ *  to the source frame with no zoom, the last frame nearest to that frame scaled by zoom_to and cut
+ *  around the centre. Fails closed: on a picture too flat to tell the two apart. */
+function partZoom(c: Ctx, runs: PieceRun[]): string {
+  const unit = ZOOM_SIDE * ZOOM_SIDE;
+  for (const run of runs) {
+    const z = zoomOf(run.p);
+    if (z === undefined) continue;
+    const s = srcOf(c, run.p.src);
+    const sh = shapeOf(c, s.id);
+    const kept = `crop=${s.width}:${s.height - sh.cropTop}:0:${sh.cropTop}`;
+    const out = (n: number): Buffer => outFrame(c, n, `crop=${c.w}:${sh.ch}:0:${sh.padTop},scale=${ZOOM_SIDE}:${ZOOM_SIDE}`, unit);
+    const plain = (k: number): Buffer => srcFrame(c, s.id, k, `${kept},scale=${c.w}:${sh.ch},scale=${ZOOM_SIDE}:${ZOOM_SIDE}`, unit);
+    const zoomed = (k: number): Buffer =>
+      srcFrame(
+        c,
+        s.id,
+        k,
+        `${kept},scale=${c.w}:${sh.ch},scale=${Math.round(c.w * z)}:${Math.round(sh.ch * z)},crop=${c.w}:${sh.ch}:(iw-${c.w})/2:(ih-${sh.ch})/2,scale=${ZOOM_SIDE}:${ZOOM_SIDE}`,
+        unit,
+      );
+    const first = run.firstSrc;
+    const last = run.lastSrc;
+    if (mad(plain(last), zoomed(last)) < ZOOM_FLAT) return "FAIL zoom";
+    if (mad(out(run.start), plain(first)) > mad(out(run.start), zoomed(first))) return "FAIL zoom";
+    if (mad(out(run.start + run.frames - 1), zoomed(last)) > mad(out(run.start + run.frames - 1), plain(last))) return "FAIL zoom";
+  }
+  return "PASS zoom";
 }
 
 // ── the run ──────────────────────────────────────────────────────────────────────────────
@@ -372,8 +433,6 @@ function checkVideo(
   env: { ffmpeg: string; probe: ProbeBin; clips: Map<string, string>; outDir: string },
 ): { lines: string[]; fail: number } {
   const o = sp.output;
-  const first = sp.sources.find((s) => s.id === video.beats[0].pieces[0].src) as Source;
-  const ch = contentHeight(first.width, first.height, o);
   const runs = pieceRuns(video, o.fps);
   const c: Ctx = {
     ffmpeg: env.ffmpeg,
@@ -385,9 +444,6 @@ function checkVideo(
     w: o.width,
     h: o.height,
     fps: o.fps,
-    ch,
-    padTop: Math.floor((o.height - ch) / 2),
-    cropTop: o.crop_top,
     totalFrames: runs.reduce((n, r) => n + r.frames, 0),
     padGray: padGrayValue(env.ffmpeg, o.pad_color),
     sizeOk: true,
@@ -395,9 +451,12 @@ function checkVideo(
   };
   const shape = partShape(c, video);
   // The pixel reads assume the spec size; on another size the shape line stands alone.
-  const parts = c.sizeOk
-    ? [shape, partBlur(c, video, runs), partCut(c, video), partBars(c, runs), partCrop(c, runs), partStill(c, runs)]
-    : [shape];
+  const pixelParts = (): string[] => {
+    const parts = [partBlur(c, video, runs), partCut(c, video), partBars(c, runs), partCrop(c, runs), partStill(c, runs)];
+    if (runs.some((r) => zoomOf(r.p) !== undefined)) parts.push(partZoom(c, runs));
+    return parts;
+  };
+  const parts = c.sizeOk ? [shape, ...pixelParts()] : [shape];
   const lines = [`clip-edit check: ${video.slug} mp4 sha256=${sha256Streamed(c.mp4)}`];
   let fail = 0;
   for (const p of parts) {

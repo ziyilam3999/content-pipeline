@@ -1,11 +1,13 @@
 /**
- * Row A41-clip-cut — cut recorded clips to a silent 9:16 video from an edit spec.
+ * Row A41-clip-cut — cut recorded clips to a silent video from an edit spec.
  *
  * The spec (schema clip-edit/1) names, per source clip, the blur boxes and the cuts that hide
  * private data, and per video the beats and the pieces played. validateSpec refuses a bad
  * spec with reason-coded lines; apply builds ONE system ffmpeg graph per video (an argument
  * array, no shell), writes <slug>.mp4, <slug>.edit.json and a contact sheet under review/.
  * Spec text reaches the graph and the paths only after the checks: labels are generated, slugs checked.
+ * Row A57: a source may carry its own crop_top (sources of mixed sizes in one video), and a
+ * stretch piece may end at zoom_to (zoomAt).
  */
 
 import { spawnSync } from "child_process";
@@ -59,10 +61,19 @@ export interface Source {
   sha256: string;
   width: number;
   height: number;
+  /** Top rows of this source cut away; without the key the output's crop_top (even, below the height). */
+  crop_top?: number;
   blur: BlurBox[];
   cut: Cut[];
 }
-export type Piece = { src: string; from: number; to: number } | { src: string; still: number; sec: number };
+/** A stretch may hold zoom_to: above 1 and at most ZOOM_MAX, the zoom the piece ends at. */
+export type Piece = { src: string; from: number; to: number; zoom_to?: number } | { src: string; still: number; sec: number };
+export const ZOOM_MAX = 1.25;
+
+/** The zoom_to of a stretch piece, undefined for a held frame and a piece without a zoom. */
+export function zoomOf(p: Piece): number | undefined {
+  return "still" in p ? undefined : p.zoom_to;
+}
 export interface Beat {
   n: number;
   clip: string;
@@ -120,6 +131,39 @@ export function contentHeight(srcWidth: number, srcHeight: number, o: { width: n
   const h = srcHeight - o.crop_top;
   if (srcWidth === o.width) return h;
   return 2 * Math.round((h * o.width) / srcWidth / 2);
+}
+
+/** Zoom of output frame n of the N frames of a zoom piece: 1 + (zoomTo - 1) * (n / (N - 1))^2, an
+ *  ease-in from 1 to zoomTo. */
+export function zoomAt(n: number, frames: number, zoomTo: number): number {
+  if (frames < 2) return 1;
+  const t = n / (frames - 1);
+  return 1 + (zoomTo - 1) * t * t;
+}
+
+/** The place of a source in the output: its crop, the picture height after the scale, the pad above it. */
+export interface SourceShape {
+  cropTop: number;
+  ch: number;
+  padTop: number;
+}
+
+export function sourceShape(s: Source, o: Pick<OutputSpec, "width" | "height" | "crop_top">): SourceShape {
+  const cropTop = s.crop_top ?? o.crop_top;
+  const ch = contentHeight(s.width, s.height, { width: o.width, crop_top: cropTop });
+  return { cropTop, ch, padTop: Math.floor((o.height - ch) / 2) };
+}
+
+/** Pixel shape of a source's part: 1:1 at the output width, else (width x ch) : (output width x kept rows), reduced. */
+export function pixelShape(s: Source, o: Pick<OutputSpec, "width" | "crop_top">): string {
+  const cropTop = s.crop_top ?? o.crop_top;
+  const ch = contentHeight(s.width, s.height, { width: o.width, crop_top: cropTop });
+  const a = s.width * ch;
+  const b = o.width * (s.height - cropTop);
+  let x = a;
+  let y = b;
+  while (y !== 0) [x, y] = [y, x % y];
+  return `${a / x}:${b / x}`;
 }
 
 /** Returns refusal lines, each starting with a reason code; [] means the spec is valid. */
@@ -193,7 +237,7 @@ export function validateSpec(spec: unknown): string[] {
         add("bad-schema", `${where} must be an object`);
         return;
       }
-      keys(s, ["id", "file", "sha256", "width", "height", "blur", "cut"], where);
+      keys(s, ["id", "file", "sha256", "width", "height", "crop_top", "blur", "cut"], where);
       const idOk = typeof s.id === "string" && ID_RE.test(s.id);
       if (!idOk) add("bad-id", `${where}.id is ${show(s.id)}`);
       if (typeof s.file !== "string" || !FILE_RE.test(s.file) || s.file.includes("..")) {
@@ -204,6 +248,15 @@ export function validateSpec(spec: unknown): string[] {
       const sh = num(s, "height", where);
       for (const [k, v] of [["width", sw], ["height", sh]] as const) {
         if (v !== undefined && (!Number.isInteger(v) || v <= 0)) add("bad-number", `${where}.${k} must be a positive whole number`);
+      }
+      // The crop the checks of this source read: its own, else the output's
+      let ct = CT;
+      if (s.crop_top !== undefined) {
+        const v: unknown = s.crop_top;
+        if (!isNum(v) || !isEvenWhole(v) || v < 0 || (sh !== undefined && v >= sh)) {
+          ct = undefined;
+          add("bad-crop", `${where}.crop_top must be an even whole number below the source height (got ${show(v)})`);
+        } else ct = v;
       }
       if (idOk) {
         const id = s.id as string;
@@ -233,7 +286,7 @@ export function validateSpec(spec: unknown): string[] {
             else if (sw !== undefined && sh !== undefined && (x < 0 || y < 0 || x + w > sw || y + h > sh)) {
               add("bad-box", `${bw} is outside the ${sw}x${sh} source frame`);
             }
-            if (CT !== undefined && y + h <= CT) add("box-above-crop", `${bw} sits inside the cropped top ${CT} rows`);
+            if (ct !== undefined && y + h <= ct) add("box-above-crop", `${bw} sits inside the cropped top ${ct} rows`);
           }
         });
       }
@@ -264,9 +317,11 @@ export function validateSpec(spec: unknown): string[] {
       }
       if (idOk) sourceCuts.set(s.id as string, cuts);
 
-      if (sw !== undefined && sh !== undefined && W !== undefined && H !== undefined && CT !== undefined) {
-        if (sh - CT <= 0) add("bad-output", `output.crop_top leaves no picture of ${where}`);
-        else if (contentHeight(sw, sh, { width: W, crop_top: CT }) > H) {
+      if (sw !== undefined && sh !== undefined && W !== undefined && H !== undefined && ct !== undefined) {
+        if (sh - ct <= 0) {
+          // a source's own crop_top at or past its height is bad-crop above
+          if (s.crop_top === undefined) add("bad-output", `output.crop_top leaves no picture of ${where}`);
+        } else if (contentHeight(sw, sh, { width: W, crop_top: ct }) > H) {
           add("content-too-tall", `${where} is taller than ${H} px after the crop and the scale to ${W}`);
         }
       }
@@ -318,7 +373,8 @@ export function validateSpec(spec: unknown): string[] {
             return;
           }
           const still = "still" in p;
-          keys(p, still ? ["src", "still", "sec"] : ["src", "from", "to"], pw);
+          keys(p, still ? ["src", "still", "sec", "zoom_to"] : ["src", "from", "to", "zoom_to"], pw);
+          if (still && p.zoom_to !== undefined) add("zoom-on-still", `${pw} is a held frame; zoom_to needs a stretch`);
           const known = typeof p.src === "string" && srcById.has(p.src);
           if (!known) add("unknown-src", `${pw}.src is ${show(p.src)}`);
           const cuts = known ? sourceCuts.get(p.src as string) ?? [] : [];
@@ -350,6 +406,19 @@ export function validateSpec(spec: unknown): string[] {
               framesOk = false;
             }
             frames += pf;
+          }
+          if (!still && p.zoom_to !== undefined) {
+            const z: unknown = p.zoom_to;
+            if (!isNum(z) || z <= 1 || z > ZOOM_MAX) {
+              add("bad-zoom", `${pw}.zoom_to is ${show(z)}, not a number above 1 and at most ${ZOOM_MAX}`);
+            } else if (pf === undefined || pf < 2) {
+              add("bad-zoom", `${pw}.zoom_to needs a piece of 2 output frames or more`);
+            }
+            if (known) {
+              const src = srcById.get(p.src as string) as Source;
+              if (Array.isArray(src.blur) && src.blur.length > 0) add("zoom-with-blur", `${pw} has a zoom on a source with a blur box`);
+              if (Array.isArray(src.cut) && src.cut.length > 0) add("zoom-with-cut", `${pw} has a zoom on a source with a cut`);
+            }
           }
         });
         if (FPS !== undefined && dur !== undefined && framesOk && frames !== Math.round(dur * FPS)) {
@@ -410,9 +479,20 @@ export function buildGraph(spec: ClipEditSpec, video: VideoSpec): BuiltGraph {
     const fpsOut = lab("s");
     chains.push(`[${cur}]fps=${o.fps}[${fpsOut}]`);
 
+    // The crop and the scale of this source come before the split: each part of it carries them
+    const sh = sourceShape(src, o);
+    const cropped = lab("s");
+    chains.push(`[${fpsOut}]crop=${src.width}:${src.height - sh.cropTop}:0:${sh.cropTop}[${cropped}]`);
+    let shaped = cropped;
+    if (src.width !== o.width) {
+      const scaled = lab("s");
+      chains.push(`[${shaped}]scale=${o.width}:${sh.ch}[${scaled}]`);
+      shaped = scaled;
+    }
+
     const mine = pieces.map((p, i) => ({ p, i })).filter((x) => x.p.src === id);
     const copies = mine.map(() => lab("k"));
-    chains.push(`[${fpsOut}]split=${mine.length}${copies.map((c) => `[${c}]`).join("")}`);
+    chains.push(`[${shaped}]split=${mine.length}${copies.map((c) => `[${c}]`).join("")}`);
     mine.forEach((m, j) => {
       const part = lab("s");
       const p = m.p.piece;
@@ -423,7 +503,11 @@ export function buildGraph(spec: ClipEditSpec, video: VideoSpec): BuiltGraph {
       } else {
         trim = `trim=start_frame=${Math.round(p.from * o.fps)}:end_frame=${Math.round(p.to * o.fps)}`;
       }
-      chains.push(`[${copies[j]}]${trim},setpts=N/${o.fps}/TB[${part}]`);
+      // A zoom piece reads the frame time of its own frames; the pad is the one of its source
+      const zoom = "still" in p || p.zoom_to === undefined ? "" : `,${zoomChain(o.width, sh.ch, pieceFrames(p, o.fps), o.fps, p.zoom_to)}`;
+      chains.push(
+        `[${copies[j]}]${trim},setpts=N/${o.fps}/TB${zoom},pad=${o.width}:${o.height}:0:${sh.padTop}:color=0x${o.pad_color.slice(1)}[${part}]`,
+      );
       partLabel.set(m.i, part);
     });
   });
@@ -431,25 +515,28 @@ export function buildGraph(spec: ClipEditSpec, video: VideoSpec): BuiltGraph {
   const joined = lab("s");
   const parts = pieces.map((_, i) => `[${partLabel.get(i)}]`).join("");
   chains.push(`${parts}concat=n=${pieces.length}:v=1:a=0[${joined}]`);
-
-  const first = byId.get(inputs[0]) as Source;
-  const ch = contentHeight(first.width, first.height, o);
-  const padTop = Math.floor((o.height - ch) / 2);
-  const cropped = lab("s");
-  chains.push(`[${joined}]crop=${first.width}:${first.height - o.crop_top}:0:${o.crop_top}[${cropped}]`);
-  let cur = cropped;
-  if (first.width !== o.width) {
-    const scaled = lab("s");
-    chains.push(`[${cur}]scale=${o.width}:${ch}[${scaled}]`);
-    cur = scaled;
-  }
-  const padded = lab("s");
-  chains.push(`[${cur}]pad=${o.width}:${o.height}:0:${padTop}:color=0x${o.pad_color.slice(1)}[${padded}]`);
   const outLabel = lab("s");
-  chains.push(`[${padded}]format=yuv420p[${outLabel}]`);
+  chains.push(`[${joined}]format=yuv420p[${outLabel}]`);
 
   const frames = pieces.reduce((n, p) => n + pieceFrames(p.piece, o.fps), 0);
   return { inputs, graph: chains.join(";"), outLabel, frames };
+}
+
+/** The zoom curve of zoomAt as an ffmpeg expression of the frame time t: t*fps is the frame number
+ *  (the piece's frames carry setpts=N/fps/TB). scale and crop read the same t. */
+const ZOOM_EXPR = (zoomTo: number, frames: number, fps: number): string =>
+  `1+${fmt(zoomTo - 1)}*(t*${fmt(fps)}/${frames - 1})*(t*${fmt(fps)}/${frames - 1})`;
+
+/** The zoom of one piece around the centre of its W x CH picture: scale with eval=frame grows the
+ *  picture to z, crop cuts W x CH out of its middle. Both the size and the offsets are a formula of
+ *  the frame time (crop's own iw and ih stay at the first frame and would keep the cut at the top
+ *  left). The size moves in 4 px steps, so the offsets are even and crop's chroma alignment leaves
+ *  them where they are. */
+function zoomChain(w: number, ch: number, frames: number, fps: number, zoomTo: number): string {
+  const z = ZOOM_EXPR(zoomTo, frames, fps);
+  const size = (d: number): string => `4*floor(${fmt(d)}*(${z})/4)${d % 4 ? `+${d % 4}` : ""}`;
+  const offset = (d: number): string => `(${size(d)}-${fmt(d)})/2`;
+  return `scale=w=${size(w)}:h=${size(ch)}:eval=frame,crop=${fmt(w)}:${fmt(ch)}:x=${offset(w)}:y=${offset(ch)}`;
 }
 
 /** The filter names a graph string uses (quoted option text is skipped). */
@@ -750,12 +837,10 @@ export function applyEdit(opts: ApplyOpts): string[] {
         }
       }
     }
-    // concat joins parts of one size: the sources of a video must share it
-    const sizes = new Set([...used].map((id) => {
-      const s = sp.sources.find((x) => x.id === id) as Source;
-      return `${s.width}x${s.height}`;
-    }));
-    if (sizes.size > 1) throw new Refusal("shape-mismatch", `video ${v.slug} mixes sources of different sizes`);
+    // concat joins parts of one pixel shape: the parts of a video are padded to the output size,
+    // but the scale to the output width sets a pixel shape of its own when the height was rounded
+    const shapes = new Set([...used].map((id) => pixelShape(sp.sources.find((x) => x.id === id) as Source, sp.output)));
+    if (shapes.size > 1) throw new Refusal("shape-mismatch", `video ${v.slug} mixes sources of different pixel shapes (${[...shapes].join(", ")})`);
   }
 
   // Build the graphs before any file is written, so a bad graph leaves nothing behind.
