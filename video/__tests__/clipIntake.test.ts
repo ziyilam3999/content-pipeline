@@ -1445,9 +1445,9 @@ describe("clip-intake check — shown fails closed", () => {
     expectRefused(outDir, ["shown-bad-scope"]);
   });
 
-  test("the copied-in note of another real take (two takes in one folder) -> shown-bad-scope for the copy", () => {
+  test("the copied-in note of another real take -> shown-bad-scope for the copy", () => {
     const first = setupShown("sbtReal", (s) => ({ note: shownNote(s) }));
-    const second = setupTakenClip("sbtReal2", "tall.mp4"); // other bytes: another take in the same folder
+    const second = setupTakenClip("sbtReal2", "tall.mp4"); // other bytes: another real take
     const c = readJson(path.join(first.outDir, `${first.sha}.checklist.json`));
     expect(second.sha).not.toBe(first.sha);
     answerShown(second.outDir, second.sha, { note: c.shown });

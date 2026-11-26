@@ -47,8 +47,6 @@ export const CHECKLIST_KINDS = [
   "service-name-or-endpoint",
 ];
 
-/** Whole words (case-insensitive, split on non-alphanumerics) that mark a test build in a file name. */
-
 /**
  * The answer "shown" (A59): the item is on frames of the take and is left readable in the level
  * three video by a recorded decision. The tool does not read the storyboard files when it runs;
@@ -81,6 +79,7 @@ export const SHOWN_CLIPS: Record<string, "seeker" | "giver"> = {
 const SHOWN_SCOPE_KEYS = ["clips", "sha256", "video"]; // the three keys beside decision
 const SHOWN_NOTE_KEYS = [...SHOWN_SCOPE_KEYS, "decision"];
 
+/** Whole words (case-insensitive, split on non-alphanumerics) that mark a test build in a file name. */
 const TEST_BUILD_WORDS = ["uat", "test", "staging", "debug", "beta", "dev", "qa"];
 const ALLOWED_VIDEO_CODECS = ["h264", "hevc"];
 const MIN_DISPLAYED_WIDTH = 720; // draft B5 floor
@@ -618,12 +617,13 @@ function buildChecklist(sha: string, fileName: string): Record<string, unknown> 
 
 // ── the check verb ───────────────────────────────────────────────────────────────────────
 
-/** `shown` (the decision note, four keys) is on the stdout line only of a READY take that holds a shown line. */
 interface CheckResult {
   sha256: string;
   ready: boolean;
   reasons: CheckReason[];
   cut_tasks: { sha256: string; kind: string }[];
+  /** The stdout key of a READY take that holds a shown line: sha256, video and clips as the decision
+   *  note has them, and the kinds answered shown in line order. The decision text is not in it. */
   shown?: { sha256: string; video: string; clips: string[]; kinds: string[] };
 }
 
@@ -665,11 +665,12 @@ function isShownClip(v: unknown): v is string {
   return typeof v === "string" && Object.prototype.hasOwnProperty.call(SHOWN_CLIPS, v);
 }
 
-/** A date written YYYY-MM-DD: the shape must be a whole run of digits (12026-01-02 is not a date). */
+/** A date written YYYY-MM-DD, not part of a longer run of digits (12026-01-02 is not a date).
+ *  Only the first date shape in the text is read. */
 function hasDatedText(v: unknown): v is string {
   if (typeof v !== "string") return false;
   const m = /\d*(\d{4}-\d{2}-\d{2})\d*/.exec(v);
-  return m !== null && m[0].length === 10 && /\p{L}/u.test(v); // ...and a word of letters beside the date
+  return m !== null && m[0].length === 10 && /\p{L}/u.test(v); // ...and a letter somewhere in the text
 }
 
 /** The three faults of the shown lines. They are read apart from each other, so a check list
