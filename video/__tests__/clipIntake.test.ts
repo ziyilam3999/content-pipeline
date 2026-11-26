@@ -14,7 +14,7 @@ import * as os from "os";
 import * as path from "path";
 import * as zlib from "zlib";
 
-import { runCli, CHECKLIST_KINDS } from "../clipIntake";
+import { runCli, CHECKLIST_KINDS, SHOWN_KINDS, SHOWN_VIDEOS, SHOWN_CLIPS } from "../clipIntake";
 import { resolveVendoredFfmpeg } from "../renderProbe";
 
 jest.setTimeout(120000);
@@ -1110,5 +1110,440 @@ describe("clip-intake check — ready rules", () => {
     expect(r.code).toBe(1);
     expect(r.lines).toHaveLength(1);
     expect(r.lines[0].summary).toEqual({ ready: 0, not_ready: 0, reason: "no-checklists" });
+  });
+});
+
+// ── the answer "shown" (A59) ─────────────────────────────────────────────────────────────
+//
+// The values are fixed in clipIntake.ts; the four reads below hold them to the public storyboard
+// files, so a later storyboard change turns a test red. The planted lists prove the tool FAILS
+// CLOSED: a shown line under a missing, undated or out-of-scope note is refused, and the stdout
+// line of a refused take keeps the four keys it has when no line is answered shown.
+
+const STORYBOARD_DIR = path.resolve(__dirname, "../../storyboards");
+const shotListText = fs.readFileSync(path.join(STORYBOARD_DIR, "getspace-shot-list.md"), "utf8");
+const level3Text = fs.readFileSync(path.join(STORYBOARD_DIR, "getspace-level3.md"), "utf8");
+
+/** The text under one "## " heading, up to the next one. */
+function sectionOf(text: string, heading: string): string {
+  const start = text.indexOf(`\n${heading}\n`);
+  if (start < 0) throw new Error(`${heading} is not a heading of the file`);
+  const rest = text.slice(start + heading.length + 2);
+  const end = rest.indexOf("\n## ");
+  return end < 0 ? rest : rest.slice(0, end);
+}
+
+/** The rows of the tables of a section, as trimmed cells. */
+function tableCells(section: string): string[][] {
+  return section
+    .split("\n")
+    .filter((l) => l.startsWith("|"))
+    .map((l) => l.split("|").slice(1, -1).map((s) => s.trim()));
+}
+
+describe("clip-intake shown — the fixed values are held to the storyboard files", () => {
+  test("PIN (1) the allowed kinds equal, in order, the lines of \"Before every take\" whose rule begins with blur", () => {
+    const rules = sectionOf(shotListText, "## Before every take")
+      .split("\n")
+      .map((l) => /^- ([a-z0-9-]+): (.*)$/.exec(l))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => ({ kind: m[1], rule: m[2] }));
+    expect(rules.length).toBe(15);
+    const blurKinds = rules.filter((r) => r.rule.startsWith("blur")).map((r) => r.kind);
+    expect(blurKinds.length).toBe(11);
+    expect([...SHOWN_KINDS]).toEqual(blurKinds);
+    for (const k of SHOWN_KINDS) expect(CHECKLIST_KINDS).toContain(k);
+  });
+
+  test("PIN (2) one video is allowed: the slug of the level three storyboard file", () => {
+    const slug = /^slug: (.+)$/m.exec(level3Text)?.[1];
+    expect(slug).toBe("getspace-level3");
+    expect([...SHOWN_VIDEOS]).toEqual([slug]);
+  });
+
+  test("PIN (3) the allowed ids equal the Clip cells of the rows with Asset clip in the level three storyboard", () => {
+    const rows = tableCells(sectionOf(level3Text, "## The beats"));
+    const head = rows[0];
+    const iAsset = head.indexOf("Asset");
+    const iClip = head.indexOf("Clip");
+    const body = rows.slice(2);
+    const clipIds = body.filter((r) => r[iAsset] === "clip").map((r) => r[iClip]);
+    expect(clipIds.length).toBeGreaterThan(1);
+    expect(Object.keys(SHOWN_CLIPS)).toEqual(clipIds);
+    // the still card is not a recorded take: its id is not an allowed clip
+    const stillCard = body.find((r) => r[iAsset] === "screen");
+    expect(stillCard?.[iClip]).toBe("SCR-1");
+    for (const r of body) {
+      if (r[iAsset] !== "clip") expect(Object.keys(SHOWN_CLIPS)).not.toContain(r[iClip]);
+    }
+  });
+
+  test("PIN (4) each allowed id sits under the phone the Side cell of its shot list row names", () => {
+    const rows = tableCells(sectionOf(shotListText, "## Clips"));
+    const head = rows[0];
+    const sideOf = new Map(rows.slice(2).map((r) => [r[head.indexOf("Clip")], r[head.indexOf("Side")]]));
+    for (const [id, phone] of Object.entries(SHOWN_CLIPS)) {
+      expect([id, sideOf.get(id)]).toEqual([id, phone]);
+    }
+    expect(sideOf.get("C-11")).toBe("giver");
+  });
+});
+
+const SHOWN_FIVE = ["own-name", "other-user-name-rating-photo", "map-position", "transaction-id", "credit-balance"];
+const SHOWN_ALL = [
+  "own-name",
+  "other-user-name-rating-photo",
+  "number-plate-vehicle",
+  "phone-number",
+  "email",
+  "map-position",
+  "transaction-id",
+  "dispute-id",
+  "credit-balance",
+  "test-build-mark",
+  "service-name-or-endpoint",
+];
+const STORY1_SEEKER = ["C-01", "C-05", "C-06", "C-07"];
+const OLD_KEYS = ["sha256", "ready", "reasons", "cut_tasks"];
+/** A made-up word put into the decision text: it must reach no output. */
+const DECISION_MARKER = "qzmarkernote";
+/** A good decision text for a made-up take: who decided, a made-up date, where that is recorded. */
+const goodDecision = (): string =>
+  `The operator chose to show the story 1 app screens with no blur on 2026-01-02, written in the log book under ${DECISION_MARKER}.`;
+
+type NoteKey = "sha256" | "video" | "clips" | "decision";
+
+/** A shown note for one take: good by default; a key set to undefined is left out. */
+function shownNote(sha: string, over: Partial<Record<NoteKey, unknown>> = {}): Record<string, unknown> {
+  const note: Record<string, unknown> = {
+    sha256: sha,
+    video: "getspace-level3",
+    clips: ["C-01"],
+    decision: goodDecision(),
+  };
+  for (const k of Object.keys(over) as NoteKey[]) {
+    if (over[k] === undefined) delete note[k];
+    else note[k] = over[k];
+  }
+  return note;
+}
+
+interface ShownPlant {
+  /** the lines answered shown (the other lines clear) */
+  kinds?: string[];
+  /** what the top-level shown key holds; undefined leaves the key out */
+  note?: unknown;
+  /** answers planted on single lines, by kind */
+  answers?: Record<string, string>;
+  looked_by?: string;
+}
+
+/** Answer the check list of a taken clip: the shown lines, the note, the planted answers. */
+function answerShown(outDir: string, sha: string, p: ShownPlant): string {
+  const checklistPath = path.join(outDir, `${sha}.checklist.json`);
+  const c = readJson(checklistPath);
+  c.looked_by = p.looked_by ?? "the operator";
+  for (const line of c.lines) {
+    line.answer = p.answers?.[line.kind] ?? ((p.kinds ?? SHOWN_FIVE).includes(line.kind) ? "shown" : "clear");
+  }
+  if (p.note === undefined) delete c.shown;
+  else c.shown = p.note;
+  fs.writeFileSync(checklistPath, JSON.stringify(c, null, 2) + "\n");
+  return checklistPath;
+}
+
+/** A taken clip whose check list is answered as the plant says. */
+function setupShown(tag: string, plant: (sha: string) => ShownPlant) {
+  const t = setupTakenClip(tag);
+  const checklistPath = answerShown(t.outDir, t.sha, plant(t.sha));
+  return { ...t, checklistPath };
+}
+
+interface OneCheck {
+  code: number;
+  line: Record<string, any>;
+  text: string;
+  errText: string;
+}
+
+/** Run check on one take: its stdout line (the take's), the exit code and all the output. */
+function checkOne(outDir: string): OneCheck {
+  const r = run(["check", "--out", outDir]);
+  expect(r.lines).toHaveLength(2);
+  return { code: r.code, line: r.lines[0], text: r.text, errText: r.errText };
+}
+
+/** The take is refused for exactly these reasons, and its stdout line has the four keys of master. */
+function expectRefused(outDir: string, reasons: string[]): OneCheck {
+  const r = checkOne(outDir);
+  expect([r.code, r.line.ready]).toEqual([1, false]);
+  expect(r.line.reasons).toEqual(reasons);
+  expect(Object.keys(r.line)).toEqual(OLD_KEYS);
+  expect(r.text).not.toContain(DECISION_MARKER);
+  expect(r.errText).not.toContain(DECISION_MARKER);
+  return r;
+}
+
+describe("clip-intake check — the answer shown", () => {
+  test("shown-good: five lines shown under a good note -> ready, exit 0, the shown key and the cut tasks", () => {
+    const { outDir, sha } = setupShown("sg", (s) => ({ note: shownNote(s, { clips: STORY1_SEEKER }) }));
+    const r = checkOne(outDir);
+    expect(r.code).toBe(0);
+    expect(r.line).toEqual({
+      sha256: sha,
+      ready: true,
+      reasons: [],
+      cut_tasks: SHOWN_FIVE.map((kind) => ({ sha256: sha, kind })),
+      shown: { sha256: sha, video: "getspace-level3", clips: STORY1_SEEKER, kinds: SHOWN_FIVE },
+    });
+    expect(Object.keys(r.line)).toEqual([...OLD_KEYS, "shown"]);
+    expect(Object.keys(r.line.shown)).toEqual(["sha256", "video", "clips", "kinds"]);
+    expect(r.text).not.toContain(DECISION_MARKER); // the decision text is printed nowhere
+    expect(r.errText).not.toContain(DECISION_MARKER);
+  });
+
+  test("the 11 kinds shown at once are ready, and the shown key lists the 11 kinds in line order", () => {
+    const { outDir, sha } = setupShown("s11", (s) => ({ kinds: SHOWN_ALL, note: shownNote(s, { clips: ["C-11"] }) }));
+    const r = checkOne(outDir);
+    expect(r.code).toBe(0);
+    expect(r.line.shown).toEqual({ sha256: sha, video: "getspace-level3", clips: ["C-11"], kinds: SHOWN_ALL });
+    expect(r.line.cut_tasks.map((t: Record<string, string>) => t.kind)).toEqual(SHOWN_ALL);
+  });
+
+  test.each([
+    ["C-11 alone", ["C-11"]],
+    ["C-01 alone", ["C-01"]],
+  ])("a note with %s is ready", (_label, clips) => {
+    const { outDir, sha } = setupShown(`sc${clips[0]}`, (s) => ({ note: shownNote(s, { clips }) }));
+    const r = checkOne(outDir);
+    expect(r.code).toBe(0);
+    expect(r.line).toMatchObject({ sha256: sha, ready: true, reasons: [], shown: { clips } });
+  });
+
+  test.each([
+    ["with a note in the file", true],
+    ["without a note", false],
+  ])("two cut lines and no shown line, %s -> ready, the four old keys and no shown key", (_label, withNote) => {
+    const { outDir, sha } = setupTakenClip(`sold${withNote}`);
+    answerChecklist(outDir, sha, { cut: ["phone-number", "credit-balance"] });
+    if (withNote) {
+      const c = readJson(path.join(outDir, `${sha}.checklist.json`));
+      c.shown = shownNote(sha);
+      fs.writeFileSync(path.join(outDir, `${sha}.checklist.json`), JSON.stringify(c, null, 2) + "\n");
+    }
+    const r = checkOne(outDir);
+    expect(r.code).toBe(0);
+    expect(r.line).toEqual({
+      sha256: sha,
+      ready: true,
+      reasons: [],
+      cut_tasks: [
+        { sha256: sha, kind: "phone-number" },
+        { sha256: sha, kind: "credit-balance" },
+      ],
+    });
+  });
+
+  test("the usage text printed on a usage error names the fourth answer and the note it needs", () => {
+    const r = run(["nonsense"]);
+    expect(r.code).toBe(2);
+    expect(r.errText).toContain("shown");
+    // the fourth answer stands in the list of answers, beside clear, cut and present
+    const from = r.errText.indexOf('"clear"');
+    const answers = r.errText.slice(from, r.errText.indexOf("and looked_by", from));
+    expect(answers).toContain('"shown"');
+    expect(r.errText).toContain('"shown" note');
+    for (const k of ["sha256", "video", "clips", "decision"]) expect(r.errText).toContain(k);
+  });
+
+  test("a new check list still prints the four old keys (schema clip-checklist/1, no shown key written)", () => {
+    const { outDir, sha } = setupTakenClip("snew");
+    const r = checkOne(outDir);
+    expect(r.code).toBe(1);
+    expect(r.line).toEqual({ sha256: sha, ready: false, reasons: ["open-lines"], cut_tasks: [] });
+    expect(readJson(path.join(outDir, `${sha}.checklist.json`)).schema).toBe("clip-checklist/1");
+    expect("shown" in readJson(path.join(outDir, `${sha}.checklist.json`))).toBe(false);
+  });
+});
+
+describe("clip-intake check — shown fails closed", () => {
+  test.each(["status-bar-clock", "notification-banner", "recorder-overlay", "otp-or-login-screen"])(
+    "shown-not-allowed: shown on %s under a good note -> not ready, the named reason alone, no shown key",
+    (kind) => {
+      const { outDir } = setupShown(`sna${kind}`, (s) => ({ kinds: [...SHOWN_FIVE, kind], note: shownNote(s) }));
+      expectRefused(outDir, ["shown-not-allowed"]);
+    },
+  );
+
+  test.each<[string, (sha: string) => unknown]>([
+    ["no note (the key is not in the file)", () => undefined],
+    ["the note is null", () => null],
+    ["the note is a text", () => "shown by decision"],
+    ["the note is a list that holds a good note", (s) => [shownNote(s)]],
+    ["decision missing", (s) => shownNote(s, { decision: undefined })],
+    ["decision empty", (s) => shownNote(s, { decision: "" })],
+    ["decision only spaces", (s) => shownNote(s, { decision: "   " })],
+    ["decision a number", (s) => shownNote(s, { decision: 20260102 })],
+    ["decision a list that holds a dated text", (s) => shownNote(s, { decision: [goodDecision()] })],
+    ["decision a text without a YYYY-MM-DD date", (s) => shownNote(s, { decision: "The operator chose so on 2 January 2026." })],
+    ["decision a date alone", (s) => shownNote(s, { decision: "2026-01-02" })],
+    ["decision a date shape inside a longer run of digits (12026-01-02)", (s) => shownNote(s, { decision: "Chosen on 12026-01-02." })],
+    ["decision a date shape inside a longer run of digits (2026-01-023)", (s) => shownNote(s, { decision: "Chosen on 2026-01-023." })],
+  ])("shown-no-decision: %s -> not ready, the named reason alone, no shown key", (_label, noteOf) => {
+    const { outDir } = setupShown("snd", (s) => ({ note: noteOf(s) }));
+    expectRefused(outDir, ["shown-no-decision"]);
+  });
+
+  test("shown-no-decision: a good note put on a line and not at the top level -> not ready, the named reason alone", () => {
+    const { outDir, checklistPath } = setupShown("sndLine", () => ({ note: undefined }));
+    const c = readJson(checklistPath);
+    c.lines[3].shown = shownNote(c.sha256);
+    fs.writeFileSync(checklistPath, JSON.stringify(c, null, 2) + "\n");
+    expectRefused(outDir, ["shown-no-decision"]);
+  });
+
+  test.each<[string, unknown]>([
+    ["getspace-seek", "getspace-seek"],
+    ["getspace-give", "getspace-give"],
+    ["getspace-helps", "getspace-helps"],
+    ["a made-up slug", "getspace-made-up"],
+    ["the key missing", undefined],
+    ["a list that holds getspace-level3", ["getspace-level3"]],
+    ["Getspace-Level3", "Getspace-Level3"],
+    ["constructor", "constructor"],
+    ["__proto__", "__proto__"],
+  ])("shown-bad-scope, the video: %s -> not ready, the named reason alone, no shown key", (_label, video) => {
+    const { outDir } = setupShown("sbv", (s) => ({ note: shownNote(s, { video }) }));
+    expectRefused(outDir, ["shown-bad-scope"]);
+  });
+
+  test.each<[string, unknown]>([
+    ["clips missing", undefined],
+    ["an empty list", []],
+    ["a text", "C-01"],
+    ["a list with a number in it", ["C-01", 5]],
+    ["a screen that story 1 does not use (C-02)", ["C-02"]],
+    ["a screen that story 1 does not use (C-12)", ["C-12"]],
+    ["an AI clip id (AI-1)", ["AI-1"]],
+    ["the still card id SCR-1 alone", ["SCR-1"]],
+    ["the still card id SCR-1 beside C-01", ["C-01", "SCR-1"]],
+    ["c-01 in lower case", ["c-01"]],
+    ["one id twice", ["C-01", "C-01"]],
+    ["screens of two phones in one take (C-05 with C-11)", ["C-05", "C-11"]],
+    // inherited keys of a plain object: an `in` lookup would take them for clip ids
+    ["an inherited key name (constructor)", ["constructor"]],
+    ["an inherited key name (toString)", ["toString"]],
+  ])("shown-bad-scope, the screens: %s -> not ready, the named reason alone, no shown key", (_label, clips) => {
+    const { outDir } = setupShown("sbc", (s) => ({ note: shownNote(s, { clips }) }));
+    expectRefused(outDir, ["shown-bad-scope"]);
+  });
+
+  test.each<[string, (sha: string) => Record<string, unknown>]>([
+    ["sha256 missing", (s) => shownNote(s, { sha256: undefined })],
+    ["sha256 in upper case", (s) => shownNote(s, { sha256: s.toUpperCase() })],
+    ["sha256 not the take's own (the note of another take copied in)", (s) => shownNote("0".repeat(63) + "1")],
+    ["a fifth key (videos)", (s) => ({ ...shownNote(s), videos: ["getspace-level3"] })],
+  ])("shown-bad-scope, the take and the keys: %s -> not ready, the named reason alone, no shown key", (_label, noteOf) => {
+    const { outDir } = setupShown("sbt", (s) => ({ note: noteOf(s) }));
+    expectRefused(outDir, ["shown-bad-scope"]);
+  });
+
+  test("the copied-in note of another real take -> shown-bad-scope for the copy", () => {
+    const first = setupShown("sbtReal", (s) => ({ note: shownNote(s) }));
+    const second = setupTakenClip("sbtReal2", "tall.mp4"); // other bytes: another real take
+    const c = readJson(path.join(first.outDir, `${first.sha}.checklist.json`));
+    expect(second.sha).not.toBe(first.sha);
+    answerShown(second.outDir, second.sha, { note: c.shown });
+    expect(checkOne(first.outDir).code).toBe(0);
+    expectRefused(second.outDir, ["shown-bad-scope"]);
+  });
+
+  test("the list's own sha256 field wrong and the note equal to the file name -> sha-mismatch alone", () => {
+    const { outDir, sha, checklistPath } = setupShown("sm1", (s) => ({ note: shownNote(s) }));
+    const c = readJson(checklistPath);
+    c.sha256 = "0".repeat(64);
+    fs.writeFileSync(checklistPath, JSON.stringify(c, null, 2) + "\n");
+    const r = expectRefused(outDir, ["sha-mismatch"]);
+    expect(r.line.sha256).toBe(sha);
+  });
+
+  test("the list's own sha256 field wrong and the note equal to the wrong field -> shown-bad-scope, then sha-mismatch", () => {
+    const wrong = "0".repeat(64);
+    const { outDir, checklistPath } = setupShown("sm2", () => ({ note: shownNote(wrong) }));
+    const c = readJson(checklistPath);
+    c.sha256 = wrong;
+    fs.writeFileSync(checklistPath, JSON.stringify(c, null, 2) + "\n");
+    expectRefused(outDir, ["shown-bad-scope", "sha-mismatch"]);
+  });
+
+  test.each(["Shown", "shown "])("bad-answer, as on master: the answer %j -> not ready, bad-answer alone, no shown key", (answer) => {
+    const { outDir } = setupShown("sba", (s) => ({ note: shownNote(s), answers: { email: answer } }));
+    expectRefused(outDir, ["bad-answer"]);
+  });
+
+  test("an answer that is not a text still gives checklist-unreadable, with shown lines and a good note", () => {
+    const { outDir, checklistPath } = setupShown("sur", (s) => ({ note: shownNote(s) }));
+    const c = readJson(checklistPath);
+    c.lines[7].answer = 1;
+    fs.writeFileSync(checklistPath, JSON.stringify(c, null, 2) + "\n");
+    const r = checkOne(outDir);
+    expect(r.code).toBe(1);
+    expect(r.line).toEqual({ sha256: c.sha256, ready: false, reasons: ["checklist-unreadable"], cut_tasks: [] });
+  });
+
+  test("a good note hides no other fault: one more line answered present -> present-lines alone, no shown key", () => {
+    const { outDir } = setupShown("shf1", (s) => ({ note: shownNote(s), answers: { email: "present" } }));
+    expectRefused(outDir, ["present-lines"]);
+  });
+
+  test("a good note hides no other fault: a blank looked_by -> no-looker alone, no shown key", () => {
+    const { outDir } = setupShown("shf2", (s) => ({ note: shownNote(s), looked_by: "  " }));
+    expectRefused(outDir, ["no-looker"]);
+  });
+
+  test("a good note hides no other fault: a line left \"not checked\" -> open-lines alone, no shown key", () => {
+    const { outDir } = setupShown("shf3", (s) => ({ note: shownNote(s), answers: { email: "not checked" } }));
+    expectRefused(outDir, ["open-lines"]);
+  });
+
+  test("a good note hides no other fault: the source changed by one byte -> source-changed alone, no shown key", () => {
+    const { outDir, clipPath } = setupShown("shf4", (s) => ({ note: shownNote(s) }));
+    fs.appendFileSync(clipPath, Buffer.from([0]));
+    expectRefused(outDir, ["source-changed"]);
+  });
+
+  test("two lines swapped under a good note -> kinds-changed alone, no shown key", () => {
+    const { outDir, checklistPath } = setupShown("skc1", (s) => ({ note: shownNote(s) }));
+    const c = readJson(checklistPath);
+    [c.lines[3], c.lines[4]] = [c.lines[4], c.lines[3]];
+    fs.writeFileSync(checklistPath, JSON.stringify(c, null, 2) + "\n");
+    expectRefused(outDir, ["kinds-changed"]);
+  });
+
+  test("the otp-or-login-screen line renamed email and answered shown under a good note -> kinds-changed alone, no shown key", () => {
+    const { outDir, checklistPath } = setupShown("skc2", (s) => ({ note: shownNote(s) }));
+    const c = readJson(checklistPath);
+    c.lines[8].kind = "email";
+    c.lines[8].answer = "shown";
+    fs.writeFileSync(checklistPath, JSON.stringify(c, null, 2) + "\n");
+    expectRefused(outDir, ["kinds-changed"]);
+  });
+
+  test("two lines swapped, the blur lines answered shown and no shown note -> kinds-changed alone, no shown key", () => {
+    // the shown lines are not judged while the kinds are out of order: the missing note is not a second reason
+    const { outDir, checklistPath } = setupShown("skc3", () => ({ kinds: SHOWN_ALL, note: undefined }));
+    const c = readJson(checklistPath);
+    [c.lines[3], c.lines[4]] = [c.lines[4], c.lines[3]];
+    fs.writeFileSync(checklistPath, JSON.stringify(c, null, 2) + "\n");
+    expectRefused(outDir, ["kinds-changed"]);
+  });
+
+  test("the three new reasons beside a bad answer -> the order bad-answer, shown-not-allowed, shown-no-decision, shown-bad-scope", () => {
+    const { outDir } = setupShown("sord", (s) => ({
+      kinds: ["own-name", "status-bar-clock"],
+      answers: { email: "Shown" },
+      note: shownNote(s, { video: "getspace-seek", decision: "The operator chose so." }),
+    }));
+    expectRefused(outDir, ["bad-answer", "shown-not-allowed", "shown-no-decision", "shown-bad-scope"]);
   });
 });

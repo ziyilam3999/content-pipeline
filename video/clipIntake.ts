@@ -47,6 +47,38 @@ export const CHECKLIST_KINDS = [
   "service-name-or-endpoint",
 ];
 
+/**
+ * The answer "shown" (A59): the item is on frames of the take and is left readable in the level
+ * three video by a recorded decision. The tool does not read the storyboard files when it runs;
+ * these three values are fixed here and the tests hold them to the public storyboard files.
+ */
+/** The lines that may be answered shown: the kinds whose "Before every take" rule is blur. */
+export const SHOWN_KINDS = [
+  "own-name",
+  "other-user-name-rating-photo",
+  "number-plate-vehicle",
+  "phone-number",
+  "email",
+  "map-position",
+  "transaction-id",
+  "dispute-id",
+  "credit-balance",
+  "test-build-mark",
+  "service-name-or-endpoint",
+];
+/** The one video a shown note may name (the slug of its storyboard file). */
+export const SHOWN_VIDEOS: string[] = ["getspace-level3"];
+/** The clips a shown note may name: the rows with Asset clip in that storyboard, each under its phone. */
+export const SHOWN_CLIPS: Record<string, "seeker" | "giver"> = {
+  "C-01": "seeker",
+  "C-05": "seeker",
+  "C-06": "seeker",
+  "C-07": "seeker",
+  "C-11": "giver",
+};
+const SHOWN_SCOPE_KEYS = ["clips", "sha256", "video"]; // the three keys beside decision
+const SHOWN_NOTE_KEYS = [...SHOWN_SCOPE_KEYS, "decision"];
+
 /** Whole words (case-insensitive, split on non-alphanumerics) that mark a test build in a file name. */
 const TEST_BUILD_WORDS = ["uat", "test", "staging", "debug", "beta", "dev", "qa"];
 const ALLOWED_VIDEO_CODECS = ["h264", "hevc"];
@@ -75,6 +107,9 @@ export type CheckReason =
   | "present-lines"
   | "no-looker"
   | "bad-answer"
+  | "shown-not-allowed"
+  | "shown-no-decision"
+  | "shown-bad-scope"
   | "kinds-changed"
   | "source-changed"
   | "source-missing"
@@ -587,12 +622,17 @@ interface CheckResult {
   ready: boolean;
   reasons: CheckReason[];
   cut_tasks: { sha256: string; kind: string }[];
+  /** The stdout key of a READY take that holds a shown line: sha256, video and clips as the decision
+   *  note has them, and the kinds answered shown in line order. The decision text is not in it. */
+  shown?: { sha256: string; video: string; clips: string[]; kinds: string[] };
 }
 
 interface ParsedChecklist {
   sha256: string;
   looked_by: string;
   lines: { kind: string; answer: string; note: string }[];
+  /** The decision note of the shown lines; its shape is checked by shownVerdict. */
+  shown?: unknown;
 }
 
 /** "does not parse as JSON of this shape" — a break in the checked shape is
@@ -616,7 +656,69 @@ function parseChecklistShape(raw: string): ParsedChecklist | null {
   return o as unknown as ParsedChecklist;
 }
 
-/** Ready = all 15 lines clear/cut, a real looker, the kinds in order, and the source bytes still hash to the recorded sha. */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** An own-key lookup: "constructor" or "__proto__" is not a clip id. */
+function isShownClip(v: unknown): v is string {
+  return typeof v === "string" && Object.prototype.hasOwnProperty.call(SHOWN_CLIPS, v);
+}
+
+/** A date written YYYY-MM-DD, not part of a longer run of digits (12026-01-02 is not a date).
+ *  Only the first date shape in the text is read. */
+function hasDatedText(v: unknown): v is string {
+  if (typeof v !== "string") return false;
+  const m = /\d*(\d{4}-\d{2}-\d{2})\d*/.exec(v);
+  return m !== null && m[0].length === 10 && /\p{L}/u.test(v); // ...and a letter somewhere in the text
+}
+
+/** The three faults of the shown lines. They are read apart from each other, so a check list
+ *  can hold more than one; the reason order is fixed in evaluateChecklist. */
+interface ShownVerdict {
+  notAllowed: boolean;
+  noDecision: boolean;
+  badScope: boolean;
+  /** The kinds answered shown, in line order (whatever the note says). */
+  kinds: string[];
+  /** The note, once it is complete and in scope; null otherwise. */
+  note: { sha256: string; video: string; clips: string[] } | null;
+}
+
+function shownVerdict(c: ParsedChecklist, shaName: string): ShownVerdict {
+  const kinds = c.lines.filter((l) => l.answer === "shown").map((l) => l.kind);
+  const none: ShownVerdict = { notAllowed: false, noDecision: false, badScope: false, kinds, note: null };
+  if (kinds.length === 0) return none; // no shown line: the note (if any) is not read
+  const notAllowed = kinds.some((k) => !SHOWN_KINDS.includes(k));
+  const note = c.shown;
+  const noDecision = !isRecord(note) || !hasDatedText(note.decision);
+  let badScope = false;
+  let goodNote: ShownVerdict["note"] = null;
+  if (isRecord(note)) {
+    const clips: unknown[] = Array.isArray(note.clips) ? (note.clips as unknown[]) : [];
+    const clipsOk =
+      clips.length > 0 &&
+      clips.every(isShownClip) &&
+      new Set(clips).size === clips.length &&
+      clips.every((id) => SHOWN_CLIPS[id as string] === SHOWN_CLIPS[clips[0] as string]); // one phone per take
+    const video = note.video;
+    // a missing decision is shown-no-decision (read apart, above); a fifth key or a missing scope key is bad scope
+    const keys = Object.keys(note);
+    badScope =
+      keys.some((k) => !SHOWN_NOTE_KEYS.includes(k)) ||
+      !SHOWN_SCOPE_KEYS.every((k) => Object.prototype.hasOwnProperty.call(note, k)) ||
+      note.sha256 !== shaName ||
+      typeof video !== "string" ||
+      !SHOWN_VIDEOS.includes(video) ||
+      !clipsOk;
+    if (!noDecision && !badScope) {
+      goodNote = { sha256: shaName, video: video as string, clips: clips.map((id) => id as string) };
+    }
+  }
+  return { notAllowed, noDecision, badScope, kinds, note: goodNote };
+}
+
+/** Ready = all 15 lines clear/cut/shown under a good note, a real looker, the kinds in order, and the source bytes still hash to the recorded sha. */
 function evaluateChecklist(outDir: string, fileName: string): CheckResult {
   const shaName = fileName.slice(0, -".checklist.json".length);
   let c: ParsedChecklist | null = null;
@@ -631,7 +733,10 @@ function evaluateChecklist(outDir: string, fileName: string): CheckResult {
   const answers = c.lines.map((l) => l.answer);
   const openLines = answers.includes("not checked");
   const presentLines = answers.includes("present");
-  const badAnswer = answers.some((a) => a !== "clear" && a !== "cut" && a !== "present" && a !== "not checked");
+  const badAnswer = answers.some(
+    (a) => a !== "clear" && a !== "cut" && a !== "present" && a !== "shown" && a !== "not checked",
+  );
+  const shown = kindsOk ? shownVerdict(c, shaName) : null;
   const noLooker = c.looked_by.trim() === "";
   const shaMismatch = c.sha256 !== shaName;
 
@@ -666,14 +771,25 @@ function evaluateChecklist(outDir: string, fileName: string): CheckResult {
   if (kindsOk && presentLines) reasons.push("present-lines");
   if (!openLines && noLooker) reasons.push("no-looker"); // who looked matters once the lines are answered
   if (kindsOk && badAnswer) reasons.push("bad-answer");
+  if (shown?.notAllowed) reasons.push("shown-not-allowed");
+  if (shown?.noDecision) reasons.push("shown-no-decision");
+  if (shown?.badScope) reasons.push("shown-bad-scope");
   if (!kindsOk) reasons.push("kinds-changed");
   if (sourceChanged) reasons.push("source-changed");
   if (sourceMissing) reasons.push("source-missing");
   if (intakeMissing) reasons.push("intake-missing");
   if (shaMismatch) reasons.push("sha-mismatch");
 
-  const cut_tasks = c.lines.filter((l) => l.answer === "cut").map((l) => ({ sha256: shaName, kind: l.kind }));
-  return { sha256: shaName, ready: reasons.length === 0, reasons, cut_tasks };
+  // a shown line is a cut task too: the item is still to be hidden in the other videos cut from this take
+  const cut_tasks = c.lines
+    .filter((l) => l.answer === "cut" || l.answer === "shown")
+    .map((l) => ({ sha256: shaName, kind: l.kind }));
+  const ready = reasons.length === 0;
+  // the decision text is not copied: it stays in the check list file, outside the repo
+  const shownLine = ready && shown?.note && shown.kinds.length > 0 ? { ...shown.note, kinds: shown.kinds } : undefined;
+  const result: CheckResult = { sha256: shaName, ready, reasons, cut_tasks };
+  if (shownLine) result.shown = shownLine;
+  return result;
 }
 
 // ── the CLI ──────────────────────────────────────────────────────────────────────────────
@@ -693,8 +809,14 @@ function printUsage(): void {
       "The --out folder must already exist; intake refuses an --out folder or an input clip\n" +
       "inside a repo (a .git entry or a content-pipeline package.json above it).\n" +
       "A check list is answered by editing the file outside every repo: each of the 15 lines is\n" +
-      '"clear" (not on screen), "cut" (on frames, removed by the cut) or "present" (retake or drop),\n' +
+      '"clear" (not on screen), "cut" (on frames, removed by the cut), "present" (retake or drop) or\n' +
+      '"shown" (on frames, left readable in the level three video by a recorded decision),\n' +
       "and looked_by names who looked.\n" +
+      '"shown" is taken on the lines whose shot list rule is blur, and only under a top-level\n' +
+      '"shown" note with four keys: sha256 (the take\'s), video (getspace-level3), clips (its story 1\n' +
+      "clip ids of one phone) and decision (a text with a YYYY-MM-DD date that no other digit\n" +
+      "touches and at least one letter; the first date shape in the text is the one read;\n" +
+      "write in it who decided and where that is recorded). The cut does not read the note.\n" +
       "Honest limit: the tool proves that a person answered every line, not that the answers are true.\n",
   );
 }
@@ -839,7 +961,9 @@ function runCheck(realOut: string): number {
   for (const r of results) {
     if (r.ready) ready++;
     else notReady++;
-    writeLine({ sha256: r.sha256, ready: r.ready, reasons: r.reasons, cut_tasks: r.cut_tasks });
+    const line: Record<string, unknown> = { sha256: r.sha256, ready: r.ready, reasons: r.reasons, cut_tasks: r.cut_tasks };
+    if (r.shown) line.shown = r.shown; // only a ready take that holds a shown line has the fifth key
+    writeLine(line);
   }
   writeLine({
     summary: { ready, not_ready: notReady, reason: results.length === 0 ? "no-checklists" : null },
