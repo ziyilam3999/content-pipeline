@@ -1348,6 +1348,10 @@ describe("clip-intake check — the answer shown", () => {
     const r = run(["nonsense"]);
     expect(r.code).toBe(2);
     expect(r.errText).toContain("shown");
+    // the fourth answer stands in the list of answers, beside clear, cut and present
+    const from = r.errText.indexOf('"clear"');
+    const answers = r.errText.slice(from, r.errText.indexOf("and looked_by", from));
+    expect(answers).toContain('"shown"');
     expect(r.errText).toContain('"shown" note');
     for (const k of ["sha256", "video", "clips", "decision"]) expect(r.errText).toContain(k);
   });
@@ -1418,12 +1422,12 @@ describe("clip-intake check — shown fails closed", () => {
     ["an empty list", []],
     ["a text", "C-01"],
     ["a list with a number in it", ["C-01", 5]],
-    ["a screen that story 1 does not use (C-02)", "C-02"],
-    ["a screen that story 1 does not use (C-12)", "C-12"],
-    ["an AI clip id (AI-1)", "AI-1"],
-    ["the still card id SCR-1 alone", "SCR-1"],
+    ["a screen that story 1 does not use (C-02)", ["C-02"]],
+    ["a screen that story 1 does not use (C-12)", ["C-12"]],
+    ["an AI clip id (AI-1)", ["AI-1"]],
+    ["the still card id SCR-1 alone", ["SCR-1"]],
     ["the still card id SCR-1 beside C-01", ["C-01", "SCR-1"]],
-    ["c-01 in lower case", "c-01"],
+    ["c-01 in lower case", ["c-01"]],
     ["one id twice", ["C-01", "C-01"]],
     ["screens of two phones in one take (C-05 with C-11)", ["C-05", "C-11"]],
   ])("shown-bad-scope, the screens: %s -> not ready, the named reason alone, no shown key", (_label, clips) => {
