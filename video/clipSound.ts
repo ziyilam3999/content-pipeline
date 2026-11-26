@@ -43,6 +43,8 @@ export const MIN_WORDS_SEC = 1;
 export const MIN_LUFS = -70;
 export const BED_SHORT_SEC = 0.05;
 export const MAX_LINES = 40;
+/** The longest bed fade of one side, in seconds; the step is that of `at`. */
+export const MAX_FADE_SEC = 10;
 
 // ── spec types (valid after validateSpec returns []) ─────────────────────────────────────
 
@@ -64,7 +66,13 @@ export interface ClipSoundSpec {
   slug: string;
   picture: FileRef;
   voice: { target_lufs: number; lines: Line[] };
-  bed: FileRef & { level_lufs: number };
+  bed: FileRef & {
+    level_lufs: number;
+    /** A straight-line rise of the bed from its first sample, over this many seconds. */
+    fade_in_sec?: number;
+    /** A straight-line fall of the bed that ends with its last laid sample. */
+    fade_out_sec?: number;
+  };
 }
 
 // ── validator ────────────────────────────────────────────────────────────────────────────
@@ -108,6 +116,13 @@ export function validateSpec(spec: unknown): string[] {
   const level = (v: unknown, min: number, max: number, where: string): void => {
     if (!isNum(v) || v < min || v > max) add("bad-level", `${where} is ${show(v)}, not a number from ${min} to ${max}`);
   };
+  // A key that is not there means no fade; a key that is there is read as it stands
+  const fade = (v: unknown, where: string): void => {
+    if (v === undefined) return;
+    if (!isNum(v) || v <= 0 || v > MAX_FADE_SEC || Number(v.toFixed(3)) !== v) {
+      add("bad-fade", `${where} is ${show(v)}, not a number above 0 and up to ${MAX_FADE_SEC} with at most 3 decimals`);
+    }
+  };
 
   if (!isObj(spec)) {
     add("bad-schema", "the spec is not a JSON object");
@@ -120,10 +135,12 @@ export function validateSpec(spec: unknown): string[] {
   const picture = section(spec.picture, ["file", "sha256"], "picture");
   if (picture) fileRef(picture, "picture");
 
-  const bed = section(spec.bed, ["file", "sha256", "level_lufs"], "bed");
+  const bed = section(spec.bed, ["file", "sha256", "level_lufs", "fade_in_sec", "fade_out_sec"], "bed");
   if (bed) {
     fileRef(bed, "bed");
     level(bed.level_lufs, -40, -18, "bed.level_lufs");
+    fade(bed.fade_in_sec, "bed.fade_in_sec");
+    fade(bed.fade_out_sec, "bed.fade_out_sec");
   }
 
   const voice = section(spec.voice, ["target_lufs", "lines"], "voice");
@@ -219,6 +236,9 @@ export interface SoundGraph {
   args: string[];
 }
 
+/** Seconds as a whole count of samples at 48 kHz. */
+const toSamples = (sec: number): number => Math.round(sec * SAMPLE_RATE);
+
 /** The graph text and the argument list for a checked spec. Runs nothing. */
 export function buildSoundGraph(spec: ClipSoundSpec, nums: GraphNumbers, paths: GraphPaths): SoundGraph {
   const lines = spec.voice.lines;
@@ -235,7 +255,14 @@ export function buildSoundGraph(spec: ClipSoundSpec, nums: GraphNumbers, paths: 
   chains.push("[voicemono]aformat=channel_layouts=stereo,asplit=2[keyshort][voicest]");
   // The key runs on past the bed, so the cut of the bed alone sets the length of the ducked bed
   chains.push(`[keyshort]apad=pad_len=${nums.bedSamples}[key]`);
-  chains.push(`[${bedInput}:a:0]${shape("stereo")},volume=${fmt(nums.bedGainDb)}dB,atrim=end_sample=${N}[bed]`);
+  // The fades lie on the bed behind its resample, its gain and its cut, and before the duck
+  const fades: string[] = [];
+  if (spec.bed.fade_in_sec !== undefined) fades.push(`afade=t=in:ss=0:ns=${toSamples(spec.bed.fade_in_sec)}:curve=tri`);
+  if (spec.bed.fade_out_sec !== undefined) {
+    const n = toSamples(spec.bed.fade_out_sec);
+    fades.push(`afade=t=out:ss=${Math.min(N, nums.bedSamples) - n}:ns=${n}:curve=tri`);
+  }
+  chains.push(`[${bedInput}:a:0]${shape("stereo")},volume=${fmt(nums.bedGainDb)}dB,atrim=end_sample=${N}${fades.map((f) => `,${f}`).join("")}[bed]`);
   chains.push(
     `[bed][key]sidechaincompress=threshold=${DUCK_THRESHOLD}:ratio=${DUCK_RATIO}:attack=${DUCK_ATTACK_MS}:release=${DUCK_RELEASE_MS},` +
       "asplit=2[bedout][bedsum]",
@@ -582,6 +609,14 @@ export function applySound(opts: ApplyOpts): string[] {
   });
   const bed = readBed(tools, bedPath, spec.bed.level_lufs, picture.sec);
 
+  // The fades share the laid bed; the picture's length, or the bed's own when it is shorter
+  const fadeIn = spec.bed.fade_in_sec === undefined ? 0 : toSamples(spec.bed.fade_in_sec);
+  const fadeOut = spec.bed.fade_out_sec === undefined ? 0 : toSamples(spec.bed.fade_out_sec);
+  const laidSamples = Math.min(bed.samples, toSamples(picture.sec));
+  if (fadeIn + fadeOut > laidSamples) {
+    throw new Refusal("fade-too-long", `the two fades take ${fadeIn + fadeOut} samples, the laid bed has ${laidSamples}`);
+  }
+
   if (opts.dry) {
     return [
       "clip-sound: dry-run (nothing written)",
@@ -641,7 +676,15 @@ export function applySound(opts: ApplyOpts): string[] {
         out_lufs: lines[i].outLufs,
         ...(l.window ? { window: { from: l.window.from, to: l.window.to } } : {}),
       })),
-      bed: { file: spec.bed.file, sha256: spec.bed.sha256, sec: bed.sec, in_lufs: bed.inLufs, gain_db: bed.gainDb },
+      bed: {
+        file: spec.bed.file,
+        sha256: spec.bed.sha256,
+        sec: bed.sec,
+        in_lufs: bed.inLufs,
+        gain_db: bed.gainDb,
+        ...(spec.bed.fade_in_sec === undefined ? {} : { fade_in_sec: spec.bed.fade_in_sec }),
+        ...(spec.bed.fade_out_sec === undefined ? {} : { fade_out_sec: spec.bed.fade_out_sec }),
+      },
       mix: {
         target_lufs: spec.voice.target_lufs,
         level_lufs: spec.bed.level_lufs,

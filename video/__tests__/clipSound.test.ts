@@ -534,6 +534,321 @@ describe("clip sound: the record, the dry run and the graph", () => {
   });
 });
 
+describe("clip sound: the bed fade", () => {
+  /** The fade lengths of the tests: 2.4 s in (115200 samples) and 2.2 s out (105600 samples). */
+  const FADE = { fade_in_sec: 2.4, fade_out_sec: 2.2 };
+  const file = (dir: string, part: "sound.mp4" | "voice.wav" | "bed.wav"): string => path.join(dir, `test-sound.${part}`);
+
+  const NUMS = { lineGainsDb: [3, -4.5], wordSamples: [96000, 48000], bedGainDb: -6, bedSamples: 576000, pictureSamples: 480000 };
+  const PATHS = { picture: "/m/p.mp4", lines: ["/m/a.wav", "/m/b.wav"], bed: "/m/bed.wav", voiceOut: "/o/v.wav", bedOut: "/o/b.wav", filmOut: "/o/f.mp4" };
+  /** The graph of the numbers of test "graph", with the spec changed and, if wanted, another bed length. */
+  const graph = (change: (s: ClipSoundSpec) => void = () => undefined, bedSamples = NUMS.bedSamples) => {
+    const spec = goodSpec();
+    change(spec);
+    return buildSoundGraph(spec, { ...NUMS, bedSamples }, PATHS);
+  };
+  const count = (text: string, part: string): number => text.split(part).length - 1;
+  /** The chain of the bed input, up to its label [bed]. */
+  const bedChain = (text: string): string => /\[3:a:0\][^;\n]*\[bed\]/.exec(text)?.[0] ?? "";
+  const both = (s: ClipSoundSpec): void => void Object.assign(s.bed, FADE);
+
+  test("fade keys: a fade key is a number above 0 and up to 10 with at most 3 decimals; no key is no fade", () => {
+    const good: [string, number | undefined, number | undefined][] = [
+      ["both at 0.001", 0.001, 0.001],
+      ["both at 10", 10, 10],
+      ["2.4 and 2.2", 2.4, 2.2],
+      ["fade_in_sec alone", 2.4, undefined],
+      ["fade_out_sec alone", undefined, 2.2],
+    ];
+    for (const [name, fadeIn, fadeOut] of good) {
+      const s = clone(goodSpec());
+      if (fadeIn !== undefined) s.bed.fade_in_sec = fadeIn;
+      if (fadeOut !== undefined) s.bed.fade_out_sec = fadeOut;
+      expect([name, validateSpec(s)]).toEqual([name, []]);
+    }
+    // the reason line names the key and the value
+    const bad = clone(goodSpec());
+    bad.bed.fade_out_sec = 0;
+    expect(validateSpec(bad)).toEqual(["bad-fade: bed.fade_out_sec is 0, not a number above 0 and up to 10 with at most 3 decimals"]);
+  });
+
+  test("fade graph: the fades are two straight lines on the bed, behind its cut and before the duck", () => {
+    const FADE_IN = "afade=t=in:ss=0:ns=115200:curve=tri";
+    const FADE_OUT = "afade=t=out:ss=374400:ns=105600:curve=tri";
+    const MONO = "aformat=sample_fmts=fltp,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=mono,asetpts=N/SR/TB";
+    const STEREO = "aformat=sample_fmts=fltp,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=N/SR/TB";
+    const LINE = "alimiter=limit=0.84:attack=2:release=40:level=false";
+    const BED_HEAD = `[3:a:0]${STEREO},volume=-6dB,atrim=end_sample=480000`;
+    // the text and the arguments this call gives without the keys, as the tool gave them before the fade keys
+    const BASE_MIX = [
+      `[1:a:0]${MONO},volume=3dB,${LINE},atrim=end_sample=96000,adelay=delays=48000S:all=1[l0]`,
+      `[2:a:0]${MONO},volume=-4.5dB,${LINE},atrim=end_sample=48000,adelay=delays=313776S:all=1[l1]`,
+      "[l0][l1]amix=inputs=2:duration=longest:normalize=0,apad=whole_len=480000,atrim=end_sample=480000,asplit=2[voiceout][voicemono]",
+      "[voicemono]aformat=channel_layouts=stereo,asplit=2[keyshort][voicest]",
+      "[keyshort]apad=pad_len=576000[key]",
+      `${BED_HEAD}[bed]`,
+      "[bed][key]sidechaincompress=threshold=0.03:ratio=4:attack=20:release=500,asplit=2[bedout][bedsum]",
+      "[voicest][bedsum]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.84:attack=5:release=50:level=false[mix]",
+    ].join(";");
+    const BASE_TEXT = [`${MONO},volume=3dB,${LINE},silencedetect=noise=-60dB:d=0.1`, `${MONO},volume=-4.5dB,${LINE},silencedetect=noise=-60dB:d=0.1`, BASE_MIX].join("\n");
+    const BASE_ARGS = [
+      "-y",
+      "-nostdin",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      "/m/p.mp4",
+      "-i",
+      "/m/a.wav",
+      "-i",
+      "/m/b.wav",
+      "-i",
+      "/m/bed.wav",
+      "-filter_complex",
+      BASE_MIX,
+      "-map",
+      "[voiceout]",
+      "-map_metadata",
+      "-1",
+      "-c:a",
+      "pcm_s16le",
+      "/o/v.wav",
+      "-map",
+      "[bedout]",
+      "-map_metadata",
+      "-1",
+      "-c:a",
+      "pcm_s16le",
+      "/o/b.wav",
+      "-map",
+      "0:v:0",
+      "-map",
+      "[mix]",
+      "-c:v",
+      "copy",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      "-ar",
+      "48000",
+      "-ac",
+      "2",
+      "-map_metadata",
+      "-1",
+      "-map_chapters",
+      "-1",
+      "-movflags",
+      "+faststart",
+      "/o/f.mp4",
+    ];
+    const g = graph(both);
+    expect(count(g.text, "afade=")).toBe(2);
+    expect(count(g.text, FADE_IN)).toBe(1);
+    expect(count(g.text, FADE_OUT)).toBe(1);
+    const chain = bedChain(g.mix);
+    const [cut, rest] = chain.split("atrim=end_sample=480000");
+    expect(cut).toContain("aresample=48000");
+    expect(rest).toBe(`,${FADE_IN},${FADE_OUT}[bed]`);
+    // the duck and the sum take the faded bed; no fade stands behind the duck
+    expect(g.mix.slice(g.mix.indexOf("sidechaincompress"), g.mix.indexOf("[mix]"))).not.toContain("afade");
+    expect(g.mix.slice(0, g.mix.indexOf("[3:a:0]"))).not.toContain("afade");
+    expect(g.args[g.args.indexOf("-filter_complex") + 1]).toBe(g.mix);
+
+    // a bed 0.04 s short: the fade out ends with the bed, not with the picture
+    const short = graph(both, 478080);
+    expect(count(short.text, "afade=")).toBe(2);
+    expect(bedChain(short.mix)).toBe(`${BED_HEAD},${FADE_IN},afade=t=out:ss=372480:ns=105600:curve=tri[bed]`);
+
+    // one key, one fade
+    const outOnly = graph((s) => void (s.bed.fade_out_sec = 2.2));
+    expect(count(outOnly.text, "afade=")).toBe(1);
+    expect(bedChain(outOnly.mix)).toBe(`${BED_HEAD},${FADE_OUT}[bed]`);
+    const inOnly = graph((s) => void (s.bed.fade_in_sec = 2.4));
+    expect(count(inOnly.text, "afade=")).toBe(1);
+    expect(bedChain(inOnly.mix)).toBe(`${BED_HEAD},${FADE_IN}[bed]`);
+
+    // 0.009 s is 432 samples: the count is rounded, not cut
+    expect(bedChain(graph((s) => void (s.bed.fade_in_sec = 0.009)).mix)).toBe(`${BED_HEAD},afade=t=in:ss=0:ns=432:curve=tri[bed]`);
+
+    // no key: no fade filter, and the text and the arguments are those of the tool before the fade
+    const none = graph();
+    expect(count(none.text, "afade")).toBe(0);
+    expect(none.text).toBe(BASE_TEXT);
+    expect(none.args).toEqual(BASE_ARGS);
+  });
+
+  ffTest("fade lay: 2.4 s in and 2.2 s out on the good fixture, beside the same run without the keys", () => {
+    const f = fixture();
+    const plain = tmp("plain");
+    const faded = tmp("faded");
+    lay(f, { out: plain });
+    const v = variant(f, both);
+    const r = runCli(argsOf(f, { spec: v.specPath, out: faded }));
+    // (a) exit 0, the printed line of today, the four files
+    expect([r.code, r.err]).toEqual([0, ""]);
+    expect(r.out).toMatch(/^clip-sound: wrote test-sound sec=10 lines=2 voice-lufs=-?[\d.]+ mix-lufs=-?[\d.]+ mix-peak-db=-?[\d.]+\n$/);
+    expect(fs.readdirSync(plain).sort()).toEqual(FOUR);
+    expect(fs.readdirSync(faded).sort()).toEqual(FOUR);
+
+    const bed = mono(file(faded, "bed.wav"));
+    const plainBed = mono(file(plain, "bed.wav"));
+    const middle = level(bed, [4.1, 5.5]);
+    const under = (pcm: Float32Array, ref: number, span: [number, number]): number => ref - level(pcm, span);
+    // (b) faded ends; the run without the keys is level there
+    expect(under(bed, middle, [0, 0.4])).toBeGreaterThanOrEqual(12);
+    expect(under(bed, middle, [9.6, 10])).toBeGreaterThanOrEqual(12);
+    const plainMiddle = level(plainBed, [4.1, 5.5]);
+    for (const span of [
+      [0, 0.4],
+      [9.6, 10],
+    ] as [number, number][])
+      expect(Math.abs(under(plainBed, plainMiddle, span))).toBeLessThanOrEqual(1.5);
+    // (c) silent at the ends
+    expect(under(bed, middle, [0, 0.005])).toBeGreaterThanOrEqual(45);
+    expect(under(bed, middle, [9.995, 10])).toBeGreaterThanOrEqual(45);
+    // (d) a straight line: the gain is 0.5 / 2.4 and 0.25 / 2.2 in the two spans
+    expect(Math.abs(under(bed, middle, [0.45, 0.55]) - 13.61)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(under(bed, middle, [9.7, 9.8]) - 18.83)).toBeLessThanOrEqual(0.5);
+    // (e) the middle is as before, sample by sample: the duck under the voice is the one of today
+    const diff: number[] = [];
+    for (let i = 2.4 * 48000; i < 7.8 * 48000; i++) if (bed[i] !== plainBed[i]) diff.push(i);
+    expect(diff).toEqual([]);
+    // (f) the voice file is byte-equal with and without the keys
+    expect(fs.readFileSync(file(faded, "voice.wav")).equals(fs.readFileSync(file(plain, "voice.wav")))).toBe(true);
+    // (g) the narrator is not faded in the film: line a plays from 1 to 3 s, inside the fade in
+    const film = mono(file(faded, "sound.mp4"));
+    const plainFilm = mono(file(plain, "sound.mp4"));
+    expect(Math.abs(level(film, [1.2, 2.2]) - level(plainFilm, [1.2, 2.2]))).toBeLessThanOrEqual(1);
+    // (h) the film has the fade
+    const filmMiddle = level(film, [4.1, 5.5]);
+    expect(under(film, filmMiddle, [0, 0.4])).toBeGreaterThanOrEqual(12);
+    expect(under(film, filmMiddle, [9.6, 10])).toBeGreaterThanOrEqual(12);
+    // (i) picture copied, lengths, peak: checks (b), (c), (h) and (k) of test "lay" on this run
+    const picture = path.join(f.mediaDir, "picture.mp4");
+    const filmFile = file(faded, "sound.mp4");
+    expect(streamHash(filmFile)).toBe(streamHash(picture));
+    const video = (p: string) => probe(p).streams.find((s) => s.codec_type === "video") as Record<string, string>;
+    expect(video(picture).nb_read_frames).toBe("300");
+    expect(video(filmFile).nb_read_frames).toBe(video(picture).nb_read_frames);
+    expect(video(filmFile).start_time).toBe(video(picture).start_time);
+    expect(probe(filmFile).streams.find((s) => s.codec_type === "audio")).toMatchObject({ codec_name: "aac", channels: 2, sample_rate: "48000" });
+    for (const p of [filmFile, file(faded, "voice.wav"), file(faded, "bed.wav")]) {
+      expect(Math.abs(Number(probe(p).streams[0].duration) - PICTURE_SEC)).toBeLessThanOrEqual(0.05);
+    }
+    expect(meter(filmFile, "").peak).toBeLessThanOrEqual(-1);
+    expect(probe(file(faded, "voice.wav")).streams).toEqual([expect.objectContaining({ codec_name: "pcm_s16le", channels: 1 })]);
+    expect(probe(file(faded, "bed.wav")).streams).toEqual([expect.objectContaining({ codec_name: "pcm_s16le", channels: 2 })]);
+    // (j) repeat: two runs with the keys in two empty folders give four byte-equal files
+    const again = [tmp("again"), tmp("again")];
+    for (const dir of again) lay(f, { spec: v.specPath, out: dir });
+    expect(snapshot(again[0])).toEqual(snapshot(again[1]));
+    expect(snapshot(again[0])).toHaveLength(4);
+  });
+
+  ffTest("one fade: fade_out_sec alone fades the end only, fade_in_sec alone the start only", () => {
+    const f = fixture();
+    const sides: [string, (s: ClipSoundSpec) => void][] = [
+      ["fade_out_sec", (s) => void (s.bed.fade_out_sec = 2.2)],
+      ["fade_in_sec", (s) => void (s.bed.fade_in_sec = 2.4)],
+    ];
+    for (const [key, change] of sides) {
+      const dir = tmp("one");
+      lay(f, { spec: variant(f, change).specPath, out: dir });
+      const bed = mono(file(dir, "bed.wav"));
+      const middle = level(bed, [4.1, 5.5]);
+      const start = middle - level(bed, [0, 0.4]);
+      const end = middle - level(bed, [9.6, 10]);
+      const [fadedStart, fadedEnd] = [start >= 12, end >= 12];
+      const [levelStart, levelEnd] = [start <= 1.5, end <= 1.5];
+      expect([key, key === "fade_out_sec" ? [levelStart, fadedEnd] : [fadedStart, levelEnd]]).toEqual([key, [true, true]]);
+    }
+  });
+
+  const endsAndLine = (pcm: Float32Array): number[] => {
+    const middle = level(pcm, [4.1, 5.5]);
+    // (c) the first and the last 0.005 s; (d) the two spans of the straight line
+    return [middle - level(pcm, [0, 0.005]), middle - level(pcm, [9.995, 10]), middle - level(pcm, [0.45, 0.55]), middle - level(pcm, [9.7, 9.8])];
+  };
+
+  ffTest("fade lay 44.1: a bed at 44.1 kHz is faded behind its resample: the marks do not move", () => {
+    const f = fixture();
+    // the bed of the fixture, made at another rate
+    const slow = media(f, "bed-441.wav", soundArgs("sine=frequency=440:sample_rate=44100:duration=12", "volume=6dB,aformat=channel_layouts=stereo"));
+    lay(f, { spec: variant(f, (s) => void Object.assign(s.bed, slow, FADE)).specPath });
+    expect(Number(recordOf(f.outDir).bed.sec)).toBe(12);
+    const [head, tail, rise, fall] = endsAndLine(mono(out(f, "bed.wav")));
+    expect(head).toBeGreaterThanOrEqual(45);
+    expect(tail).toBeGreaterThanOrEqual(45);
+    expect(Math.abs(rise - 13.61)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(fall - 18.83)).toBeLessThanOrEqual(0.5);
+  });
+
+  ffTest("short bed fade: the fade out ends with a bed that is 0.04 s shorter than the picture", () => {
+    const f = fixture();
+    const short = media(f, "short-bed.wav", toneArgs(PICTURE_SEC - 0.04));
+    lay(f, { spec: variant(f, (s) => void Object.assign(s.bed, short, { fade_out_sec: 1 })).specPath });
+    const pcm = mono(out(f, "bed.wav"));
+    expect(pcm).toHaveLength(478080);
+    const bedEnd = 478080 / 48000;
+    expect(level(pcm, [4.1, 5.5]) - level(pcm, [bedEnd - 0.005, bedEnd])).toBeGreaterThanOrEqual(45);
+  });
+
+  ffTest("fade record: the bed section holds a fade key when the spec gave it, and then only", () => {
+    const f = fixture();
+    const keys = (o: unknown): string[] => Object.keys(o as object).sort();
+    const v = variant(f, both);
+    // a dry run with the keys prints what a dry run without them prints, and writes nothing
+    const dry = cli(argsOf(f, { spec: v.specPath }, ["--dry"]));
+    const plainDry = cli(argsOf(f, {}, ["--dry"]));
+    expect([dry.code, dry.err, dry.tmpLeft, plainDry.out]).toEqual([0, "", [], dry.out]);
+    expect(fs.readdirSync(f.outDir)).toEqual([]);
+    lay(f, { spec: v.specPath });
+    const rec = recordOf(f.outDir);
+    expect(keys(rec)).toEqual("schema spec_sha256 slug picture lines bed mix measured outputs ffmpeg".split(" ").sort());
+    expect(keys(rec.picture)).toEqual("file sha256 video_stream_sha256 frames sec".split(" ").sort());
+    expect(keys(rec.lines[0])).toEqual("id file sha256 at sec words_end in_lufs gain_db out_lufs window".split(" ").sort());
+    expect(keys(rec.lines[1])).toEqual("id file sha256 at sec words_end in_lufs gain_db out_lufs".split(" ").sort());
+    expect(rec.mix).toEqual(recordOf(laid().f.outDir).mix);
+    expect(keys(rec.measured)).toEqual(["mix_lufs", "mix_peak_db", "voice_lufs"]);
+    expect(keys(rec.outputs)).toEqual(["bed", "film", "voice"]);
+    expect(keys(rec.bed)).toEqual("file sha256 sec in_lufs gain_db fade_in_sec fade_out_sec".split(" ").sort());
+    expect(rec.bed).toMatchObject({ file: "bed.wav", sha256: f.spec.bed.sha256, sec: BED_SEC, fade_in_sec: 2.4, fade_out_sec: 2.2 });
+    expect(rec.outputs.bed).toEqual({ file: "test-sound.bed.wav", sha256: sha256File(out(f, "bed.wav")) });
+    expect((rec as unknown as { schema: string }).schema).toBe("clip-sound-record/1");
+    // one key given: that key alone is written
+    lay(f, { spec: variant(f, (s) => void (s.bed.fade_out_sec = 2.2)).specPath });
+    const one = recordOf(f.outDir).bed;
+    expect(keys(one)).toEqual("file sha256 sec in_lufs gain_db fade_out_sec".split(" ").sort());
+    expect(one).toMatchObject({ fade_out_sec: 2.2 });
+    // the run without the keys writes neither; a dry run prints the lines of today, with the keys or without
+    expect(keys(recordOf(laid().f.outDir).bed)).toEqual("file sha256 sec in_lufs gain_db".split(" ").sort());
+  });
+
+  ffTest("fade-too-long: the two fades together are longer than the laid bed, with --dry too; the edge passes", () => {
+    const f = fixture();
+    const fades = (fade_in_sec: number, fade_out_sec: number) =>
+      variant(f, (s) => void Object.assign(s.bed, { fade_in_sec, fade_out_sec })).specPath;
+    refused(argsOf(f, { spec: fades(6, 4.001) }), "fade-too-long", f.outDir);
+    refused(argsOf(f, { spec: fades(6, 4.001) }, ["--dry"]), "fade-too-long", f.outDir);
+    // the edge: 10 s of fades on a laid bed of 480000 samples
+    lay(f, { spec: fades(6, 4) });
+    expect(recordOf(f.outDir).bed).toMatchObject({ fade_in_sec: 6, fade_out_sec: 4 });
+    lay(f, { spec: variant(f, (s) => void (s.bed.fade_in_sec = 10)).specPath });
+    expect(recordOf(f.outDir).bed).toMatchObject({ fade_in_sec: 10 });
+    // a bed 0.04 s short: its own end is what the fades share
+    const short = media(f, "short-bed.wav", toneArgs(PICTURE_SEC - 0.04));
+    refused(argsOf(f, { spec: variant(f, (s) => void Object.assign(s.bed, short, { fade_in_sec: 6, fade_out_sec: 4 })).specPath }), "fade-too-long", f.outDir);
+  });
+
+  ffTest("bed-too-short: a bed 0.1 s short is refused with the fade keys given; it is not padded for a fade", () => {
+    const f = fixture();
+    const short = media(f, "short-bed.wav", toneArgs(PICTURE_SEC - 0.1));
+    refused(argsOf(f, { spec: variant(f, (s) => void Object.assign(s.bed, short, FADE)).specPath }), "bed-too-short", f.outDir);
+  });
+});
+
 describe("clip sound: fail closed", () => {
   /** One planted spec per listed case: [code, name, plant]. A text replaces the whole spec. */
   type Loose = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -605,6 +920,28 @@ describe("clip sound: fail closed", () => {
     ["bad-window", "at after the window", set(line(0), "window", { from: 0, to: 0.9 })],
     ["bad-window", "from negative", set(line(0), "window", { from: -1, to: 4 })],
     ["bad-window", "not an object", set(line(0), "window", [0, 4])],
+    ["bad-fade", "fade_in_sec 0", set(bed, "fade_in_sec", 0)],
+    ["bad-fade", "fade_in_sec negative", set(bed, "fade_in_sec", -1)],
+    ["bad-fade", "fade_in_sec 10.001", set(bed, "fade_in_sec", 10.001)],
+    ["bad-fade", "fade_in_sec 11", set(bed, "fade_in_sec", 11)],
+    ["bad-fade", "fade_in_sec a text", set(bed, "fade_in_sec", "2.4")],
+    ["bad-fade", "fade_in_sec not finite", JSON.stringify(goodSpec()).replace('"level_lufs":-24', '"level_lufs":-24,"fade_in_sec":1e999')],
+    ["bad-fade", "fade_in_sec 1.0005", set(bed, "fade_in_sec", 1.0005)],
+    ["bad-fade", "fade_in_sec null", set(bed, "fade_in_sec", null)],
+    ["bad-fade", "fade_in_sec true", set(bed, "fade_in_sec", true)],
+    ["bad-fade", "fade_in_sec a list", set(bed, "fade_in_sec", [2.4])],
+    ["bad-fade", "fade_out_sec 0", set(bed, "fade_out_sec", 0)],
+    ["bad-fade", "fade_out_sec -0.5", set(bed, "fade_out_sec", -0.5)],
+    ["bad-fade", "fade_out_sec 10.5", set(bed, "fade_out_sec", 10.5)],
+    ["bad-fade", "fade_out_sec a text", set(bed, "fade_out_sec", "2")],
+    ["bad-fade", "fade_out_sec 2.2004", set(bed, "fade_out_sec", 2.2004)],
+    ["bad-fade", "a good fade_in_sec does not hide a bad fade_out_sec", (s) => void Object.assign(s.bed, { fade_in_sec: 2.4, fade_out_sec: 0 })],
+    ["unknown-key", "fade_in in the bed", set(bed, "fade_in", 2.4)],
+    ["unknown-key", "fadeInSec in the bed", set(bed, "fadeInSec", 2.4)],
+    ["unknown-key", "fade_ms in the bed", set(bed, "fade_ms", 2400)],
+    ["unknown-key", "fade_in_sec at the top of the spec", set(root, "fade_in_sec", 2.4)],
+    ["unknown-key", "fade_in_sec in voice", set(voice, "fade_in_sec", 2.4)],
+    ["unknown-key", "fade_out_sec in a line", set(line(0), "fade_out_sec", 2.2)],
   ];
   /** A plant that is a text stands for the whole spec file. */
   const planted = (plant: ((s: Loose) => void) | string, base: ClipSoundSpec = goodSpec()): string => {
@@ -871,6 +1208,7 @@ describe("clip sound: fail closed", () => {
     expect(first).toHaveLength(4);
     const changed = variant(f, (s) => void (s.bed.sha256 = otherHash(s.bed.sha256)));
     refused(argsOf(f, { spec: changed.specPath }), "source-changed", f.outDir);
+    refused(argsOf(f, { spec: variant(f, (s) => void Object.assign(s.bed, { fade_in_sec: 6, fade_out_sec: 4.001 })).specPath }), "fade-too-long", f.outDir);
     fs.mkdirSync(path.join(f.outDir, "test-sound.sound.tmp.mp4"));
     refused(argsOf(f), "ffmpeg-failed", f.outDir);
     expect(snapshot(f.outDir).filter((n) => !n.endsWith(" folder"))).toEqual(first);
