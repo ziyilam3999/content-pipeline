@@ -79,6 +79,14 @@ const asObj = (v: unknown): Json => (typeof v === "object" && v !== null && !Arr
 const asStr = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 const asNum = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
+/** The credits of an estimatedCost or cost reply value, which the API gives as {"credits": N};
+ *  null for any other shape and for a number that is not finite or is below 0 (the spec allows
+ *  a negative integer; null lets the cost rule fall through, so the record does not under-count). */
+function readCredits(v: unknown): number | null {
+  const c = asNum(asObj(v).credits);
+  return c !== undefined && c >= 0 ? c : null;
+}
+
 function sha256(buf: Buffer): string {
   return crypto.createHash("sha256").update(buf).digest("hex");
 }
@@ -683,8 +691,7 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
       }),
     );
     taskId = asStr(createReply.id) ?? null;
-    const est = asNum(createReply.estimatedCost);
-    estimated = est !== undefined ? est : null;
+    estimated = readCredits(createReply.estimatedCost);
     if (!taskId) throw new Error("the create reply holds no task id");
 
     // poll GET /v1/tasks/{id}: PENDING, RUNNING and THROTTLED (and anything unknown) keep polling
@@ -708,8 +715,7 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
       if (Date.now() + intervalMs > deadline) throw new CallTimeout("task status");
       await wait(intervalMs);
     }
-    const fin = asNum(task.cost);
-    finalCost = fin !== undefined ? fin : null;
+    finalCost = readCredits(task.cost);
 
     if (status === "SUCCEEDED") {
       const outputs = Array.isArray(task.output) ? task.output : [];
