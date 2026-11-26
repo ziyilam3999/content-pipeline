@@ -455,7 +455,10 @@ function fetchNow(): typeof fetch {
   return f;
 }
 
-/** The Authorization header goes to the API host only; a request to another host gets none. */
+/**
+ * The Authorization header goes to the API host only; a request to another host gets none.
+ * The run builds the download with no headers; this holds the key back should a caller pass one.
+ */
 function headersFor(url: string, headers: Record<string, string>): Record<string, string> {
   if (new URL(url).host === API_HOST) return headers;
   const rest: Record<string, string> = {};
@@ -463,17 +466,30 @@ function headersFor(url: string, headers: Record<string, string>): Record<string
   return rest;
 }
 
-/** The next URL when this reply is a redirect of a download; null when the reply is the result. */
-function nextHop(url: string, res: Response, method: string, hop: number): string | null {
-  if (method !== "GET") return null; // the API calls take a 3xx as the reply
-  if (!(res.status >= 300 && res.status < 400) || hop >= MAX_DOWNLOAD_REDIRECTS) return null;
+const isRedirect = (res: Response): boolean => res.status >= 300 && res.status < 400;
+
+/** The next URL when the download's reply is a redirect the tool follows; null when the reply is the result. */
+function nextHop(url: string, res: Response, hop: number): string | null {
+  if (!isRedirect(res) || hop >= MAX_DOWNLOAD_REDIRECTS) return null;
   const loc = res.headers.get("location");
   if (!loc) return null;
   const next = new URL(loc, url); // a relative Location resolves against the URL that answered
   return next.protocol === "https:" ? next.toString() : null; // http is not followed
 }
 
-async function send(call: NetCall, as: "json" | "bytes"): Promise<unknown> {
+/** A 3xx the run did not follow; the text says so, where "http 302" alone would not. */
+class RedirectRefused extends HttpError {
+  constructor(status: number) {
+    super(status);
+    this.message = `http ${status}: the redirect is not followed`;
+  }
+}
+
+/**
+ * One call. The API calls (create, task status) take a 3xx as a refused reply, so no other
+ * host's reply passes for the task's. The download follows the redirects nextHop accepts.
+ */
+async function send(call: NetCall, step: "api" | "download"): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), call.timeoutMs); // one timer for all hops
   try {
@@ -483,13 +499,13 @@ async function send(call: NetCall, as: "json" | "bytes"): Promise<unknown> {
         method: call.method,
         headers: headersFor(url, call.headers),
         body: call.body,
-        redirect: "manual", // each hop is decided in nextHop, not silently by fetch
+        redirect: "manual", // each hop of a download is decided in nextHop, not silently by fetch
         signal: controller.signal,
       });
-      const next = nextHop(url, res, call.method, hop);
+      const next = step === "download" ? nextHop(url, res, hop) : null;
       if (next === null) {
-        if (!res.ok) throw new HttpError(res.status);
-        if (as === "json") return res.json();
+        if (!res.ok) throw isRedirect(res) ? new RedirectRefused(res.status) : new HttpError(res.status);
+        if (step === "api") return res.json();
         return Buffer.from(await res.arrayBuffer());
       }
       url = next;
@@ -505,9 +521,9 @@ async function send(call: NetCall, as: "json" | "bytes"): Promise<unknown> {
 /** The real caller; the key sits in the Authorization header of the API calls only. */
 export function realRunwayAudioCaller(): RunwayAudioCaller {
   return {
-    create: (c) => send(c, "json"),
-    taskStatus: (c) => send(c, "json"),
-    download: async (c) => (await send(c, "bytes")) as Buffer,
+    create: (c) => send(c, "api"),
+    taskStatus: (c) => send(c, "api"),
+    download: async (c) => (await send(c, "download")) as Buffer,
   };
 }
 

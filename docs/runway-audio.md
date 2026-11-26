@@ -35,8 +35,8 @@ new run.
   (default 900).
 - `--live` — send the one request.
 
-`--out` and the folder of `--ledger` lie outside this repo, or in its `out/`, and outside any
-git work tree.
+`--out` and the folder of `--ledger` lie outside git work trees: the tool refuses a folder
+inside one with `inside-repo`, this repo's `out/` included.
 
 ## Dry run (the default)
 
@@ -88,7 +88,9 @@ appended and before a request is sent.
 
 A run that ends another way prints `runway-audio: <status> attempt=<attempt id> <failure text>`
 on stderr and exits 1; the statuses are `failed`, `cancelled`, `timeout`, `http-<n>` and
-`error`.
+`error`. `http-<n>` is a reply other than 2xx. The tool follows a redirect on the download
+only (to `https:` addresses, at most 5 in a row); a 3xx of the API host ends the run, so the
+reply of another host is not taken for the task's.
 
 ## Spend lines
 
@@ -145,8 +147,8 @@ least 1. A 6 s line is 2 credits (USD 0.020), a 10.03 s line is 4 (USD 0.040).
   donor file name, so the two meet when a donor file is renamed.
 - An outcome line carries no endpoint: a reader tells a swap from a `video:tryout` run through
   the attempt line of the same `attempt_id`.
-- An open change (the `clip:edit` ai-clip kind) reads the table value `ai-video` for service
-  `runway`, so it takes a swap line as a line of the AI video group.
+- The `clip:edit` ai-clip kind (`video/clipEdit.ts`, on master) reads the table value `ai-video`
+  for service `runway`, so it takes a swap line as a line of the AI video group.
 - A create that Runway refuses (`http-4xx`) leaves the attempt line at the list estimate and
   uses one of the 2 attempts of that clip id.
 - A run that dies between the two lines leaves the attempt line alone.

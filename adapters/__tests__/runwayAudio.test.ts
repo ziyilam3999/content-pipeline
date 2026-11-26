@@ -110,7 +110,7 @@ const tryoutAttempt = (planId: string, clipId: string): Record<string, unknown> 
 });
 const spendLine = (service: string, cost: number): Record<string, unknown> => ({ kind: "attempt", service, cost_usd: cost });
 
-// ── fixtures: the system ffmpeg writes PCM; a run reads its temp folder from TMPDIR ─────
+// ── fixtures: the system ffmpeg writes PCM; a run gets its temp folder through deps ─────
 
 const ON_WIN32 = process.platform === "win32";
 const FFMPEG = !ON_WIN32 && hasSystemFfmpeg() ? resolveSystemFfmpeg() : null;
@@ -547,6 +547,12 @@ describe("a57 price and the sent sound", () => {
       expect([label, streams[0].codec_name]).toEqual([label, "pcm_s16le"]);
       expect([label, streams[0].sample_rate]).toEqual([label, String(rate)]);
       expect([label, streams[0].channels]).toEqual([label, channels]);
+      // the sample count is PER CHANNEL: a stereo file of 6 s is priced and booked as 6 s
+      const dry = await run(ctx.args({ in: file }), new FakeCaller());
+      const line = dry.out.split("\n")[1];
+      expect([label, field(line, "seconds")]).toEqual([label, "6"]);
+      expect([label, field(line, "credits")]).toEqual([label, "2"]);
+      expect([label, ledgerLines(ctx.ledger)[0].cost_usd]).toEqual([label, 0.02]); // the attempt line books the same 2 credits
     }
   });
 
@@ -1088,10 +1094,12 @@ describe("a57 how a live run can end", () => {
   });
 
   toolIt("bad task id", async () => {
+    // the piece of each id looked for below holds letters a uuid cannot: the stderr line
+    // carries the attempt id, a uuid, and a piece of hex letters would be found there by chance
     const rows: [string, string][] = [
       ["a text of 1 MB", "x".repeat(1_000_000)],
-      ["an id with a slash", "abc/def"],
-      ["an id with a line break", "abc\ndef"],
+      ["an id with a slash", "made-up/id"],
+      ["an id with a line break", "made-up\nid"],
     ];
     for (const [label, id] of rows) {
       const ctx = makeCtx(true);
@@ -1103,7 +1111,7 @@ describe("a57 how a live run can end", () => {
       expect([label, fake.statusCount]).toEqual([label, 0]); // no status call
       expect([label, r.err.split("\n").length]).toEqual([label, 2]); // one line and the final newline
       expect(r.err.length).toBeLessThan(300); // the refused id is not echoed
-      expect([label, r.err.includes("abc")]).toEqual([label, false]);
+      expect([label, r.err.includes(id.slice(0, 7))]).toEqual([label, false]);
     }
   });
 
@@ -1157,6 +1165,24 @@ describe("a57 request and saved file", () => {
       expect([noise, field(dryLine, "data-uri-chars")]).toEqual([noise, String(body.media.uri.length)]);
       expect([noise, field(dryLine, "input-sha256")]).toEqual([noise, sha(fs.readFileSync(ctx.file))]);
     }
+
+    // a PCM WAV input has the bytes of the WAV the tool sends, so the two hashes are equal
+    // above. An mp4 with AAC sound has not: each hash is read from its own file here.
+    const ctx = makeCtx();
+    const file = makeClip(ctx.tmp);
+    const fake = new FakeCaller();
+    expect((await run(ctx.args({ in: file, extra: ["--live"] }), fake)).code).toBe(0);
+    const dry = await run(ctx.args({ in: file }), new FakeCaller());
+    expect(dry.code).toBe(0);
+    const inputSha = sha(fs.readFileSync(file));
+    const audioSha = sha(sentWav(fake));
+    expect(audioSha).not.toBe(inputSha); // the fixture tells the two hashes apart
+    const sent = ledgerLines(ctx.ledger)[0].sent as Record<string, unknown>;
+    expect(sent.input_clip_sha256).toBe(inputSha);
+    expect(sent.input_audio_sha256).toBe(audioSha);
+    const dryLine = dry.out.split("\n")[1];
+    expect(field(dryLine, "input-sha256")).toBe(inputSha);
+    expect(field(dryLine, "audio-sha256")).toBe(audioSha);
   });
 
   toolIt("saved as received", async () => {
@@ -1373,6 +1399,81 @@ describe("a57 real caller", () => {
     expect(outcome.file_sha256).toBe(sha(bytes));
     expect(`${r?.out ?? ""}${r?.err ?? ""}${readBytes(ctx.ledger)?.toString("utf8") ?? ""}`).not.toContain(KEY);
     expect(fetchCount).toBe(0); // the fence itself was not called
+  });
+
+  toolIt("real caller: a 3xx of the API host is refused and not followed", async () => {
+    const taskUrl = `${API}/tasks/made-up-task-real`;
+    const other = "https://other.made-up-host.test/made-up-task";
+    const rows: [string, string, string[]][] = [
+      // label, the API URL that answers 302, the URLs the stub is asked
+      ["the task status call", taskUrl, [ENDPOINT_URL, taskUrl]],
+      ["the create call", ENDPOINT_URL, [ENDPOINT_URL]],
+    ];
+    for (const [label, redirected, asked] of rows) {
+      const ctx = makeCtx(true);
+      const root = tempRoot();
+      const seen: Seen[] = [];
+      let r: CliResult | undefined;
+      await withStubFetch(
+        (u) => {
+          if (u === redirected) return res(302, { location: other });
+          if (u === ENDPOINT_URL) return res(200, { json: { id: "made-up-task-real" } });
+          // followed, the other host's reply would end the run as ok, with a cost to book
+          if (u === other) return res(200, { json: { status: "SUCCEEDED", output: [DL_URL], cost: { credits: 2 } } });
+          if (u === DL_URL) return res(200, { bytes: Buffer.from("ID3made-up-bytes-of-the-other-host") });
+          return res(500, { json: { unexpected: u } });
+        },
+        seen,
+        async () => {
+          r = await ra.runRunwayAudio(ctx.args({ extra: ["--live"] }), { keyReader: () => KEY, pollIntervalMs: 1, tempDir: root });
+        },
+      );
+      expect([label, r?.code]).toEqual([label, 1]);
+      expect([label, seen.map((s) => s.url)]).toEqual([label, asked]); // the other host is not asked
+      expect([label, seen.filter((s) => s.url === ENDPOINT_URL).length]).toEqual([label, 1]); // exactly one create call
+      expect([label, fs.readdirSync(root)]).toEqual([label, []]);
+      const lines = ledgerLines(ctx.ledger);
+      expect([label, lines.map((l) => l.kind)]).toEqual([label, ["attempt", "outcome"]]);
+      const outcome = lines[1];
+      expect([label, outcome.status]).toEqual([label, "http-302"]);
+      expect([label, outcome.failure]).toEqual([label, "http 302: the redirect is not followed"]);
+      expect([label, outcome.task_id]).toEqual([label, label === "the create call" ? null : "made-up-task-real"]);
+      expect([label, outcome.cost_usd]).toEqual([label, 0]);
+      expect([label, outcome.file]).toEqual([label, null]);
+      expect([label, fs.readdirSync(ctx.out)]).toEqual([label, []]); // no file in --out
+      expect([label, fs.existsSync(`${ctx.ledger}.lock`)]).toEqual([label, false]);
+      expect(`${r?.out ?? ""}${r?.err ?? ""}`).not.toContain(KEY);
+    }
+  });
+
+  it("real caller: a request to a host other than the API host gets no Authorization header", async () => {
+    // the run builds its download with no headers, so the hold of the caller is reached by
+    // hand: each step of the real caller is asked for another host with the key header passed
+    const call: NetCall = {
+      url: DL_URL,
+      method: "GET",
+      headers: { Authorization: `Bearer ${KEY}`, "X-Runway-Version": "2024-11-06" },
+      timeoutMs: 1000,
+    };
+    const seen: Seen[] = [];
+    await withStubFetch(() => res(200, { bytes: Buffer.from("ID3made-up-bytes") }), seen, async () => {
+      const real = ra.realRunwayAudioCaller();
+      await real.download(call);
+      await real.taskStatus(call);
+      await real.create({ ...call, method: "POST" });
+    });
+    expect(seen.map((s) => s.method)).toEqual(["GET", "GET", "POST"]); // one request each
+    for (const s of seen) {
+      expect(Object.keys(s.headers).some((k) => k.toLowerCase() === "authorization")).toBe(false);
+      expect(JSON.stringify(s)).not.toContain(KEY);
+      expect(s.headers["X-Runway-Version"]).toBe("2024-11-06"); // the other headers pass
+    }
+    // the same header reaches the API host
+    const api: Seen[] = [];
+    await withStubFetch(() => res(200, { json: {} }), api, async () => {
+      await ra.realRunwayAudioCaller().taskStatus({ ...call, url: `${API}/tasks/${TASK}` });
+    });
+    expect(api[0].headers.Authorization).toBe(`Bearer ${KEY}`);
   });
 });
 
