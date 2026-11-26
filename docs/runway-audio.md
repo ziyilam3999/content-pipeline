@@ -35,8 +35,10 @@ new run.
   (default 900).
 - `--live` — send the one request.
 
-`--out` and the folder of `--ledger` lie outside git work trees: the tool refuses a folder
-inside one with `inside-repo`, this repo's `out/` included.
+`--out` and the folder of `--ledger` lie outside git work trees. The repo check of
+`checkFolder` (`adapters/videogen.ts`) comes first, so a folder of this repo outside `out/` is
+refused with `out-bad`. The git work tree check comes next: a folder under this repo's `out/`,
+or a folder inside another git work tree, is refused with `inside-repo`.
 
 ## Dry run (the default)
 

@@ -72,8 +72,8 @@ export const PRESET_VOICES: readonly string[] = Object.freeze([
 
 export const DEFAULT_TIMEOUT_SECONDS = 900;
 
-/** A plan id or a clip id: 1 to 120 characters, the first a letter or a digit. */
-const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/;
+/** A plan id or a clip id: 1 to 120 characters, the first a letter, a digit or an underscore (not a dot or a dash). */
+const ID_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,119}$/;
 
 /** The Runway task id: the OpenAPI file gives a uuid; a wider id is refused before a status call. */
 const TASK_ID_RE = /^[A-Za-z0-9-]{1,64}$/;

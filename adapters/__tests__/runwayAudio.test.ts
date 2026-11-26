@@ -854,12 +854,15 @@ describe("a57 spend lines", () => {
   });
 
   toolIt("cost forms", async () => {
-    const rows: [string, unknown, unknown, string][] = [
-      ["the object form", { credits: 2 }, { credits: 2 }, "cost-form estimate=object final=object"],
-      ["the plain number", 2, 2, "cost-form estimate=number final=number"],
-      ["neither field", undefined, undefined, "cost-form estimate=none final=none"],
+    const rows: [string, unknown, unknown, string, number | null][] = [
+      // label, estimatedCost of the create reply, cost of the terminal reply, the printed part, the credits in the line
+      ["the object form", { credits: 2 }, { credits: 2 }, "cost-form estimate=object final=object", 2],
+      ["the plain number", 2, 2, "cost-form estimate=number final=number", 2],
+      ["0 credits in the object form", { credits: 0 }, { credits: 0 }, "cost-form estimate=object final=object", 0],
+      ["0 credits as the plain number", 0, 0, "cost-form estimate=number final=number", 0],
+      ["neither field", undefined, undefined, "cost-form estimate=none final=none", null],
     ];
-    for (const [label, estimatedCost, cost, printed] of rows) {
+    for (const [label, estimatedCost, cost, printed, n] of rows) {
       const ctx = makeCtx(true);
       const fake = new FakeCaller();
       fake.estimatedCost = estimatedCost;
@@ -867,8 +870,7 @@ describe("a57 spend lines", () => {
       const r = await run(ctx.args({ extra: ["--live"] }), fake);
       const outcome = expectEnded(fake, r, ctx, "ok");
       expect([label, r.out.trim().endsWith(printed)]).toEqual([label, true]);
-      const n = typeof estimatedCost === "object" || typeof estimatedCost === "number" ? 2 : null;
-      expect([label, outcome.estimated_cost_credits]).toEqual([label, n]);
+      expect([label, outcome.estimated_cost_credits]).toEqual([label, n]); // 0 credits are read, not skipped
       expect([label, outcome.final_cost_credits]).toEqual([label, n]);
       expect([label, outcome.cost_usd]).toEqual([label, 0]);
     }
@@ -1100,7 +1102,9 @@ describe("a57 how a live run can end", () => {
       ["a text of 1 MB", "x".repeat(1_000_000)],
       ["an id with a slash", "made-up/id"],
       ["an id with a line break", "made-up\nid"],
+      ["an id of 65 characters", `${"made-up-".repeat(8)}x`],
     ];
+    expect(rows[3][1].length).toBe(65);
     for (const [label, id] of rows) {
       const ctx = makeCtx(true);
       const fake = new FakeCaller();
@@ -1113,6 +1117,17 @@ describe("a57 how a live run can end", () => {
       expect(r.err.length).toBeLessThan(300); // the refused id is not echoed
       expect([label, r.err.includes(id.slice(0, 7))]).toEqual([label, false]);
     }
+    // an id of 64 characters is taken: its status call is made, and it sits in the outcome line
+    const ok = soundCtx();
+    const okFake = new FakeCaller();
+    const id64 = "made-up-".repeat(8);
+    expect(id64.length).toBe(64);
+    okFake.taskId = id64;
+    const okRun = await run(ok.args({ extra: ["--live"] }), okFake);
+    const outcome = expectEnded(okFake, okRun, ok, "ok");
+    expect(outcome.task_id).toBe(id64);
+    expect(okFake.statusCount).toBe(1);
+    expect(okFake.calls[1].url).toBe(`${API}/tasks/${id64}`);
   });
 
   toolIt("bad output url", async () => {
@@ -1359,46 +1374,119 @@ describe("a57 real caller", () => {
   }
 
   toolIt("real caller: the key header stays on the API host and a download redirect is followed", async () => {
-    const ctx = makeCtx(true);
     const bytes = Buffer.from("ID3made-up-bytes-of-the-real-caller-run");
     const hop1 = "https://cdn-a.made-up-host.test/made-up-swap.mp3";
     const hop2 = "https://cdn-b.made-up-host.test/made-up-swap.mp3";
-    const seen: Seen[] = [];
-    const root = tempRoot();
-    let r: CliResult | undefined;
-    await withStubFetch(
-      (u) => {
-        if (u === ENDPOINT_URL) return res(200, { json: { id: "made-up-task-real", estimatedCost: { credits: 2 } } });
-        if (u === `${API}/tasks/made-up-task-real`) {
-          return res(200, { json: { status: "SUCCEEDED", output: [hop1], cost: { credits: 2 } } });
-        }
-        if (u === hop1) return res(302, { location: hop2 });
-        if (u === hop2) return res(200, { bytes });
-        return res(500, { json: { unexpected: u } });
-      },
-      seen,
-      async () => {
-        // a live run through the REAL caller: no caller in deps
-        r = await ra.runRunwayAudio(ctx.args({ extra: ["--live"] }), { keyReader: () => KEY, pollIntervalMs: 1, tempDir: root });
-      },
-    );
-    expect(fs.readdirSync(root)).toEqual([]);
-    expect(r?.code).toBe(0);
-    expect(seen.map((s) => s.url)).toEqual([ENDPOINT_URL, `${API}/tasks/made-up-task-real`, hop1, hop2]);
-    expect(seen.map((s) => s.method)).toEqual(["POST", "GET", "GET", "GET"]);
-    expect(seen[0].headers.Authorization).toBe(`Bearer ${KEY}`);
-    expect(seen[1].headers.Authorization).toBe(`Bearer ${KEY}`);
-    expect(seen[0].headers["X-Runway-Version"]).toBe("2024-11-06");
-    for (const s of seen.slice(2)) {
-      expect(Object.keys(s.headers).some((k) => k.toLowerCase() === "authorization")).toBe(false);
-      expect(JSON.stringify(s)).not.toContain(KEY);
+    const plain = "http://cdn-b.made-up-host.test/made-up-swap.mp3";
+    const taskUrl = `${API}/tasks/made-up-task-real`;
+    // label, the Location of the reply of the first address, the download addresses asked, the outcome status
+    const rows: [string, string, string[], string][] = [
+      ["an https address", hop2, [hop1, hop2], "ok"],
+      ["an http address", plain, [hop1], "http-302"], // the hop is refused
+    ];
+    for (const [label, location, asked, status] of rows) {
+      const ctx = makeCtx(true);
+      const seen: Seen[] = [];
+      const root = tempRoot();
+      let r: CliResult | undefined;
+      await withStubFetch(
+        (u) => {
+          if (u === ENDPOINT_URL) return res(200, { json: { id: "made-up-task-real", estimatedCost: { credits: 2 } } });
+          if (u === taskUrl) return res(200, { json: { status: "SUCCEEDED", output: [hop1], cost: { credits: 2 } } });
+          if (u === hop1) return res(302, { location });
+          // followed, the Location would end the run as ok, with a file
+          if (u === hop2 || u === plain) return res(200, { bytes });
+          return res(500, { json: { unexpected: u } });
+        },
+        seen,
+        async () => {
+          // a live run through the REAL caller: no caller in deps
+          r = await ra.runRunwayAudio(ctx.args({ extra: ["--live"] }), { keyReader: () => KEY, pollIntervalMs: 1, tempDir: root });
+        },
+      );
+      expect(fs.readdirSync(root)).toEqual([]);
+      expect([label, seen.map((s) => s.url)]).toEqual([label, [ENDPOINT_URL, taskUrl, ...asked]]);
+      expect(seen.map((s) => s.method)).toEqual(["POST", "GET", ...asked.map(() => "GET")]);
+      expect(seen[0].headers.Authorization).toBe(`Bearer ${KEY}`);
+      expect(seen[1].headers.Authorization).toBe(`Bearer ${KEY}`);
+      expect(seen[0].headers["X-Runway-Version"]).toBe("2024-11-06");
+      for (const s of seen.slice(2)) {
+        expect(Object.keys(s.headers).some((k) => k.toLowerCase() === "authorization")).toBe(false);
+        expect(JSON.stringify(s)).not.toContain(KEY);
+      }
+      for (const s of seen) expect(s.redirect).toBe("manual");
+      const lines = ledgerLines(ctx.ledger);
+      expect(lines.map((l) => l.kind)).toEqual(["attempt", "outcome"]);
+      const outcome = lines[1];
+      expect([label, outcome.status]).toEqual([label, status]);
+      expect([label, outcome.cost_usd]).toEqual([label, 0]);
+      expect([label, fs.existsSync(`${ctx.ledger}.lock`)]).toEqual([label, false]);
+      expect(`${r?.out ?? ""}${r?.err ?? ""}${readBytes(ctx.ledger)?.toString("utf8") ?? ""}`).not.toContain(KEY);
+      expect(fetchCount).toBe(0); // the fence itself was not called
+      if (status === "ok") {
+        expect([label, r?.code]).toEqual([label, 0]);
+        expect([label, outcome.file_sha256]).toEqual([label, sha(bytes)]);
+        expect([label, fs.readdirSync(ctx.out).length]).toEqual([label, 1]);
+      } else {
+        expect([label, r?.code]).toEqual([label, 1]);
+        expect([label, outcome.failure]).toEqual([label, "http 302: the redirect is not followed"]);
+        expect([label, outcome.file]).toEqual([label, null]);
+        expect([label, fs.readdirSync(ctx.out)]).toEqual([label, []]); // no file in --out
+      }
     }
-    for (const s of seen) expect(s.redirect).toBe("manual");
-    const outcome = ledgerLines(ctx.ledger)[1];
-    expect(outcome.status).toBe("ok");
-    expect(outcome.file_sha256).toBe(sha(bytes));
-    expect(`${r?.out ?? ""}${r?.err ?? ""}${readBytes(ctx.ledger)?.toString("utf8") ?? ""}`).not.toContain(KEY);
-    expect(fetchCount).toBe(0); // the fence itself was not called
+  });
+
+  toolIt("real caller: a download follows at most 5 redirects in a row", async () => {
+    const bytes = Buffer.from("ID3made-up-bytes-of-the-seventh-address");
+    const taskUrl = `${API}/tasks/made-up-task-real`;
+    // address i answers a redirect to address i + 1; an address past the redirects answers the bytes
+    const hops = Array.from({ length: 7 }, (_, i) => `https://cdn-${i + 1}.made-up-host.test/made-up-swap.mp3`);
+    // label, how many addresses answer a redirect, the outcome status, the download addresses asked
+    const rows: [string, number, string, string[]][] = [
+      ["5 redirects, then the bytes", 5, "ok", hops.slice(0, 6)],
+      ["6 redirects in a row", 6, "http-302", hops.slice(0, 6)], // the sixth is refused
+    ];
+    for (const [label, redirects, status, asked] of rows) {
+      const ctx = makeCtx(true);
+      const seen: Seen[] = [];
+      const root = tempRoot();
+      let r: CliResult | undefined;
+      await withStubFetch(
+        (u) => {
+          if (u === ENDPOINT_URL) return res(200, { json: { id: "made-up-task-real" } });
+          if (u === taskUrl) return res(200, { json: { status: "SUCCEEDED", output: [hops[0]], cost: { credits: 2 } } });
+          const i = hops.indexOf(u);
+          if (i < 0) return res(500, { json: { unexpected: u } });
+          // followed, the seventh address would end the run as ok, with a file
+          return i < redirects ? res(302, { location: hops[i + 1] }) : res(200, { bytes });
+        },
+        seen,
+        async () => {
+          r = await ra.runRunwayAudio(ctx.args({ extra: ["--live"] }), { keyReader: () => KEY, pollIntervalMs: 1, tempDir: root });
+        },
+      );
+      expect(fs.readdirSync(root)).toEqual([]);
+      expect([label, seen.map((s) => s.url)]).toEqual([label, [ENDPOINT_URL, taskUrl, ...asked]]);
+      for (const s of seen.slice(2)) {
+        expect(Object.keys(s.headers).some((k) => k.toLowerCase() === "authorization")).toBe(false); // no hop carries the key
+      }
+      const lines = ledgerLines(ctx.ledger);
+      const outcome = lines[1];
+      expect([label, lines.map((l) => l.kind)]).toEqual([label, ["attempt", "outcome"]]);
+      expect([label, outcome.status]).toEqual([label, status]);
+      expect([label, outcome.cost_usd]).toEqual([label, 0]);
+      expect([label, fs.existsSync(`${ctx.ledger}.lock`)]).toEqual([label, false]);
+      expect(`${r?.out ?? ""}${r?.err ?? ""}${readBytes(ctx.ledger)?.toString("utf8") ?? ""}`).not.toContain(KEY);
+      if (status === "ok") {
+        expect([label, r?.code]).toEqual([label, 0]);
+        expect([label, outcome.file_sha256]).toEqual([label, sha(bytes)]);
+      } else {
+        expect([label, r?.code]).toEqual([label, 1]);
+        expect([label, outcome.failure]).toEqual([label, "http 302: the redirect is not followed"]);
+        expect([label, outcome.file]).toEqual([label, null]);
+        expect([label, fs.readdirSync(ctx.out)]).toEqual([label, []]); // no file in --out
+      }
+    }
   });
 
   toolIt("real caller: a 3xx of the API host is refused and not followed", async () => {
@@ -1615,11 +1703,11 @@ describe("a57 fail closed", () => {
   it("bad-id", async () => {
     const ctx = plainCtx();
     const s = snap(ctx);
-    const badIds = ["a".repeat(121), ".plan", "-plan", "a b", ""];
-    const planIds = [...badIds];
-    const clipFiles = ["c".repeat(121) + ".wav", ".donor.wav", "-donor.wav", "donor name.wav", ".wav"];
-    expect(planIds.length).toBe(5);
-    expect(clipFiles.length).toBe(5);
+    // 121 characters, a leading dot, a leading dash, a space, an empty text
+    const planIds = ["a".repeat(121), ".abc", "-abc", ".plan", "-plan", "a b", ""];
+    const clipFiles = ["c".repeat(121) + ".wav", ".abc.wav", "-abc.wav", ".donor.wav", "-donor.wav", "donor name.wav", ".wav"];
+    expect(planIds.length).toBe(7);
+    expect(clipFiles.length).toBe(7);
     for (const mode of LIVE_ONLY) {
       for (const planId of planIds) {
         const fake = new FakeCaller();
@@ -1636,6 +1724,37 @@ describe("a57 fail closed", () => {
         const r = await run(ctx.args({ in: file, extra: mode }), fake, keyReader);
         expectRefusal(r, "bad-id", fake, ctx, s);
         expect([name, keyReader.mock.calls.length]).toEqual([name, 0]);
+      }
+    }
+  });
+
+  toolIt("bad-id: a leading underscore and 120 characters pass", async () => {
+    const ids: [string, string][] = [
+      ["a leading underscore", "_abc"],
+      ["120 characters", "a".repeat(120)],
+    ];
+    expect(ids.map(([, id]) => id.length)).toEqual([4, 120]);
+    for (const extra of LIVE_ONLY) {
+      for (const [label, planId] of ids) {
+        const ctx = soundCtx();
+        const fake = new FakeCaller();
+        const r = await run(ctx.args({ planId, extra }), fake);
+        expect([label, r.code]).toEqual([label, 0]); // the id check passes and the run goes on
+        if (extra.length > 0) {
+          expect([label, (ledgerLines(ctx.ledger)[0].sent as Record<string, unknown>).plan_id]).toEqual([label, planId]);
+        }
+      }
+      for (const [label, clipId] of ids) {
+        const ctx = soundCtx();
+        const file = path.join(ctx.tmp, `${clipId}.wav`); // the 6 s fixture under a name of the clip id
+        fs.writeFileSync(file, fs.readFileSync(ctx.file));
+        const fake = new FakeCaller();
+        const r = await run(ctx.args({ in: file, extra }), fake);
+        expect([label, r.code]).toEqual([label, 0]);
+        // the dry run prints the clip id; a live run names it in the saved file
+        const shown = extra.length > 0 ? r.out.split(" ")[2] : field(r.out.split("\n")[1], "id");
+        const keep = extra.length > 0 ? clipId.length + "-sts-".length : clipId.length;
+        expect([label, shown.slice(0, keep)]).toEqual([label, extra.length > 0 ? `${clipId}-sts-` : clipId]);
       }
     }
   });
