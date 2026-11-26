@@ -8,6 +8,8 @@
  * Spec text reaches the graph and the paths only after the checks: labels are generated, slugs checked.
  * Row A57: a source may carry its own crop_top (sources of mixed sizes in one video), and a
  * stretch piece may end at zoom_to (zoomAt).
+ * Row A57 (A49-cut-kind): a source of kind ai-clip is tied to the spend record by the sha256 of its
+ * file and its attempt id, needs no intake record, and is used whole (crop_top 0).
  */
 
 import { spawnSync } from "child_process";
@@ -15,6 +17,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 
+import { SERVICE_CAP_GROUPS } from "../adapters/videogen";
 import { resolveProbeTool } from "./clipIntake";
 import { generateContactSheet, hasSystemFfmpeg, resolveSystemFfmpeg, type ContactSheetBeat } from "./contactSheet";
 
@@ -55,13 +58,20 @@ export interface Cut {
   hides: string;
   prove_absent?: { from: number; to: number };
 }
+/** The kind of a source: a recorded take, or an AI clip tied to the spend record. */
+export type SourceKind = "recorded-clip" | "ai-clip";
 export interface Source {
   id: string;
   file: string;
   sha256: string;
+  /** Without the key the source is a recorded take. */
+  kind?: SourceKind;
+  /** The attempt_id of the outcome line of this clip in the spend record; an ai-clip source holds it. */
+  attempt_id?: string;
   width: number;
   height: number;
-  /** Top rows of this source cut away; without the key the output's crop_top (even, below the height). */
+  /** Top rows of this source cut away (even, below the height); without the key the output's crop_top,
+   *  and 0 for an ai-clip source (cropTopOf). */
   crop_top?: number;
   blur: BlurBox[];
   cut: Cut[];
@@ -104,6 +114,8 @@ const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(mp4|mov)$/;
 const SHA_RE = /^[0-9a-f]{64}$/;
 const COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+/** An attempt id as the paid tools write it (randomUUID): lower-case hex in the layout 8-4-4-4-12. */
+const ATTEMPT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -141,6 +153,13 @@ export function zoomAt(n: number, frames: number, zoomTo: number): number {
   return 1 + (zoomTo - 1) * t * t;
 }
 
+const isAi = (s: Pick<Source, "kind">): boolean => s.kind === "ai-clip";
+
+/** The top rows of a source cut away: its own crop_top, else the output's; 0 for an ai-clip source. */
+export function cropTopOf(s: Pick<Source, "kind" | "crop_top">, outputCropTop: number): number {
+  return isAi(s) ? 0 : (s.crop_top ?? outputCropTop);
+}
+
 /** The place of a source in the output: its crop, the picture height after the scale, the pad above it. */
 export interface SourceShape {
   cropTop: number;
@@ -149,14 +168,14 @@ export interface SourceShape {
 }
 
 export function sourceShape(s: Source, o: Pick<OutputSpec, "width" | "height" | "crop_top">): SourceShape {
-  const cropTop = s.crop_top ?? o.crop_top;
+  const cropTop = cropTopOf(s, o.crop_top);
   const ch = contentHeight(s.width, s.height, { width: o.width, crop_top: cropTop });
   return { cropTop, ch, padTop: Math.floor((o.height - ch) / 2) };
 }
 
 /** Pixel shape of a source's part: 1:1 at the output width, else (width x ch) : (output width x kept rows), reduced. */
 export function pixelShape(s: Source, o: Pick<OutputSpec, "width" | "crop_top">): string {
-  const cropTop = s.crop_top ?? o.crop_top;
+  const cropTop = cropTopOf(s, o.crop_top);
   const ch = contentHeight(s.width, s.height, { width: o.width, crop_top: cropTop });
   const a = s.width * ch;
   const b = o.width * (s.height - cropTop);
@@ -237,7 +256,7 @@ export function validateSpec(spec: unknown): string[] {
         add("bad-schema", `${where} must be an object`);
         return;
       }
-      keys(s, ["id", "file", "sha256", "width", "height", "crop_top", "blur", "cut"], where);
+      keys(s, ["id", "file", "sha256", "kind", "attempt_id", "width", "height", "crop_top", "blur", "cut"], where);
       const idOk = typeof s.id === "string" && ID_RE.test(s.id);
       if (!idOk) add("bad-id", `${where}.id is ${show(s.id)}`);
       if (typeof s.file !== "string" || !FILE_RE.test(s.file) || s.file.includes("..")) {
@@ -249,9 +268,29 @@ export function validateSpec(spec: unknown): string[] {
       for (const [k, v] of [["width", sw], ["height", sh]] as const) {
         if (v !== undefined && (!Number.isInteger(v) || v <= 0)) add("bad-number", `${where}.${k} must be a positive whole number`);
       }
-      // The crop the checks of this source read: its own, else the output's
+      // The kind: a recorded take (also without the key) or an AI clip with the attempt id of its outcome line
+      const kind: unknown = s.kind;
+      let ai: boolean | undefined;
+      if (kind === "ai-clip") ai = true;
+      else if (kind === undefined || kind === "recorded-clip") ai = false;
+      else add("bad-kind", `${where}.kind is ${show(kind)}, not recorded-clip or ai-clip`);
+      if (ai === true) {
+        const aid: unknown = s.attempt_id;
+        if (typeof aid !== "string" || !ATTEMPT_ID_RE.test(aid)) {
+          add("bad-attempt-id", `${where}.attempt_id is ${show(aid)}, not lower-case hex in the layout 8-4-4-4-12`);
+        }
+      } else if (ai === false && s.attempt_id !== undefined) {
+        add("attempt-on-recorded", `${where} is a recorded-clip source and holds attempt_id`);
+      }
+
+      // The crop the checks of this source read: its own, else the output's; an AI clip is used whole
       let ct = CT;
-      if (s.crop_top !== undefined) {
+      if (ai === true) {
+        ct = 0;
+        if (s.crop_top !== undefined && s.crop_top !== 0) {
+          add("crop-on-ai", `${where} is an ai-clip source with crop_top ${show(s.crop_top)}; an AI clip is used whole`);
+        }
+      } else if (s.crop_top !== undefined) {
         const v: unknown = s.crop_top;
         if (!isNum(v) || !isEvenWhole(v) || v < 0 || (sh !== undefined && v >= sh)) {
           ct = undefined;
@@ -553,7 +592,8 @@ export function filterNames(graph: string): string[] {
 
 const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
 
-/** <slug>.edit.json content: beats with out_start and dur, pieces with kind, source id and sha256. */
+/** <slug>.edit.json content: beats with out_start and dur, pieces with kind, source id and sha256
+ *  (an ai-clip piece also its attempt_id). */
 export function buildManifest(spec: ClipEditSpec, video: VideoSpec, specSha256: string): Record<string, unknown> {
   const o = spec.output;
   const byId = new Map(spec.sources.map((s) => [s.id, s]));
@@ -564,7 +604,10 @@ export function buildManifest(spec: ClipEditSpec, video: VideoSpec, specSha256: 
     let pieceStart = beatStart;
     const pieces = b.pieces.map((p) => {
       const src = byId.get(p.src) as Source;
-      const base = { kind: "recorded-clip", source: p.src, sha256: src.sha256 };
+      const base =
+        src.kind === "ai-clip"
+          ? { kind: "ai-clip", source: p.src, sha256: src.sha256, attempt_id: src.attempt_id }
+          : { kind: "recorded-clip", source: p.src, sha256: src.sha256 };
       const timing = "still" in p ? { still: p.still, sec: p.sec } : { from: p.from, to: p.to };
       const rec = { ...base, ...timing, out_start: round6(pieceStart) };
       pieceStart += pieceFrames(p, o.fps) / o.fps;
@@ -732,12 +775,99 @@ function writeAtomic(finalPath: string, text: string): void {
   fs.renameSync(tmp, finalPath);
 }
 
+// ── the spend record ─────────────────────────────────────────────────────────────────────
+
+/** One line of a spend record (JSON lines): the keys the ai-clip rule reads. */
+export interface SpendLine {
+  kind?: unknown;
+  attempt_id?: unknown;
+  status?: unknown;
+  service?: unknown;
+  file_sha256?: unknown;
+}
+
+/** The read of the files named by --spend: their lines, or why a file is unreadable. */
+export type SpendRead = { lines: SpendLine[] } | { unreadable: string };
+
+/** The lines of the JSON-lines files named by --spend, in the order named (older lines move to
+ *  archive files, so more than one file can be named). The files are read only. A file that is
+ *  missing, has no final newline or holds a line that is not a JSON object is unreadable (the
+ *  caller refuses with spend-unreadable); a blank line is skipped and an empty file reads as no
+ *  lines. */
+export function readSpend(files: string[]): SpendRead {
+  const lines: SpendLine[] = [];
+  const unreadable = (detail: string): SpendRead => ({ unreadable: detail });
+  for (const file of files) {
+    const name = path.basename(file);
+    let raw: Buffer;
+    try {
+      raw = fs.readFileSync(file);
+    } catch {
+      return unreadable(`${name} cannot be read`);
+    }
+    if (raw.length === 0) continue;
+    const text = raw.toString("utf8");
+    if (!text.endsWith("\n")) return unreadable(`${name} has no final newline`);
+    for (const line of text.split("\n").slice(0, -1)) {
+      if (line.trim() === "") continue;
+      let obj: unknown;
+      try {
+        obj = JSON.parse(line);
+      } catch {
+        return unreadable(`${name} holds a line that is not JSON`);
+      }
+      if (!isObj(obj)) return unreadable(`${name} holds a line that is not a JSON object`);
+      lines.push(obj);
+    }
+  }
+  return { lines };
+}
+
+/** Is the service of a line in the AI video cap group (the table's own keys only)? */
+function isVideoService(service: unknown): boolean {
+  return typeof service === "string" && Object.prototype.hasOwnProperty.call(SERVICE_CAP_GROUPS, service) && SERVICE_CAP_GROUPS[service] === "ai-video";
+}
+
+/** The codes of one ai-clip source, in the order given when the sources of a spec differ. */
+const SPEND_ORDER = ["not-in-spend", "spend-not-video", "spend-hash-mismatch"] as const;
+type SpendCode = (typeof SPEND_ORDER)[number];
+
+/** The refusal code of an ai-clip source that is not in the spend lines, else undefined. The source
+ *  is accepted when one line holds kind outcome, status ok, the attempt_id of the source, a service
+ *  of the AI video group and the sha256 of the clip file. */
+function spendProblem(s: Source, lines: SpendLine[]): SpendCode | undefined {
+  const ok = lines.filter(
+    (l) => l.kind === "outcome" && // a line of another kind does not count
+      l.status === "ok" && // an outcome of another status does not count
+      l.attempt_id === s.attempt_id, // a line of another attempt does not count
+  );
+  if (ok.length === 0) return "not-in-spend";
+  const video = ok.filter((l) => isVideoService(l.service)); // a line of a service outside the AI video group does not count
+  if (video.length === 0) return "spend-not-video";
+  if (!video.some((l) => l.file_sha256 === s.sha256)) return "spend-hash-mismatch";
+  return undefined;
+}
+
+/** Is the sha256 of a recorded-clip source the file_sha256 of a line (an AI clip listed as a take)? */
+function listedAsTake(s: Source, lines: SpendLine[]): boolean {
+  return lines.some((l) => l.file_sha256 === s.sha256);
+}
+
+/** The detail after the code of a spend refusal. */
+const SPEND_DETAIL: Record<SpendCode, string> = {
+  "not-in-spend": "has no outcome line of status ok for its attempt_id in --spend",
+  "spend-not-video": "has no outcome line of status ok of a service of the AI video group in --spend",
+  "spend-hash-mismatch": "has no outcome line of status ok with the sha256 of the clip file in --spend",
+};
+
 export interface ApplyOpts {
   spec: string;
   clips: string;
   intake: string;
   out: string;
   only?: string;
+  /** The JSON-lines files of the spend record; an ai-clip source needs them. */
+  spend?: string[];
 }
 
 /** Remove a plain file only (a folder planted at the name stays). */
@@ -785,24 +915,48 @@ export function applyEdit(opts: ApplyOpts): string[] {
     if (videos.length === 0) throw new Refusal("usage", "--only names no slug of the spec");
   }
 
-  // The source files: present, unchanged, and known to intake.
+  // The spend record: read when named, also for a spec with no ai-clip source. A spec that holds
+  // an ai-clip source needs it, also when --only leaves that source unused.
+  if (opts.spend === undefined || opts.spend.length === 0) {
+    if (sp.sources.some(isAi)) throw new Refusal("spend-missing", "the spec holds an ai-clip source and --spend names no file");
+  }
+  const read = opts.spend === undefined ? undefined : readSpend(opts.spend);
+  if (read !== undefined && "unreadable" in read) throw new Refusal("spend-unreadable", read.unreadable);
+  const spendLines = read === undefined ? undefined : read.lines;
+
+  // The source files: present, unchanged, and known to intake (a recorded take) or to the spend
+  // record (an AI clip, by attempt id and sha256).
   const paths = new Map<string, string>();
+  const spendFaults: { id: string; code: SpendCode }[] = []; // in spec order
   for (const s of sp.sources) {
     const file = path.join(realClips, s.file);
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new Refusal("source-missing", `source ${s.id} is not in --clips`);
     if (sha256Streamed(file) !== s.sha256) throw new Refusal("source-changed", `source ${s.id} differs from the spec sha256`);
-    let known = false;
-    try {
-      const rec = JSON.parse(fs.readFileSync(path.join(opts.intake, `${s.sha256}.intake.json`), "utf8")) as {
-        schema?: unknown;
-        sha256?: unknown;
-      };
-      known = rec.schema === INTAKE_SCHEMA && rec.sha256 === s.sha256;
-    } catch {
-      known = false;
+    if (isAi(s)) {
+      const code = spendProblem(s, spendLines ?? []);
+      if (code !== undefined) spendFaults.push({ id: s.id, code });
+    } else {
+      if (spendLines !== undefined && listedAsTake(s, spendLines)) {
+        throw new Refusal("ai-as-recorded", `source ${s.id} is a recorded-clip source whose sha256 is the file_sha256 of a line in --spend`);
+      }
+      let known = false;
+      try {
+        const rec = JSON.parse(fs.readFileSync(path.join(opts.intake, `${s.sha256}.intake.json`), "utf8")) as {
+          schema?: unknown;
+          sha256?: unknown;
+        };
+        known = rec.schema === INTAKE_SCHEMA && rec.sha256 === s.sha256;
+      } catch {
+        known = false;
+      }
+      if (!known) throw new Refusal("not-in-intake", `source ${s.id} has no ${INTAKE_SCHEMA} record in --intake`);
     }
-    if (!known) throw new Refusal("not-in-intake", `source ${s.id} has no ${INTAKE_SCHEMA} record in --intake`);
     paths.set(s.id, file);
+  }
+  // One order over the ai-clip sources of the spec; the line names the first source with the code
+  for (const code of SPEND_ORDER) {
+    const first = spendFaults.find((f) => f.code === code);
+    if (first !== undefined) throw new Refusal(code, `source ${first.id} ${SPEND_DETAIL[code]}`);
   }
 
   if (!hasSystemFfmpeg()) throw new Refusal("ffmpeg-missing", "no system ffmpeg (the bundled one lacks gblur, overlay, pad, fps, loop and setpts)");
@@ -911,17 +1065,19 @@ export function applyEdit(opts: ApplyOpts): string[] {
 }
 
 const USAGE =
-  "usage: clipEdit apply --spec <file> --clips <dir> --intake <dir> --out <dir> [--only <slug>]\n";
+  "usage: clipEdit apply --spec <file> --clips <dir> --intake <dir> --out <dir> [--spend <file>]... [--only <slug>]\n";
 
 export function runCli(argv: string[]): CliResult {
   if (argv[0] !== "apply") return { code: 2, out: "", err: USAGE };
   const vals: Record<string, string> = {};
+  const spend: string[] = [];
   for (let i = 1; i < argv.length; i += 2) {
     const k = argv[i];
-    if (!["--spec", "--clips", "--intake", "--out", "--only"].includes(k) || i + 1 >= argv.length) {
+    if (!["--spec", "--clips", "--intake", "--out", "--only", "--spend"].includes(k) || i + 1 >= argv.length) {
       return { code: 2, out: "", err: USAGE };
     }
-    vals[k] = argv[i + 1];
+    if (k === "--spend") spend.push(argv[i + 1]); // may be named more than once
+    else vals[k] = argv[i + 1];
   }
   if (!vals["--spec"] || !vals["--clips"] || !vals["--intake"] || !vals["--out"]) return { code: 2, out: "", err: USAGE };
   try {
@@ -931,6 +1087,7 @@ export function runCli(argv: string[]): CliResult {
       intake: vals["--intake"],
       out: vals["--out"],
       only: vals["--only"],
+      spend,
     });
     return { code: 0, out: lines.map((l) => `${l}\n`).join(""), err: "" };
   } catch (err) {
