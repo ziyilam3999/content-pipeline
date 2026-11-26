@@ -237,7 +237,7 @@ function padGrayValue(ffmpeg: string, padColor: string): number {
   return sum / b.length;
 }
 
-// ── the six parts, each returns its PASS or FAIL line without the slug ────────────────────
+// ── the seven parts, each returns its PASS or FAIL line without the slug ──────────────────
 
 function partShape(c: Ctx, video: VideoSpec): string {
   const expected = buildGraph(c.spec, video).frames;

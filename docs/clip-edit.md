@@ -54,8 +54,10 @@ A source's crop feeds the same checks as `output.crop_top`: `box-above-crop`, `c
 The codes that were there before: `bad-schema`, `unknown-key`, `bad-number`, `bad-id`, `bad-slug`,
 `bad-file`, `bad-sha`, `src-twice`, `slug-twice`, `bad-output`, `bad-box`, `box-above-crop`,
 `content-too-tall`, `bad-time`, `unknown-src`, `piece-in-cut`, `still-in-cut`, `beat-order`,
-`beat-length`; in `apply` after the spec: `inside-repo`, `out-missing`, `source-missing`,
-`source-changed`, `not-in-intake`, `ffmpeg-missing`, `piece-past-end`, `ffmpeg-failed`, `usage`.
+`beat-length`; `spec-invalid` (a spec that cannot be read or does not pass these checks); in
+`apply` after the spec: `inside-repo`, `out-missing`, `source-missing`, `source-changed`,
+`not-in-intake`, `ffmpeg-missing`, `ffprobe-missing`, `piece-past-end`, `ffmpeg-failed`, `usage`;
+in `check` also `nothing-to-check` and `output-missing`.
 
 ## An example (made-up values)
 
@@ -85,7 +87,7 @@ Two sources of different sizes in one video, a zoom on the end of the second sho
 
 Six parts on a video without a zoom piece: `shape`, `blur`, `cut`, `bars`, `crop`, `still`. Each
 part reads a source with the size, `crop_top` and pad of that source. A video with a zoom piece
-gets a seventh line, `PASS zoom` or `FAIL zoom`: the first frame of the piece must be nearest to
+gets a seventh part, `PASS zoom` or `FAIL zoom`: the first frame of the piece must be nearest to
 the source frame with no zoom, the last frame nearest to that frame scaled by `zoom_to` and cut
 around the centre.
 
@@ -96,9 +98,10 @@ around the centre.
   ends at 400 wide (1.111), a 1080 wide one at 1208 (1.1185).
 - The zoom is built with scale (`eval=frame`) and crop, both reading the frame time. The zoom
   tests were run with ffmpeg 8.1.1 on a Mac and with ffmpeg 6.1.1 in the ubuntu CI job.
-- The sources of one video need the same pixel shape. A source narrower than the output width
-  gets a shape of its own when its scaled height had to be rounded: 720x1280 with `crop_top` 110
-  scaled to 1080 is 1756:1755. A `crop_top` that is a multiple of 4 keeps 1:1 on a height that is.
+- The sources of one video need the same pixel shape. A source whose width differs from the
+  output width can get a shape of its own when its scaled height had to be rounded: 720x1280 with
+  `crop_top` 110 scaled to 1080 is 1756:1755. For the 1.5 times scale of a 720 wide clip to 1080,
+  a `crop_top` that is a multiple of 4 keeps 1:1 on a height that is a multiple of 4.
 - An output rate above a clip's own rate shows some frames twice; below it, some are dropped.
 - Scaling a 720 wide clip to 1080 makes it softer.
 - The check's zoom proof needs a picture with detail: on a picture too flat to tell the zoomed

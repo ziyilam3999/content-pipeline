@@ -317,10 +317,11 @@ export function validateSpec(spec: unknown): string[] {
       }
       if (idOk) sourceCuts.set(s.id as string, cuts);
 
-      if (sw !== undefined && sh !== undefined && W !== undefined && H !== undefined && CT !== undefined) {
-        if (sh - CT <= 0) {
+      if (sw !== undefined && sh !== undefined && W !== undefined && H !== undefined && ct !== undefined) {
+        if (sh - ct <= 0) {
+          // a source's own crop_top at or past its height is bad-crop above
           if (s.crop_top === undefined) add("bad-output", `output.crop_top leaves no picture of ${where}`);
-        } else if (ct !== undefined && contentHeight(sw, sh, { width: W, crop_top: ct }) > H) {
+        } else if (contentHeight(sw, sh, { width: W, crop_top: ct }) > H) {
           add("content-too-tall", `${where} is taller than ${H} px after the crop and the scale to ${W}`);
         }
       }

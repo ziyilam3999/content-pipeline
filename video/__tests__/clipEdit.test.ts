@@ -230,8 +230,14 @@ describe("clip:edit", () => {
       ["bad-crop", (s) => void (s.sources[0].crop_top = -2)],
       ["bad-crop", (s) => void ((s.sources[0] as unknown as Record<string, unknown>).crop_top = "80")],
       ["bad-crop", (s) => void (s.sources[0].crop_top = 568)],
-      // the crop of the source feeds the same three checks as output.crop_top
+      // the crop of the source feeds the same two checks as output.crop_top
       ["content-too-tall", (s) => {
+        s.sources[0].height = 700;
+        s.sources[0].crop_top = 0;
+      }],
+      // also when output.crop_top is at or past the height of this source, which does not use it
+      ["content-too-tall", (s) => {
+        s.output.crop_top = 700;
         s.sources[0].height = 700;
         s.sources[0].crop_top = 0;
       }],
@@ -454,7 +460,14 @@ describe("clip:edit", () => {
     expect(pixelShape(src(240, 426, 0), o)).toBe("640:639");
     expect(pixelShape(src(240, 428, 0), o)).toBe("1:1");
     // without its own crop_top the output's is used: 240x428 crop_top 80 is 240x348 scaled, 1.5 times 348 is whole
-    expect(pixelShape(src(240, 428, 80), o)).toBe("1:1");
+    const noOwnCrop = (h: number): ClipEditSpec["sources"][number] => {
+      const s = src(240, h, 0);
+      delete s.crop_top;
+      return s;
+    };
+    expect(pixelShape(noOwnCrop(428), o)).toBe("1:1");
+    // 240x426 keeps 346 rows under the output's 80: 519 rows scaled, brought to 520
+    expect(pixelShape(noOwnCrop(426), o)).toBe("520:519");
   });
 
   /** The graph of the fixture spec as the tool built it before the per-source shapes: the crop, the
@@ -551,7 +564,7 @@ describe("clip:edit", () => {
       const dBand = mad(top, band);
       console.log(`(17) first source, frame ${n}: top rows against rows below crop_top ${dBelow.toFixed(2)}, against the band ${dBand.toFixed(2)}`);
       expect(dBelow).toBeLessThan(8);
-      expect(dBand).toBeGreaterThan(15); // the band is flat gray 150 against noise around 128: the luma moves by a fifth of the range
+      expect(dBand).toBeGreaterThan(15); // the band is flat gray 150 against noise around 128: the luma moves by about a twelfth of the range
       expect(dBand).toBeGreaterThan(2 * dBelow);
     }
     // frames 30..59 play the second source from 0 s: picture rows 20..620 start at source row 0

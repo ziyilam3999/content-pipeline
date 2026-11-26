@@ -215,9 +215,9 @@ const DETAIL_VF =
   "drawbox=x=210:y=130:w=60:h=60:color=0xF0F000:t=fill," +
   "drawbox=x=250:y=380:w=90:h=90:color=0x2050E0:t=fill";
 
-/** Three clips for the zoom tests: a 360x480 detail clip, the same 360x590 with a green band on
- *  its top 110 rows, and a flat gray 360x480 one. The spec is zoomSpec of the detail clip, zoom_to
- *  1.12 over one second. */
+/** Three clips for the zoom tests: a 360x480 detail clip; a 360x590 one drawn with DETAIL_VF at
+ *  its own frame rows, then a green band on its top 110 rows; and a flat gray 360x480 one. The spec
+ *  is zoomSpec of the detail clip, zoom_to 1.12 over one second. */
 export function makeZoomFixture(): SpecFixture {
   const f = folders();
   const z = makeSource(f, "zoom.mp4", ["-f", "lavfi", "-i", "color=c=0x404040:s=360x480:r=30:d=2", "-vf", DETAIL_VF, "-c:v", "libx264", "-pix_fmt", "yuv420p"]);
