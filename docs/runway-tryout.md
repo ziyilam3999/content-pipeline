@@ -167,6 +167,10 @@ Not tested live. Nothing here was sent to Runway yet.
 - One run record file `a52-runway-tryout-<date>.md` in the probe-records folder of the
   bridlework state root, one row per clip: date, clip id, model, audio, prompt sha256, still
   sha256, seconds, ratio, list usd, estimatedCost credits, file sha256, marks, verdict.
+  The reply holds `estimatedCost` (create reply) and `cost` (task reply) as an object
+  `{"credits": N}`; the outcome line keeps `N` as `estimated_cost_credits` and
+  `final_cost_credits`. Runway outcome lines that the tool wrote before this object read hold
+  null in both; the record is append-only, so they stay.
 - One ask ledger bullet in row A52 with the dry-run total and the result.
 
 ## Open points (also in the PR body)
@@ -176,8 +180,11 @@ Not tested live. Nothing here was sent to Runway yet.
   the full plan by menu (WAITING-151 = "151 A: full plan (Recommended)").
 - The first try-out left USD 9.48 under the cap; the second run (USD 8.85) leaves about
   USD 0.63, below the USD 20.51 that row A49-paid-runs plans.
-- What Runway bills for a kling_4 clip is not measured; it is recorded at list (USD 0.95), and
-  while the 20% discount runs (through 2026-11-30 UTC) the real charge may be USD 0.76.
+- What Runway bills for a kling_4 clip is not measured. The spend record holds the larger of
+  the list estimate (USD 0.95) and C x USD 0.01, where C is `cost.credits` of the terminal task
+  reply, else `estimatedCost.credits` of the create reply, else 0; whether `cost.credits` equals
+  the billed amount is not measured. While the 20% discount runs (through 2026-11-30 UTC) the
+  real charge may be USD 0.76.
 - For seedance2_5 a promptImage given as one string has no position; the schema text says
   "omit position for reference images", so first-frame use is not confirmed by the docs
   (seedance2 has the same wording and was sent the same way in the first run).

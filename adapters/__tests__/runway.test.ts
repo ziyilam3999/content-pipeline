@@ -189,8 +189,9 @@ class FakeCaller implements RunwayCaller {
   createCount = 0;
   statusCount = 0;
   downloadCount = 0;
-  estimatedCost?: number; // goes in the create reply when set
-  finalCost?: number; // goes in the terminal task reply when set
+  // the spec shape is {"credits": N}; typed unknown so the unreadable-shape tests can set others
+  estimatedCost?: unknown; // goes in the create reply when set
+  finalCost?: unknown; // goes in the terminal task reply when set
   statuses: unknown[] = []; // task-status replies, shifted; default an immediate SUCCEEDED
   createImpl: () => Promise<unknown> = async () => ({ id: "made-up-task-1", status: "PENDING", estimatedCost: this.estimatedCost });
   downloadBytes = Buffer.from("made-up-runway-mp4-bytes");
@@ -408,7 +409,7 @@ describe("t4 key containment", () => {
     const fake = new FakeCaller();
     fake.statuses = [
       { id: "made-up-task-1", status: "RUNNING" },
-      { id: "made-up-task-1", status: "SUCCEEDED", output: [DL_URL], cost: 54 },
+      { id: "made-up-task-1", status: "SUCCEEDED", output: [DL_URL], cost: { credits: 54 } },
     ];
     const r = await run(ctx.args({ clip: "ai-4-kling3-pic", still, extra: ["--live"] }), fake);
     expect(r.code).toBe(0);
@@ -533,8 +534,8 @@ describe("t5 spend lines", () => {
   it("a good run writes the file name and sha256, task id and both cost fields in the outcome", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
-    fake.estimatedCost = 54;
-    fake.finalCost = 54;
+    fake.estimatedCost = { credits: 54 };
+    fake.finalCost = { credits: 54 };
     const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
     expect(r.code).toBe(0);
     const saved = fs.readdirSync(ctx.out);
@@ -805,7 +806,7 @@ describe("t8 request body", () => {
     fake.statuses = [
       { id: "made-up-task-1", status: "RUNNING", progress: 10 },
       { id: "made-up-task-1", status: "THROTTLED" },
-      { id: "made-up-task-1", status: "SUCCEEDED", output: [DL_URL], cost: 54 },
+      { id: "made-up-task-1", status: "SUCCEEDED", output: [DL_URL], cost: { credits: 54 } },
     ];
     const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
     expect(r.code).toBe(0);
@@ -851,8 +852,8 @@ describe("t9 cost", () => {
   it("a terminal cost above the plan estimate: the outcome cost_usd is the difference and the total grows by it", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
-    fake.estimatedCost = 60;
-    fake.finalCost = 66; // kling3.0_standard 6 s without audio is 54 credits in the plan
+    fake.estimatedCost = { credits: 60 };
+    fake.finalCost = { credits: 66 }; // kling3.0_standard 6 s without audio is 54 credits in the plan
     const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
     expect(r.code).toBe(0);
     const lines = ledgerLines(ctx.ledger);
@@ -865,7 +866,7 @@ describe("t9 cost", () => {
   it("no terminal cost, an estimatedCost above the estimate: C is the estimate of the create reply", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
-    fake.estimatedCost = 60;
+    fake.estimatedCost = { credits: 60 };
     const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
     expect(r.code).toBe(0);
     const lines = ledgerLines(ctx.ledger);
@@ -878,13 +879,81 @@ describe("t9 cost", () => {
   it("a cost lower than the estimate gives 0 (never negative)", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
-    fake.finalCost = 50;
+    fake.finalCost = { credits: 50 };
     const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
     expect(r.code).toBe(0);
     const lines = ledgerLines(ctx.ledger);
     expect(lines[1].cost_usd).toBe(0);
     expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(540_000);
   });
+
+  it("(a) a refunded task: a terminal cost of 0 credits is a read value, not a fall-through to the estimate", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.estimatedCost = { credits: 60 };
+    fake.finalCost = { credits: 0 };
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(0);
+    const outcome = ledgerLines(ctx.ledger)[1];
+    expect(outcome.estimated_cost_credits).toBe(60);
+    expect(outcome.final_cost_credits).toBe(0);
+    expect(outcome.cost_usd).toBe(0);
+    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(540_000);
+  });
+
+  it("(b) a FAILED terminal reply with a cost above the estimate: the cost is read and the delta is recorded", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.statuses = [{ id: "made-up-task-1", status: "FAILED", failure: "made-up failure", cost: { credits: 70 } }];
+    const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+    expect(r.code).toBe(1);
+    const outcome = ledgerLines(ctx.ledger)[1];
+    expect(outcome.status).toBe("failed");
+    expect(outcome.final_cost_credits).toBe(70);
+    expect(outcome.cost_usd).toBe(0.16); // (70 - 54) x USD 0.01
+    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(700_000);
+  });
+
+  // (c) values that are not the spec shape. NaN and Infinity cannot come out of a JSON reply;
+  // only the fake can hand them in.
+  const unreadable: [string, unknown][] = [
+    ["a bare number 60", 60],
+    ['{"credits": "60"}', { credits: "60" }],
+    ["{}", {}],
+    ['[ {"credits": 60} ]', [{ credits: 60 }]],
+    ['{"credits": -1}', { credits: -1 }],
+    ['{"credits": NaN}', { credits: NaN }],
+    ['{"credits": Infinity}', { credits: Infinity }],
+    ["null", null],
+  ];
+  for (const [label, value] of unreadable) {
+    it(`(c) estimatedCost ${label} gives null, and with no terminal cost C is 0`, async () => {
+      const ctx = makeCtx();
+      const fake = new FakeCaller();
+      fake.estimatedCost = value;
+      const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+      expect(r.code).toBe(0);
+      const outcome = ledgerLines(ctx.ledger)[1];
+      expect(outcome.estimated_cost_credits).toBeNull();
+      expect(outcome.final_cost_credits).toBeNull();
+      expect(outcome.cost_usd).toBe(0);
+      expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(540_000);
+    });
+
+    it(`(c) cost ${label} gives null, and C falls through to the create estimate`, async () => {
+      const ctx = makeCtx();
+      const fake = new FakeCaller();
+      fake.estimatedCost = { credits: 60 };
+      fake.finalCost = value;
+      const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
+      expect(r.code).toBe(0);
+      const outcome = ledgerLines(ctx.ledger)[1];
+      expect(outcome.estimated_cost_credits).toBe(60);
+      expect(outcome.final_cost_credits).toBeNull();
+      expect(outcome.cost_usd).toBe(0.06); // (60 - 54) x USD 0.01
+      expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(600_000);
+    });
+  }
 });
 
 // ── (10) key-missing (live only; the dry run never reads a key) ─────────────────────────
@@ -1094,7 +1163,7 @@ describe("t12 round 3", () => {
     fake.statuses = [
       { status: "MADE_UP_STATUS" },
       {},
-      { status: "SUCCEEDED", output: [DL_URL], cost: 54 },
+      { status: "SUCCEEDED", output: [DL_URL], cost: { credits: 54 } },
     ];
     const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
     expect(r.code).toBe(0);
@@ -1237,8 +1306,8 @@ describe("t13 round 4", () => {
     for (const [label, err, expected] of rows) {
       const ctx = makeCtx();
       const fake = new FakeCaller();
-      fake.estimatedCost = 60;
-      fake.finalCost = 80;
+      fake.estimatedCost = { credits: 60 };
+      fake.finalCost = { credits: 80 };
       fake.download = async () => {
         throw err;
       };
@@ -1257,12 +1326,12 @@ describe("t13 round 4", () => {
 
   it("C2 a SUCCEEDED reply with no output url keeps the terminal cost too", async () => {
     for (const statusReply of [
-      { id: "made-up-task-1", status: "SUCCEEDED", output: [], cost: 80 },
-      { id: "made-up-task-1", status: "SUCCEEDED", cost: 80 },
+      { id: "made-up-task-1", status: "SUCCEEDED", output: [], cost: { credits: 80 } },
+      { id: "made-up-task-1", status: "SUCCEEDED", cost: { credits: 80 } },
     ]) {
       const ctx = makeCtx();
       const fake = new FakeCaller();
-      fake.estimatedCost = 60;
+      fake.estimatedCost = { credits: 60 };
       fake.statuses = [statusReply];
       const r = await run(ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }), fake);
       expect(r.code).toBe(1);
@@ -1279,7 +1348,7 @@ describe("t13 round 4", () => {
   it("C3 no terminal reply: the final cost stays null and C is the create estimate", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
-    fake.estimatedCost = 60;
+    fake.estimatedCost = { credits: 60 };
     fake.taskStatus = async () => {
       throw new Error("made-up status failure");
     };
@@ -1302,8 +1371,8 @@ describe("t13 round 4", () => {
     const r = await runReal(
       seen,
       (u) => {
-        if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r1", estimatedCost: 54 } });
-        if (u === `${API}/tasks/made-up-task-r1`) return res(200, { json: { status: "SUCCEEDED", output: [hop1], cost: 54 } });
+        if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r1", estimatedCost: { credits: 54 } } });
+        if (u === `${API}/tasks/made-up-task-r1`) return res(200, { json: { status: "SUCCEEDED", output: [hop1], cost: { credits: 54 } } });
         if (u === hop1) return res(302, { location: hop2 });
         if (u === hop2) return res(307, { location: "/final/hop3.mp4" });
         if (u === hop3) return res(200, { bytes });
@@ -1339,9 +1408,9 @@ describe("t13 round 4", () => {
     const r = await runReal(
       seen,
       (u) => {
-        if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r2", estimatedCost: 54 } });
+        if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r2", estimatedCost: { credits: 54 } } });
         if (u === `${API}/tasks/made-up-task-r2`)
-          return res(200, { json: { status: "SUCCEEDED", output: ["https://cdn-r2.made-up-host.test/hop0.mp4"], cost: 54 } });
+          return res(200, { json: { status: "SUCCEEDED", output: ["https://cdn-r2.made-up-host.test/hop0.mp4"], cost: { credits: 54 } } });
         downloadRequests++;
         if (downloadRequests <= 10) return res(302, { location: `https://cdn-r2.made-up-host.test/hop${downloadRequests}.mp4` });
         return res(200, { bytes: Buffer.from("made-up-r2-bytes") });
@@ -1362,9 +1431,9 @@ describe("t13 round 4", () => {
       const r = await runReal(
         seen,
         (u) => {
-          if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r3", estimatedCost: 54 } });
+          if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r3", estimatedCost: { credits: 54 } } });
           if (u === `${API}/tasks/made-up-task-r3`)
-            return res(200, { json: { status: "SUCCEEDED", output: ["https://cdn-r3.made-up-host.test/clip.mp4"], cost: 54 } });
+            return res(200, { json: { status: "SUCCEEDED", output: ["https://cdn-r3.made-up-host.test/clip.mp4"], cost: { credits: 54 } } });
           downloadRequests++;
           if (u === "http://plain-r3.made-up-host.test/x.mp4") return res(200, { bytes: Buffer.from("made-up-r3-http-bytes") });
           return res(302, location !== undefined ? { location } : {});
@@ -1387,10 +1456,10 @@ describe("t13 round 4", () => {
       const r = await runReal(
         seen,
         (u) => {
-          if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r4a", estimatedCost: 54 } });
+          if (u === `${API}/text_to_video`) return res(200, { json: { id: "made-up-task-r4a", estimatedCost: { credits: 54 } } });
           if (u === `${API}/tasks/made-up-task-r4a`) return res(302, { location: "https://elsewhere-r4a.made-up-host.test/task" });
           if (u === "https://elsewhere-r4a.made-up-host.test/task")
-            return res(200, { json: { status: "SUCCEEDED", output: ["https://cdn-r4a.made-up-host.test/x.mp4"], cost: 54 } });
+            return res(200, { json: { status: "SUCCEEDED", output: ["https://cdn-r4a.made-up-host.test/x.mp4"], cost: { credits: 54 } } });
           return res(500, { json: { unexpected: u } });
         },
         ctx.args({ clip: "ai-1-kling3-pic", extra: ["--live"] }),
