@@ -1,5 +1,5 @@
 /**
- * Row A52 — Runway try-out tool, dry run by default, with the AI video cap and the spend
+ * Row A52 — Runway try-out tool, dry run by default, with the one spend cap and the spend
  * record. Thin CLI: tools/runwayTryout.ts (npm run video:tryout).
  *
  * Why a try-out (day card item 17 (a)): the current AI video tool (Gemini Omni 1.2 Flash,
@@ -22,8 +22,8 @@
  * generation call (a retry is a new run, at most one retry per clip id); the outcome line
  * tops the record up to the credits this run read back from Runway (cost_usd = max(0, C x
  * USD 0.01 - the attempt estimate); C and its limits: see the cost rule in liveRun). The
- * cap itself is the one AI video cap of video:gen: readLedgerTotal with group ai-video
- * counts gemini-omni AND runway lines (SERVICE_CAP_GROUPS in videogen.ts): one cap for both.
+ * cap is the one of videogen.ts: --ceiling-usd is a ceiling on the total of the spend record,
+ * at most PAID_SPEND_CAP_USD, and readLedgerTotal counts every line, whatever tool wrote it.
  */
 
 import { randomUUID } from "crypto";
@@ -33,13 +33,13 @@ import * as fs from "fs";
 import * as path from "path";
 
 import {
-  AI_VIDEO_CEILING_CAP_USD,
   CallTimeout,
   checkFolder,
   formatUsdMicro,
   formatUsdMicroDown,
   HttpError,
   NetCall,
+  PAID_SPEND_CAP_USD,
   readLedgerTotal,
   Refusal,
   usdToMicro,
@@ -378,8 +378,8 @@ export function parseRunwayArgs(argv: string[]): RunwayArgs {
   if (live && !vals["--clip"]) throw new Refusal("usage", "--live needs one --clip (at most one generation call per run)");
   if (!CEILING_RE.test(vals["--ceiling-usd"])) throw new Refusal("usage", "--ceiling-usd must be a plain number");
   const ceilingUsd = Number(vals["--ceiling-usd"]);
-  if (!(ceilingUsd > 0) || ceilingUsd > AI_VIDEO_CEILING_CAP_USD) {
-    throw new Refusal("usage", `--ceiling-usd must be above 0 and at most ${AI_VIDEO_CEILING_CAP_USD}`);
+  if (!(ceilingUsd > 0) || ceilingUsd > PAID_SPEND_CAP_USD) {
+    throw new Refusal("usage", `--ceiling-usd must be above 0 and at most ${PAID_SPEND_CAP_USD}`);
   }
   let timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
   if (vals["--timeout-seconds"]) {
@@ -462,12 +462,12 @@ export function buildRun(a: RunwayArgs): RunwayBuilt {
   const ledgerReal = path.join(ledgerFolder, path.basename(a.ledger));
   const lockPath = `${ledgerReal}.lock`;
 
-  const spentMicro = readLedgerTotal(ledgerReal, "ai-video"); // gemini-omni AND runway lines
+  const spentMicro = readLedgerTotal(ledgerReal); // every line of the record
   const plannedMicro = clip ? clip.estimateMicro : plan.totalMicro;
   if (spentMicro + plannedMicro > usdToMicro(a.ceilingUsd)) {
     throw new Refusal(
       "over-ceiling",
-      `ai-video spent ${formatUsdMicro(spentMicro)} plus planned ${formatUsdMicro(plannedMicro)} is above ceiling ${a.ceilingUsd}`,
+      `spend record total ${formatUsdMicro(spentMicro)} plus planned ${formatUsdMicro(plannedMicro)} is above ceiling ${a.ceilingUsd}`,
     );
   }
   if (a.live && clip && countAttempts(ledgerReal, plan.planId, clip.id) >= 2) {
@@ -638,11 +638,11 @@ async function liveRun(a: RunwayArgs, b: RunwayBuilt, deps?: RunwayDeps): Promis
     throw new Refusal("ledger-busy", `lock file ${b.lockPath} exists`);
   }
   try {
-    const total = readLedgerTotal(b.ledgerReal, "ai-video"); // re-read under the lock
+    const total = readLedgerTotal(b.ledgerReal); // every line again, under the lock
     if (total + clip.estimateMicro > usdToMicro(a.ceilingUsd)) {
       throw new Refusal(
         "over-ceiling",
-        `ai-video spent ${formatUsdMicro(total)} plus estimate ${formatUsdMicro(clip.estimateMicro)} is above ceiling ${a.ceilingUsd}`,
+        `spend record total ${formatUsdMicro(total)} plus estimate ${formatUsdMicro(clip.estimateMicro)} is above ceiling ${a.ceilingUsd}`,
       );
     }
     if (countAttempts(b.ledgerReal, b.plan.planId, clip.id) >= 2) {
@@ -800,7 +800,7 @@ function dryRunOutput(b: RunwayBuilt): string {
     "runway: dry-run (no request sent, no key read, nothing written)",
     ...clips.map((c) => clipLine(c, b.still, b.lastStill)),
     `runway: total clips=${clips.length} usd=${formatUsdMicro(plannedMicro)}`,
-    `runway: spend group=ai-video spent usd=${formatUsdMicro(b.spentMicro)} ceiling=${b.ceilingUsd}` +
+    `runway: spend group=all spent usd=${formatUsdMicro(b.spentMicro)} ceiling=${b.ceilingUsd}` +
       ` room usd=${formatUsdMicroDown(roomMicro)} room-after usd=${formatUsdMicroDown(roomMicro - plannedMicro)}`,
   ];
   return `${lines.join("\n")}\n`;

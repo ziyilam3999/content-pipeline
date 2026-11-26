@@ -1,6 +1,6 @@
 /**
- * Row A52c — paid still-image tool (Gemini 2.5 Flash Image), dry run by default, with its
- * own image cap group and the spend record. Thin CLI: tools/stillEdit.ts (npm run still:edit).
+ * Row A52c — paid still-image tool (Gemini 2.5 Flash Image), dry run by default, with the
+ * one spend cap and the spend record. Thin CLI: tools/stillEdit.ts (npm run still:edit).
  *
  * Why this tool (day card item 17 (a)): the AI-4 start still needs one local edit before the
  * next video take, and the repo has no image tool under the spend rules — adapters/genart.ts
@@ -27,9 +27,10 @@
  * USD 0.040 = 0.039 output + 0.001 input, a guess on the high side); whole micro-USD
  * arithmetic with the helpers of videogen.ts. One attempt line is appended to the ledger
  * BEFORE the call, under the same O_EXCL lock as video:gen and video:tryout; a failed send
- * keeps its attempt line, so failed sends use up the cap. Spend group ai-image (its own cap,
- * USD 1 at most): image takes are not video spend, and readLedgerTotal refuses an unknown
- * service, so videogen.ts maps service gemini-image to the ai-image cap group.
+ * keeps its attempt line, so failed sends use up the cap. The cap is the one of videogen.ts:
+ * --ceiling-usd is a ceiling on the total of the spend record, at most PAID_SPEND_CAP_USD,
+ * and readLedgerTotal counts every line, whatever tool wrote it. It refuses an unknown
+ * service, so the table in videogen.ts lists service gemini-image.
  */
 
 import { randomUUID } from "crypto";
@@ -46,6 +47,7 @@ import {
   HttpError,
   MAX_IMAGE_BYTES,
   NetCall,
+  PAID_SPEND_CAP_USD,
   readLedgerTotal,
   Refusal,
   usdToMicro,
@@ -56,9 +58,6 @@ export type { NetCall } from "./videogen";
 // ── constants ──────────────────────────────────────────────────────────────────────────
 
 export const DEFAULT_TIMEOUT_SECONDS = 120;
-
-/** Cap on --ceiling-usd for AI image spend, the ai-image cap group (25 calls at the list price). */
-export const AI_IMAGE_CEILING_CAP_USD = 1;
 
 const SERVICE = "gemini-image";
 const API_HOST = "generativelanguage.googleapis.com";
@@ -212,8 +211,8 @@ export function parseStillArgs(argv: string[]): StillEditArgs {
   }
   if (!CEILING_RE.test(vals["--ceiling-usd"])) throw new Refusal("usage", "--ceiling-usd must be a plain number");
   const ceilingUsd = Number(vals["--ceiling-usd"]);
-  if (!(ceilingUsd > 0) || ceilingUsd > AI_IMAGE_CEILING_CAP_USD) {
-    throw new Refusal("usage", `--ceiling-usd must be above 0 and at most ${AI_IMAGE_CEILING_CAP_USD}`);
+  if (!(ceilingUsd > 0) || ceilingUsd > PAID_SPEND_CAP_USD) {
+    throw new Refusal("usage", `--ceiling-usd must be above 0 and at most ${PAID_SPEND_CAP_USD}`);
   }
   let timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
   if (vals["--timeout-seconds"]) {
@@ -267,12 +266,12 @@ export function buildStillRun(a: StillEditArgs): StillBuilt {
   const lockPath = `${ledgerReal}.lock`;
 
   const estimateMicro = usdToMicro(plan.priceUsdPerCall);
-  const spentMicro = readLedgerTotal(ledgerReal, "ai-image"); // the ai-image cap group only
+  const spentMicro = readLedgerTotal(ledgerReal); // every line of the record
   if (fs.existsSync(lockPath)) throw new Refusal("ledger-busy", `lock file ${lockPath} exists`);
   if (spentMicro + estimateMicro > usdToMicro(a.ceilingUsd)) {
     throw new Refusal(
       "over-ceiling",
-      `ai-image spent ${formatUsdMicro(spentMicro)} plus estimate ${formatUsdMicro(estimateMicro)} is above ceiling ${a.ceilingUsd}`,
+      `spend record total ${formatUsdMicro(spentMicro)} plus estimate ${formatUsdMicro(estimateMicro)} is above ceiling ${a.ceilingUsd}`,
     );
   }
   return {
@@ -484,11 +483,11 @@ async function liveRun(a: StillEditArgs, b: StillBuilt, deps?: StillEditDeps): P
     throw new Refusal("ledger-busy", `lock file ${b.lockPath} exists`);
   }
   try {
-    const total = readLedgerTotal(b.ledgerReal, "ai-image"); // re-read under the lock
+    const total = readLedgerTotal(b.ledgerReal); // every line again, under the lock
     if (total + b.estimateMicro > usdToMicro(a.ceilingUsd)) {
       throw new Refusal(
         "over-ceiling",
-        `ai-image spent ${formatUsdMicro(total)} plus estimate ${formatUsdMicro(b.estimateMicro)} is above ceiling ${a.ceilingUsd}`,
+        `spend record total ${formatUsdMicro(total)} plus estimate ${formatUsdMicro(b.estimateMicro)} is above ceiling ${a.ceilingUsd}`,
       );
     }
     fs.appendFileSync(b.ledgerReal, `${attemptLine}\n`); // BEFORE the call is sent
@@ -586,7 +585,7 @@ function dryRunOutput(b: StillBuilt): string {
     `still: item id=${b.item.id} mode=${b.mode} model=${b.plan.model} prompt-sha256=${b.item.promptSha}` +
       (b.input ? ` in-sha256=${b.input.sha}` : "") +
       ` estimate-usd=${formatUsdMicro(b.estimateMicro)}`,
-    `still: spend group=ai-image spent usd=${formatUsdMicro(b.spentMicro)} ceiling=${b.ceilingUsd}` +
+    `still: spend group=all spent usd=${formatUsdMicro(b.spentMicro)} ceiling=${b.ceilingUsd}` +
       ` room usd=${formatUsdMicroDown(roomMicro)} room-after usd=${formatUsdMicroDown(roomMicro - b.estimateMicro)}`,
   ];
   return `${lines.join("\n")}\n`;

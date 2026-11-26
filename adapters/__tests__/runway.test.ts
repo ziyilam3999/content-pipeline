@@ -305,7 +305,8 @@ describe("t2 cap", () => {
     const r = await run(ctx.args(), fake);
     expect(r.code).toBe(2);
     expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
-    expect(r.err).toContain("ai-video");
+    expect(r.err).toContain("spend record total");
+    expect(r.err).not.toMatch(GROUP_WORDS);
     expect(fake.calls.length).toBe(0);
     expect(readBytes(ctx.ledger)).toEqual(before);
   });
@@ -329,10 +330,10 @@ describe("t2 cap", () => {
     expect(r.out).toContain("usd=9.360");
   });
 
-  it("--ceiling-usd 25.01 and 26 refuse usage; the ceiling is required", async () => {
+  it("--ceiling-usd 46.01 and 47 refuse usage; the ceiling is required", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
-    for (const c of ["25.01", "26", "0", "-1", "1e9", "NaN"]) {
+    for (const c of ["46.01", "47", "0", "-1", "1e9", "NaN"]) {
       const r = await run(ctx.args({ ceiling: c }), fake);
       expect([c, r.code]).toEqual([c, 2]);
       expect([c, r.err.trim().split(/\s+/)[0]]).toEqual([c, "usage"]);
@@ -351,10 +352,10 @@ describe("t2 cap", () => {
   });
 });
 
-// ── (3) one cap for both tools ──────────────────────────────────────────────────────────
+// ── (3) one cap over the whole record ───────────────────────────────────────────────────
 
-describe("t3 cap group", () => {
-  it("a runway attempt and outcome line count in the video:gen ai-video total; paid media stays apart", () => {
+describe("t3 one spend total", () => {
+  it("a runway attempt and outcome line count in the one total, and so does an elevenlabs line", () => {
     const ctx = makeCtx();
     writeLedger(ctx.ledger, [
       runwayAttempt(PLAN.plan_id, "ai-1-kling3-pic", 0.54),
@@ -362,8 +363,7 @@ describe("t3 cap group", () => {
       { kind: "attempt", service: "gemini-omni", cost_usd: 0.42 },
       { service: "elevenlabs", cost_usd: 5 },
     ]);
-    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(1_020_000); // 0.54 + 0.06 + 0.42
-    expect(vg.readLedgerTotal(ctx.ledger, "paid-media")).toBe(5_000_000);
+    expect(vg.readLedgerTotal(ctx.ledger)).toBe(6_020_000); // 0.54 + 0.06 + 0.42 + 5
   });
 
   it("a runway line in the record eats the try-out's own room (dry run spend line)", async () => {
@@ -376,6 +376,7 @@ describe("t3 cap group", () => {
     const r = await run(ctx.args(), fake);
     expect(r.code).toBe(0);
     expect(r.out).toContain("spent usd=0.600 ceiling=25 room usd=24.400 room-after usd=15.040");
+    expect(r.out.split("\n").some((l) => l.startsWith("runway: spend group=all spent usd="))).toBe(true);
   });
 
   it("an unknown service in the record still refuses ledger-unreadable, dry run and live", async () => {
@@ -384,7 +385,7 @@ describe("t3 cap group", () => {
     const before = readBytes(ctx.ledger);
     let thrown = "none thrown";
     try {
-      vg.readLedgerTotal(ctx.ledger, "ai-video");
+      vg.readLedgerTotal(ctx.ledger);
     } catch (e) {
       thrown = e instanceof vg.Refusal ? e.code : `other: ${String(e)}`;
     }
@@ -397,6 +398,134 @@ describe("t3 cap group", () => {
       expect(fake.calls.length).toBe(0);
     }
     expect(readBytes(ctx.ledger)).toEqual(before);
+  });
+});
+
+// ── (3b) the one spend cap: the ceiling, the refusals ──────────────────────────────────
+
+/** The words of the old split: no printed line and no refusal text holds one. */
+const GROUP_WORDS = /ai-video|ai-image|paid-media|all paid/;
+
+const spendLine = (service: string, cost: number): Record<string, unknown> => ({ kind: "attempt", service, cost_usd: cost });
+
+describe("t3b one spend cap", () => {
+  const CLIP = "ai-1-kling3-pic"; // estimate 0.54
+
+  it("ceiling limit", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [spendLine("runway", 0.54)]);
+    const before = readBytes(ctx.ledger);
+    const ok = await run(ctx.args({ ceiling: "46" }), new FakeCaller());
+    expect(ok.code).toBe(0);
+    expect(ok.out).toContain("ceiling=46 ");
+    for (const ceiling of ["46.01", "47"]) {
+      for (const extra of [[], ["--live"]] as string[][]) {
+        const fake = new FakeCaller();
+        const keyReader = jest.fn(() => KEY);
+        const r = await run(ctx.args({ ceiling, clip: CLIP, extra }), fake, keyReader);
+        expect([ceiling, r.code]).toEqual([ceiling, 2]);
+        expect(r.err).toBe("usage --ceiling-usd must be above 0 and at most 46\n");
+        expect(keyReader).not.toHaveBeenCalled();
+        expect(fake.calls.length).toBe(0);
+        expect(readBytes(ctx.ledger)).toEqual(before);
+      }
+    }
+  });
+
+  it("other tools' lines count", async () => {
+    const over = makeCtx();
+    writeLedger(over.ledger, [spendLine("gemini-image", 20), spendLine("elevenlabs", 25.47)]);
+    const before = readBytes(over.ledger);
+    for (const extra of [[], ["--live"]] as string[][]) {
+      const fake = new FakeCaller();
+      const keyReader = jest.fn(() => KEY);
+      const r = await run(over.args({ ceiling: "46", clip: CLIP, extra }), fake, keyReader);
+      expect(r.code).toBe(2);
+      expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+      expect(r.err).toContain("spend record total 45.470 plus planned 0.540 is above ceiling 46");
+      expect(r.err).not.toMatch(GROUP_WORDS);
+      expect(keyReader).not.toHaveBeenCalled();
+      expect(fake.calls.length).toBe(0);
+      expect(readBytes(over.ledger)).toEqual(before);
+    }
+
+    const exact = makeCtx();
+    writeLedger(exact.ledger, [spendLine("gemini-image", 20), spendLine("elevenlabs", 25.46)]);
+    const r = await run(exact.args({ ceiling: "46", clip: CLIP }), new FakeCaller());
+    expect(r.code).toBe(0);
+    const spend = r.out.split("\n").find((l) => l.startsWith("runway: spend group=all spent usd="));
+    expect(spend).toBe("runway: spend group=all spent usd=45.460 ceiling=46 room usd=0.540 room-after usd=0.000");
+    expect(r.out).not.toMatch(GROUP_WORDS);
+  });
+
+  it("other tool's line under the lock", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    let after: Buffer | null = null;
+    // the first check passes (no record yet); the key reader plays the other tool's run
+    const keyReader = jest.fn(() => {
+      fs.appendFileSync(ctx.ledger, `${JSON.stringify(spendLine("gemini-image", 46))}\n`);
+      after = readBytes(ctx.ledger);
+      return KEY;
+    });
+    const r = await run(ctx.args({ ceiling: "46", clip: CLIP, extra: ["--live"] }), fake, keyReader);
+    expect(keyReader).toHaveBeenCalledTimes(1);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+    expect(r.err).toContain("spend record total 46.000 plus estimate 0.540 is above ceiling 46");
+    expect(r.err).not.toMatch(GROUP_WORDS);
+    expect(fake.calls.length).toBe(0);
+    expect(after).not.toBeNull();
+    expect(readBytes(ctx.ledger)).toEqual(after); // no attempt line of this run
+    expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false);
+  });
+
+  it("ceiling under the spent total", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [
+      spendLine("gemini-omni", 6.16),
+      spendLine("runway", 12.71),
+      spendLine("gemini-image", 0.44),
+      spendLine("elevenlabs", 5),
+    ]);
+    const before = readBytes(ctx.ledger);
+    for (const extra of [[], ["--live"]] as string[][]) {
+      const fake = new FakeCaller();
+      const keyReader = jest.fn(() => KEY);
+      const r = await run(ctx.args({ ceiling: "24", clip: CLIP, extra }), fake, keyReader);
+      expect(r.code).toBe(2);
+      expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+      expect(r.err).toContain("spend record total 24.310 ");
+      expect(r.err).not.toMatch(GROUP_WORDS);
+      expect(keyReader).not.toHaveBeenCalled();
+      expect(fake.calls.length).toBe(0);
+      expect(readBytes(ctx.ledger)).toEqual(before);
+    }
+  });
+
+  it("unknown service names are refused by video:tryout, dry run and live", async () => {
+    const lines: [string, string][] = [
+      ["a made-up name", '{"cost_usd":0.1,"service":"made-up-service"}\n'],
+      ["another letter case", '{"cost_usd":0.1,"service":"Runway"}\n'],
+      ["constructor", '{"cost_usd":0.1,"service":"constructor"}\n'],
+      ["__proto__", '{"cost_usd":0.1,"service":"__proto__"}\n'],
+      ["an empty text", '{"cost_usd":0.1,"service":""}\n'],
+      ["a service that is not a text", '{"cost_usd":0.1,"service":["runway"]}\n'],
+      ["no service field", '{"cost_usd":0.1}\n'],
+    ];
+    for (const [label, text] of lines) {
+      const ctx = makeCtx();
+      fs.writeFileSync(ctx.ledger, text);
+      const before = readBytes(ctx.ledger);
+      for (const extra of [[], ["--live"]] as string[][]) {
+        const fake = new FakeCaller();
+        const r = await run(ctx.args({ ceiling: "46", clip: CLIP, extra }), fake);
+        expect([label, r.code]).toEqual([label, 2]);
+        expect([label, r.err.trim().split(/\s+/)[0]]).toEqual([label, "ledger-unreadable"]);
+        expect([label, fake.calls.length]).toEqual([label, 0]);
+        expect(readBytes(ctx.ledger)).toEqual(before);
+      }
+    }
   });
 });
 
@@ -860,7 +989,7 @@ describe("t9 cost", () => {
     expect(lines[0].cost_usd).toBe(0.54);
     expect(lines[1].cost_usd).toBe(0.12); // (66 - 54) x USD 0.01
     expect(lines[1].final_cost_credits).toBe(66);
-    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(660_000); // grew by 0.66, not 0.54
+    expect(vg.readLedgerTotal(ctx.ledger)).toBe(660_000); // grew by 0.66, not 0.54
   });
 
   it("no terminal cost, an estimatedCost above the estimate: C is the estimate of the create reply", async () => {
@@ -873,7 +1002,7 @@ describe("t9 cost", () => {
     expect(lines[1].cost_usd).toBe(0.06); // (60 - 54) x USD 0.01
     expect(lines[1].estimated_cost_credits).toBe(60);
     expect(lines[1].final_cost_credits).toBeNull();
-    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(600_000);
+    expect(vg.readLedgerTotal(ctx.ledger)).toBe(600_000);
   });
 
   it("a cost lower than the estimate gives 0 (never negative)", async () => {
@@ -884,7 +1013,7 @@ describe("t9 cost", () => {
     expect(r.code).toBe(0);
     const lines = ledgerLines(ctx.ledger);
     expect(lines[1].cost_usd).toBe(0);
-    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(540_000);
+    expect(vg.readLedgerTotal(ctx.ledger)).toBe(540_000);
   });
 
   it("(a) a refunded task: a terminal cost of 0 credits is a read value, not a fall-through to the estimate", async () => {
@@ -898,7 +1027,7 @@ describe("t9 cost", () => {
     expect(outcome.estimated_cost_credits).toBe(60);
     expect(outcome.final_cost_credits).toBe(0);
     expect(outcome.cost_usd).toBe(0);
-    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(540_000);
+    expect(vg.readLedgerTotal(ctx.ledger)).toBe(540_000);
   });
 
   it("(b) a FAILED terminal reply with a cost above the estimate: the cost is read and the delta is recorded", async () => {
@@ -911,7 +1040,7 @@ describe("t9 cost", () => {
     expect(outcome.status).toBe("failed");
     expect(outcome.final_cost_credits).toBe(70);
     expect(outcome.cost_usd).toBe(0.16); // (70 - 54) x USD 0.01
-    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(700_000);
+    expect(vg.readLedgerTotal(ctx.ledger)).toBe(700_000);
   });
 
   // (c) values that are not the spec shape. NaN and Infinity cannot come out of a JSON reply;
@@ -937,7 +1066,7 @@ describe("t9 cost", () => {
       expect(outcome.estimated_cost_credits).toBeNull();
       expect(outcome.final_cost_credits).toBeNull();
       expect(outcome.cost_usd).toBe(0);
-      expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(540_000);
+      expect(vg.readLedgerTotal(ctx.ledger)).toBe(540_000);
     });
 
     it(`(c) cost ${label} gives null, and C falls through to the create estimate`, async () => {
@@ -951,7 +1080,7 @@ describe("t9 cost", () => {
       expect(outcome.estimated_cost_credits).toBe(60);
       expect(outcome.final_cost_credits).toBeNull();
       expect(outcome.cost_usd).toBe(0.06); // (60 - 54) x USD 0.01
-      expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(600_000);
+      expect(vg.readLedgerTotal(ctx.ledger)).toBe(600_000);
     });
   }
 });
@@ -1318,7 +1447,7 @@ describe("t13 round 4", () => {
       expect([label, outcome.final_cost_credits]).toEqual([label, 80]);
       expect([label, outcome.estimated_cost_credits]).toEqual([label, 60]);
       expect([label, outcome.cost_usd]).toEqual([label, 0.26]); // (80 - 54) x USD 0.01
-      expect([label, vg.readLedgerTotal(ctx.ledger, "ai-video")]).toEqual([label, 800_000]);
+      expect([label, vg.readLedgerTotal(ctx.ledger)]).toEqual([label, 800_000]);
       expect(outcome.file).toBeNull();
       expect(fs.readdirSync(ctx.out).length).toBe(0);
     }
@@ -1341,7 +1470,7 @@ describe("t13 round 4", () => {
       expect(fake.downloadCount).toBe(0);
       expect(outcome.final_cost_credits).toBe(80);
       expect(outcome.cost_usd).toBe(0.26);
-      expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(800_000);
+      expect(vg.readLedgerTotal(ctx.ledger)).toBe(800_000);
     }
   });
 
@@ -1358,7 +1487,7 @@ describe("t13 round 4", () => {
     expect(outcome.status).toBe("error");
     expect(outcome.final_cost_credits).toBeNull();
     expect(outcome.cost_usd).toBe(0.06); // (60 - 54) x USD 0.01
-    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(600_000);
+    expect(vg.readLedgerTotal(ctx.ledger)).toBe(600_000);
   });
 
   it("R1 a download redirect is followed, and no hop carries the key header", async () => {

@@ -606,7 +606,7 @@ describe("6 usage", () => {
       { label: "ceiling 1e9", args: ctx.args({ ceiling: "1e9" }) },
       { label: "ceiling $1", args: ctx.args({ ceiling: "$1" }) },
       { label: "ceiling 1,00", args: ctx.args({ ceiling: "1,00" }) },
-      { label: "ceiling 25.01 above the 25 cap", args: ctx.args({ ceiling: "25.01" }) },
+      { label: "ceiling 46.01 above the 46 cap", args: ctx.args({ ceiling: "46.01" }) },
     ];
     for (const c of cases) {
       const r = await run(c.args, fake);
@@ -1276,7 +1276,7 @@ describe("20 default dry run reads no key", () => {
   });
 });
 
-// ── cap-group fixtures (made-up records; the tool's line format unchanged) ──────────────
+// ── spend-record fixtures (made-up records; the tool's line format unchanged) ───────────
 
 const aiAtt = (cost: number): Record<string, unknown> => ({ kind: "attempt", service: "gemini-omni", cost_usd: cost });
 const aiOut = (cost: number): Record<string, unknown> => ({ kind: "outcome", service: "gemini-omni", cost_usd: cost });
@@ -1300,10 +1300,10 @@ describe("22 AI video cap", () => {
     expect(readBytes(ctx.ledger)).toBeNull();
   });
 
-  it("25.01 and 26 refuse usage", async () => {
+  it("46.01 and 47 refuse usage", async () => {
     const ctx = makeCtx();
     const fake = new FakeCaller();
-    for (const c of ["25.01", "26"]) {
+    for (const c of ["46.01", "47"]) {
       const r = await run(ctx.args({ ceiling: c }), fake);
       expect([c, r.code]).toEqual([c, 2]);
       expect([c, r.err.trim().split(/\s+/)[0]]).toEqual([c, "usage"]);
@@ -1331,20 +1331,21 @@ describe("23 dry-run spend line", () => {
     const fake = new FakeCaller();
     const r = await run(ctx.args({ ceiling: "25" }), fake);
     expect(r.code).toBe(0);
-    expect(r.out).toContain("video-gen: spend group=ai-video spent usd=1.260 ceiling=25 room usd=23.740 room-after usd=23.320");
+    expect(r.out).toContain("video-gen: spend group=all spent usd=1.260 ceiling=25 room usd=23.740 room-after usd=23.320");
+    expect(r.out.split("\n").some((l) => l.startsWith("video-gen: spend group=all spent usd="))).toBe(true);
     expect(readBytes(ctx.ledger)).toEqual(before); // byte for byte unchanged
     expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false); // no lock left
     expect(fake.calls.length).toBe(0);
   });
 
-  it("a paid-media line is in neither room figure: the whole spend line", async () => {
+  it("an elevenlabs line is in both room figures: the whole spend line", async () => {
     const ctx = makeCtx();
     writeLedger(ctx.ledger, [...THREE_PAIRS, { service: "elevenlabs", cost_usd: 5 }]);
     const before = readBytes(ctx.ledger);
     const fake = new FakeCaller();
     const r = await run(ctx.args({ ceiling: "25" }), fake);
     expect(r.code).toBe(0);
-    expect(r.out).toContain("video-gen: spend group=ai-video spent usd=1.260 ceiling=25 room usd=23.740 room-after usd=23.320");
+    expect(r.out).toContain("video-gen: spend group=all spent usd=6.260 ceiling=25 room usd=18.740 room-after usd=18.320");
     expect(readBytes(ctx.ledger)).toEqual(before);
     expect(fake.calls.length).toBe(0);
   });
@@ -1426,7 +1427,8 @@ describe("24 edge at 25", () => {
     const r = await run(live(ctx, { ceiling: "25" }), fake);
     expect(r.code).toBe(2);
     expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
-    expect(r.err).toContain("ai-video"); // the refusal names the group
+    expect(r.err).toContain("spend record total"); // the refusal names the one total
+    expect(r.err).not.toMatch(GROUP_WORDS);
     expect(fake.calls.length).toBe(0);
     expect(readBytes(ctx.ledger)).toEqual(before);
     expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false);
@@ -1443,39 +1445,41 @@ describe("24 edge at 25", () => {
   });
 });
 
-// ── (25) the cap groups are read apart ─────────────────────────────────────────────────
+// ── (25) one cap over every line ───────────────────────────────────────────────────────
 
-describe("25 cap groups apart", () => {
+describe("25 one cap over every line", () => {
   const recordD = (): Record<string, unknown>[] => [...THREE_PAIRS, aiAtt(23.32), { service: "elevenlabs", cost_usd: 5 }];
 
-  it("a paid-media line in the same record: live 0.42 at 25 still passes", async () => {
+  it("an elevenlabs line in the same record counts: live 0.42 at 25 refuses over-ceiling", async () => {
     const ctx = makeCtx();
     writeLedger(ctx.ledger, recordD());
+    const before = readBytes(ctx.ledger);
     const fake = new FakeCaller();
     fake.gen = async () => okReply();
     const r = await run(live(ctx, { ceiling: "25" }), fake);
-    expect(r.code).toBe(0);
-    expect(fake.generateCount).toBe(1);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+    expect(fake.generateCount).toBe(0);
+    expect(readBytes(ctx.ledger)).toEqual(before);
   });
 
-  it("the dry-run spent line still reads 24.580", async () => {
+  it("the dry-run spent line reads 29.580", async () => {
     const ctx = makeCtx();
     writeLedger(ctx.ledger, recordD());
     const fake = new FakeCaller();
-    const r = await run(ctx.args({ ceiling: "25" }), fake);
+    const r = await run(ctx.args({ ceiling: "46" }), fake);
     expect(r.code).toBe(0);
-    expect(r.out).toContain("spent usd=24.580 ");
+    expect(r.out).toContain("spent usd=29.580 ");
   });
 
-  it("the exported reader returns paid-media 5000000 and ai-video 24580000 micro-USD", () => {
+  it("the exported reader returns the one total, 29580000 micro-USD", () => {
     const ctx = makeCtx();
     writeLedger(ctx.ledger, recordD());
-    expect(vg.readLedgerTotal(ctx.ledger, "paid-media")).toBe(5_000_000);
-    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(24_580_000);
+    expect(vg.readLedgerTotal(ctx.ledger)).toBe(29_580_000);
   });
 });
 
-// ── (26) an odd line refuses the whole read, whatever group ────────────────────────────
+// ── (26) an odd line refuses the whole read ────────────────────────────────────────────
 
 describe("26 unknown odd lines refuse", () => {
   const cases: [string, string][] = [
@@ -1507,15 +1511,183 @@ describe("26 unknown odd lines refuse", () => {
     });
   }
 
-  it("the paid-media reader refuses the same odd lines (shared rule: no service field)", () => {
+  it("the exported reader refuses the same odd lines (shared rule: no service field)", () => {
     const ctx = makeCtx();
     fs.writeFileSync(ctx.ledger, '{"cost_usd":0.1}\n');
     let code = "none thrown";
     try {
-      vg.readLedgerTotal(ctx.ledger, "paid-media");
+      vg.readLedgerTotal(ctx.ledger);
     } catch (e) {
       code = e instanceof vg.Refusal ? e.code : `other: ${String(e)}`;
     }
     expect(code).toBe("ledger-unreadable");
+  });
+});
+
+// ── (27) the one spend cap: the shared total, the ceiling, the refusals ────────────────
+
+/** The words of the old split: no printed line and no refusal text holds one. */
+const GROUP_WORDS = /ai-video|ai-image|paid-media|all paid/;
+
+const line = (service: string, cost: number): Record<string, unknown> => ({ kind: "attempt", service, cost_usd: cost });
+
+/** 24.31 over the four known services. */
+const SHARED_TOTAL = [line("gemini-omni", 6.16), line("runway", 12.71), line("gemini-image", 0.44), line("elevenlabs", 5)];
+
+/** One record line per way a service name is not known. */
+const UNKNOWN_SERVICE_LINES: [string, string][] = [
+  ["a made-up name", '{"cost_usd":0.1,"service":"made-up-service"}\n'],
+  ["another letter case", '{"cost_usd":0.1,"service":"Runway"}\n'],
+  ["constructor", '{"cost_usd":0.1,"service":"constructor"}\n'],
+  ["__proto__", '{"cost_usd":0.1,"service":"__proto__"}\n'],
+  ["an empty text", '{"cost_usd":0.1,"service":""}\n'],
+  ["a service that is not a text", '{"cost_usd":0.1,"service":["runway"]}\n'],
+  ["no service field", '{"cost_usd":0.1}\n'],
+];
+
+describe("27 one spend cap", () => {
+  it("shared total", () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, SHARED_TOTAL);
+    expect(vg.readLedgerTotal(ctx.ledger)).toBe(24_310_000);
+  });
+
+  it("shared total, both kinds", () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [
+      line("runway", 0.54),
+      { kind: "outcome", service: "runway", cost_usd: 0.06 },
+      line("gemini-image", 0.04),
+    ]);
+    expect(vg.readLedgerTotal(ctx.ledger)).toBe(640_000);
+  });
+
+  it("table pinned", () => {
+    expect(vg.SERVICE_CAP_GROUPS).toEqual({
+      "gemini-omni": "ai-video",
+      runway: "ai-video",
+      "gemini-image": "ai-image",
+      elevenlabs: "paid-media",
+    });
+  });
+
+  it("ceiling limit", async () => {
+    expect(vg.PAID_SPEND_CAP_USD).toBe(46);
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, THREE_PAIRS);
+    const before = readBytes(ctx.ledger);
+    const ok = await run(ctx.args({ ceiling: "46" }), new FakeCaller());
+    expect(ok.code).toBe(0);
+    expect(ok.out).toContain("ceiling=46 ");
+    for (const ceiling of ["46.01", "47"]) {
+      for (const extra of [[], ["--live"]] as string[][]) {
+        const fake = new FakeCaller();
+        const keyReader = jest.fn(() => KEY);
+        const r = await run(ctx.args({ ceiling, extra }), fake, keyReader);
+        expect([ceiling, r.code]).toEqual([ceiling, 2]);
+        expect(r.err).toBe("usage --ceiling-usd must be above 0 and at most 46\n");
+        expect(keyReader).not.toHaveBeenCalled();
+        expect(fake.calls.length).toBe(0);
+        expect(readBytes(ctx.ledger)).toEqual(before);
+      }
+    }
+  });
+
+  it("other tools' lines count", async () => {
+    const over = makeCtx();
+    writeLedger(over.ledger, [line("gemini-image", 20), line("elevenlabs", 25.59)]);
+    const before = readBytes(over.ledger);
+    for (const extra of [[], ["--live"]] as string[][]) {
+      const fake = new FakeCaller();
+      const keyReader = jest.fn(() => KEY);
+      const r = await run(over.args({ ceiling: "46", extra }), fake, keyReader);
+      expect(r.code).toBe(2);
+      expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+      expect(r.err).toContain("spend record total 45.590 plus estimate 0.420 is above ceiling 46");
+      expect(r.err).not.toMatch(GROUP_WORDS);
+      expect(keyReader).not.toHaveBeenCalled();
+      expect(fake.calls.length).toBe(0);
+      expect(readBytes(over.ledger)).toEqual(before);
+    }
+
+    const exact = makeCtx();
+    writeLedger(exact.ledger, [line("gemini-image", 20), line("elevenlabs", 25.58)]);
+    const r = await run(exact.args({ ceiling: "46" }), new FakeCaller());
+    expect(r.code).toBe(0);
+    const spend = r.out.split("\n").find((l) => l.startsWith("video-gen: spend group=all spent usd="));
+    expect(spend).toBe("video-gen: spend group=all spent usd=45.580 ceiling=46 room usd=0.420 room-after usd=0.000");
+    expect(r.out).not.toMatch(GROUP_WORDS);
+  });
+
+  it("other tool's line under the lock", async () => {
+    const ctx = makeCtx();
+    const fake = new FakeCaller();
+    fake.gen = async () => okReply();
+    let after: Buffer | null = null;
+    // the first check passes (no record yet); the key reader plays the other tool's run
+    const keyReader = jest.fn(() => {
+      fs.appendFileSync(ctx.ledger, `${JSON.stringify(line("gemini-image", 46))}\n`);
+      after = readBytes(ctx.ledger);
+      return KEY;
+    });
+    const r = await run(live(ctx, { ceiling: "46" }), fake, keyReader);
+    expect(keyReader).toHaveBeenCalledTimes(1);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+    expect(r.err).toContain("spend record total 46.000 ");
+    expect(r.err).not.toMatch(GROUP_WORDS);
+    expect(fake.calls.length).toBe(0);
+    expect(after).not.toBeNull();
+    expect(readBytes(ctx.ledger)).toEqual(after); // no attempt line of this run
+    expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false);
+  });
+
+  it("ceiling under the spent total", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, SHARED_TOTAL);
+    const before = readBytes(ctx.ledger);
+    for (const extra of [[], ["--live"]] as string[][]) {
+      const fake = new FakeCaller();
+      const keyReader = jest.fn(() => KEY);
+      const r = await run(ctx.args({ ceiling: "24", extra }), fake, keyReader);
+      expect(r.code).toBe(2);
+      expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+      expect(r.err).toContain("spend record total 24.310 ");
+      expect(r.err).not.toMatch(GROUP_WORDS);
+      expect(keyReader).not.toHaveBeenCalled();
+      expect(fake.calls.length).toBe(0);
+      expect(readBytes(ctx.ledger)).toEqual(before);
+    }
+  });
+
+  it("unknown service names are refused by the reader", () => {
+    for (const [label, text] of UNKNOWN_SERVICE_LINES) {
+      const ctx = makeCtx();
+      fs.writeFileSync(ctx.ledger, text);
+      let code = "none thrown";
+      try {
+        vg.readLedgerTotal(ctx.ledger);
+      } catch (e) {
+        code = e instanceof vg.Refusal ? e.code : `other: ${String(e)}`;
+      }
+      expect([label, code]).toEqual([label, "ledger-unreadable"]);
+    }
+  });
+
+  it("unknown service names are refused by video:gen, dry run and live", async () => {
+    for (const [label, text] of UNKNOWN_SERVICE_LINES) {
+      const ctx = makeCtx();
+      fs.writeFileSync(ctx.ledger, text);
+      const before = readBytes(ctx.ledger);
+      for (const extra of [[], ["--live"]] as string[][]) {
+        const fake = new FakeCaller();
+        fake.gen = async () => okReply();
+        const r = await run(ctx.args({ ceiling: "46", extra }), fake);
+        expect([label, r.code]).toEqual([label, 2]);
+        expect([label, r.err.trim().split(/\s+/)[0]]).toEqual([label, "ledger-unreadable"]);
+        expect([label, fake.calls.length]).toEqual([label, 0]);
+        expect(readBytes(ctx.ledger)).toEqual(before);
+      }
+    }
   });
 });
