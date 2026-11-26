@@ -1,5 +1,5 @@
 /**
- * Row A41-clip-cut — cut recorded clips to a silent 9:16 video from an edit spec.
+ * Row A41-clip-cut — cut recorded clips to a silent video from an edit spec.
  *
  * The spec (schema clip-edit/1) names, per source clip, the blur boxes and the cuts that hide
  * private data, and per video the beats and the pieces played. validateSpec refuses a bad

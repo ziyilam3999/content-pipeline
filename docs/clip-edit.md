@@ -9,7 +9,8 @@ Two verbs, both reading one spec file (schema `clip-edit/1`) and the source clip
 It needs `--clips` and `--out` to be outside any git work tree. `check` reads the mp4 from
 outside, writes nothing, and prints one `PASS` or `FAIL` line per part; on an mp4 whose size
 differs from the spec's output size, the `shape` line is the one part line printed for that
-video. Exit 2 is a refusal, exit 1 a failed part.
+video. Exit 2 is a refusal. Exit 1 is a failed part of `check` or an error in either verb; on an
+error, stderr has an `error:` line and no part line is printed.
 
 ## The spec
 
