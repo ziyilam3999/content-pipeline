@@ -65,6 +65,7 @@
     "clip:edit": "tsx tools/clipEdit.ts",
     "video:gen": "tsx tools/videogen.ts",
     "video:tryout": "tsx tools/runwayTryout.ts",
+    "runway:audio": "tsx tools/runwayAudio.ts",
     "still:edit": "tsx tools/stillEdit.ts",
     "capture:demo": "tsx tools/captureDemo.ts",
     "capture:fable": "tsx tools/captureFable.ts",
