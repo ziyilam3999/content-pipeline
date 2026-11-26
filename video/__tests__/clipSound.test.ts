@@ -389,6 +389,18 @@ describe("clip sound: what apply writes", () => {
     expectPlacement(f, spec);
   });
 
+  ffTest("tail cut: what the file holds behind the end of the words is not laid", () => {
+    const f = fixture();
+    // 1.5 s of tone, then a faint tone below -60 dB that the end of the words leaves out
+    const faint = media(f, "faint-tail.wav", soundArgs("aevalsrc='if(lt(t,1.5),0.2,0.0003)*sin(2*PI*700*t)':s=48000:d=3"));
+    const { spec, specPath } = variant(f, (s) => Object.assign(s.voice.lines[0], faint));
+    lay(f, { spec: specPath });
+    expect(Math.abs(Number(recordOf(f.outDir).lines[0].words_end) - 1.5)).toBeLessThanOrEqual(0.1);
+    expect(level(mono(path.join(f.mediaDir, faint.file)), [1.6, 2.9])).toBeGreaterThan(-80); // the check can fail
+    const at = spec.voice.lines[0].at;
+    expect(samplePeak(mono(out(f, "voice.wav")).subarray((at + 1.6) * 48000, (at + 2.9) * 48000))).toBeLessThan(-100);
+  });
+
   ffTest("quiet line: a line at about -64 dB keeps its words", () => {
     const f = fixture();
     const quiet = media(f, "quiet.wav", soundArgs("anoisesrc=color=white:amplitude=0.0008:duration=2:sample_rate=48000:seed=3", "apad=pad_dur=1"));
@@ -588,6 +600,7 @@ describe("clip sound: fail closed", () => {
     ["line-order", "two lines with the same at", set(line(1), "at", 1)],
     ["bad-window", "to equal to from", set(line(0), "window", { from: 1, to: 1 })],
     ["bad-window", "to below from", set(line(0), "window", { from: 1, to: 0.5 })],
+    ["bad-window", "at equal to to", set(line(0), "window", { from: 0, to: 1 })],
     ["bad-window", "at before the window", set(line(0), "window", { from: 2, to: 4 })],
     ["bad-window", "at after the window", set(line(0), "window", { from: 0, to: 0.9 })],
     ["bad-window", "from negative", set(line(0), "window", { from: -1, to: 4 })],
@@ -819,8 +832,23 @@ describe("clip sound: fail closed", () => {
   ffTest("window-past-end: a window that ends beyond the picture's end", () => {
     plantedSpec("window-past-end", (s) => void (s.voice.lines[0].window = { from: 0.5, to: 10.001 }));
   });
+  ffTest("window-past-end edge: a window that ends at the picture's end passes", () => {
+    const f = fixture();
+    const v = variant(f, (s) => void (s.voice.lines[0].window = { from: 0.5, to: PICTURE_SEC }));
+    lay(f, { spec: v.specPath });
+    expect(recordOf(f.outDir).lines[0].window).toEqual({ from: 0.5, to: PICTURE_SEC });
+  });
   ffTest("line-past-end: the words of a line end beyond the picture's end", () => {
     plantedSpec("line-past-end", (s) => void (s.voice.lines[1].at = 8.2));
+  });
+  ffTest("line-past-end by the words: a silent tail may run past the picture's end", () => {
+    const f = fixture();
+    const long = media(f, "long-tail.wav", noiseArgs(0.3, 1.5, 1.5));
+    const v = variant(f, (s) => void Object.assign(s.voice.lines[1], long, { at: 8 }));
+    lay(f, { spec: v.specPath });
+    const line = recordOf(f.outDir).lines[1];
+    expect(8 + Number(line.sec)).toBeGreaterThan(PICTURE_SEC);
+    expect(8 + Number(line.words_end)).toBeLessThan(PICTURE_SEC);
   });
   ffTest("line-overlap: the words of a line end after the next line starts", () => {
     plantedSpec("line-overlap", (s) => void (s.voice.lines[1].at = 2.8));
