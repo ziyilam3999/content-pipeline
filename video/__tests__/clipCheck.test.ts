@@ -11,7 +11,7 @@ import * as path from "path";
 
 import { buildGraph, runCli, type ClipEditSpec } from "../clipEdit";
 import { runCheckCli } from "../clipCheck";
-import { fixtureSpec, makeEditFixture, type EditFixture } from "../clipEditFixture";
+import { fixtureSpec, makeEditFixture, makeMixedFixture, makeZoomFixture, mixedSpec, zoomSpec, type EditFixture, type SpecFixture } from "../clipEditFixture";
 import { hasSystemFfmpeg, resolveSystemFfmpeg } from "../contactSheet";
 
 jest.setTimeout(120000);
@@ -172,6 +172,51 @@ function list(dir: string): string[] {
   };
   walk(dir, "");
   return out;
+}
+
+// ── the per-source shape and the zoom: fixtures with sources of their own ───────────────────
+
+/** A spec written into the fixture root. */
+function specAt(f: SpecFixture, name: string, s: unknown): string {
+  const p = path.join(f.root, name);
+  fs.writeFileSync(p, JSON.stringify(s, null, 2) + "\n");
+  return p;
+}
+function appliedTo(f: SpecFixture, spec: string, name: string): string {
+  const out = tmp(name);
+  const r = runCli(["apply", "--spec", spec, "--clips", f.clipsDir, "--intake", f.intakeDir, "--out", out]);
+  if (r.code !== 0) throw new Error(`the apply of ${name} failed: ${r.err}`);
+  return out;
+}
+function expectPass(r: { code: number; out: string; err: string }, slug: string, parts: string[]): void {
+  expect(r.err).toBe("");
+  expect(r.code).toBe(0);
+  const lines = r.out.split("\n").filter((l) => l !== "");
+  expect(lines).toHaveLength(parts.length + 2);
+  for (const part of parts) expect(lines).toContain(`PASS ${part} ${slug}`);
+  expect(lines[lines.length - 1]).toBe("clip-edit check: videos=1 fail=0");
+}
+
+let mixedGood: { f: SpecFixture; out: string } | null = null;
+/** The mixed fixture with a good apply of its spec (makeMixedFixture says what it holds). */
+function mixedOnce(): { f: SpecFixture; out: string } {
+  if (!mixedGood) {
+    const f = makeMixedFixture();
+    fixtures.push(f);
+    mixedGood = { f, out: appliedTo(f, f.specPath, "mixed-good") };
+  }
+  return mixedGood;
+}
+
+let zoomGood: { f: SpecFixture; spec: string; out: string } | null = null;
+/** The zoom fixture with a good apply: the detail clip 0..1 s ending at zoom 1.12. */
+function zoomOnce(): { f: SpecFixture; spec: string; out: string } {
+  if (!zoomGood) {
+    const f = makeZoomFixture();
+    fixtures.push(f);
+    zoomGood = { f, spec: f.specPath, out: appliedTo(f, f.specPath, "zoom-good") };
+  }
+  return zoomGood;
 }
 
 describe("clip:edit check", () => {
@@ -416,5 +461,114 @@ describe("clip:edit check", () => {
     expect(r.err).toMatch(/^clip-edit check: error: /);
     expect(r.out).toBe("");
     expect(r.err).not.toContain("videos=");
+  });
+
+  ffTest("(36) mixed: check on the good output exits 0 with fail=0; PASS blur, cut and still among the six parts, 8 lines", () => {
+    const g = mixedOnce();
+    const r = check(g.f.specPath, g.f.clipsDir, g.out);
+    expectPass(r, "mixed-cut", ["shape", "blur", "cut", "bars", "crop", "still"]);
+    expect(r.out).not.toContain("zoom");
+  });
+
+  ffTest("(37) mixed FAIL crop: an output applied with the second source's crop_top set to the first source's (80)", () => {
+    const g = mixedOnce();
+    const s = clone(g.f.spec);
+    s.sources[1].crop_top = s.sources[0].crop_top;
+    const out = appliedTo(g.f, specAt(g.f, "crop-80.json", s), "mixed-crop80");
+    expectFail(check(g.f.specPath, g.f.clipsDir, out), "FAIL crop mixed-cut");
+  });
+
+  ffTest("(38) mixed FAIL blur: an output applied with blur: [] on the second source", () => {
+    const g = mixedOnce();
+    const s = clone(g.f.spec);
+    s.sources[1].blur = [];
+    const out = appliedTo(g.f, specAt(g.f, "no-blur.json", s), "mixed-noblur");
+    const r = check(g.f.specPath, g.f.clipsDir, out);
+    expectFail(r, "FAIL blur mixed-cut", 1);
+    expect(r.out).toContain("PASS crop mixed-cut\n"); // the source's own crop_top (0) reads right
+  });
+
+  ffTest("(39) mixed FAIL cut: an output that plays the second source straight through its cut", () => {
+    const g = mixedOnce();
+    const out = tmp("mixed-straight");
+    ff([
+      "-i",
+      path.join(g.f.clipsDir, "sound.mp4"),
+      "-vf",
+      "setpts=PTS-STARTPTS,fps=30,crop=240:400:0:0,scale=360:600,pad=360:640:0:20:color=0xFFFFFF,format=yuv420p",
+      "-frames:v",
+      "90",
+      "-an",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      path.join(out, "mixed-cut.mp4"),
+    ]);
+    expectFail(check(g.f.specPath, g.f.clipsDir, out), "FAIL cut mixed-cut");
+  });
+
+  ffTest("(40) mixed FAIL still: an output applied with the held frame of the second source moved (1.2 s to 1.3 s)", () => {
+    const g = mixedOnce();
+    const s = clone(g.f.spec);
+    s.videos[0].beats[1].pieces[1] = { src: "sound", still: 1.3, sec: 0.5 };
+    const out = appliedTo(g.f, specAt(g.f, "moved-still.json", s), "mixed-still");
+    const r = check(g.f.specPath, g.f.clipsDir, out);
+    expectFail(r, "FAIL still mixed-cut", 1);
+  });
+
+  ffTest("(41) zoom: check on the good output exits 0 with PASS zoom (9 lines); an output applied without zoom_to fails on zoom alone", () => {
+    const g = zoomOnce();
+    const r = check(g.spec, g.f.clipsDir, g.out);
+    expectPass(r, "zoom-cut", ["shape", "blur", "cut", "bars", "crop", "still", "zoom"]);
+    const s = clone(g.f.spec);
+    delete (s.videos[0].beats[0].pieces[0] as { zoom_to?: number }).zoom_to;
+    const out = appliedTo(g.f, specAt(g.f, "no-zoom.json", s), "zoom-none");
+    expectFail(check(g.spec, g.f.clipsDir, out), "FAIL zoom zoom-cut", 1);
+  });
+
+  ffTest("(42) zoom on a source with a band and crop_top 110: the band is gone in the first and the last frame; PASS crop, bars and zoom; an output applied with crop_top 0 fails on crop", () => {
+    const g = zoomOnce();
+    const f = g.f;
+    const bandSha = sha(path.join(f.clipsDir, "zoom-band.mp4"));
+    const s = zoomSpec(bandSha, 1.12, 1, "band-zoom");
+    s.sources[0] = { id: "z", file: "zoom-band.mp4", sha256: bandSha, width: 360, height: 590, crop_top: 110, blur: [], cut: [] };
+    const spec = specAt(f, "band-zoom.json", s);
+    const out = appliedTo(f, spec, "band-zoom");
+    const mp4 = path.join(out, "band-zoom.mp4");
+    for (const n of [0, 29]) {
+      const rgb = spawnSync(resolveSystemFfmpeg(), ["-v", "error", "-i", mp4, "-an", "-vf", `trim=start_frame=${n}:end_frame=${n + 1},format=rgb24`, "-f", "rawvideo", "-"], {
+        maxBuffer: 64 * 1024 * 1024,
+      }).stdout as Buffer;
+      expect(rgb.length).toBe(360 * 640 * 3);
+      let green = 0;
+      let padMin = 255;
+      for (let px = 0; px < 360 * 640; px++) {
+        const red = rgb[3 * px];
+        const grn = rgb[3 * px + 1];
+        const blu = rgb[3 * px + 2];
+        if (grn - red > 100 && grn - blu > 100) green++;
+        const row = Math.floor(px / 360);
+        if (row < 80 - 16 || row >= 560 + 16) padMin = Math.min(padMin, red, grn, blu);
+      }
+      expect(green).toBe(0);
+      expect(padMin).toBeGreaterThanOrEqual(240);
+    }
+    expectPass(check(spec, f.clipsDir, out), "band-zoom", ["shape", "blur", "cut", "bars", "crop", "still", "zoom"]);
+    const flatCrop = clone(s);
+    flatCrop.sources[0].crop_top = 0;
+    const out0 = appliedTo(f, specAt(f, "band-zoom-0.json", flatCrop), "band-zoom0");
+    expectFail(check(spec, f.clipsDir, out0), "FAIL crop band-zoom");
+  });
+
+  ffTest("(43) zoom-flat: check on a cut of a one-colour source with a zoom piece exits 1 with FAIL zoom", () => {
+    const g = zoomOnce();
+    const f = g.f;
+    const flatSha = sha(path.join(f.clipsDir, "flat.mp4"));
+    const s = zoomSpec(flatSha, 1.12, 1, "flat-cut");
+    s.sources[0].file = "flat.mp4";
+    const spec = specAt(f, "flat.json", s);
+    const out = appliedTo(f, spec, "flat-cut");
+    expectFail(check(spec, f.clipsDir, out), "FAIL zoom flat-cut", 1);
   });
 });
