@@ -1430,6 +1430,9 @@ describe("clip-intake check — shown fails closed", () => {
     ["c-01 in lower case", ["c-01"]],
     ["one id twice", ["C-01", "C-01"]],
     ["screens of two phones in one take (C-05 with C-11)", ["C-05", "C-11"]],
+    // inherited keys of a plain object: an `in` lookup would take them for clip ids
+    ["an inherited key name (constructor)", ["constructor"]],
+    ["an inherited key name (toString)", ["toString"]],
   ])("shown-bad-scope, the screens: %s -> not ready, the named reason alone, no shown key", (_label, clips) => {
     const { outDir } = setupShown("sbc", (s) => ({ note: shownNote(s, { clips }) }));
     expectRefused(outDir, ["shown-bad-scope"]);
