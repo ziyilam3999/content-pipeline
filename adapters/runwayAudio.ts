@@ -325,7 +325,7 @@ export interface SwapBuilt {
 
 function checkId(id: string, what: string): void {
   if (!ID_RE.test(id)) {
-    throw new Refusal("bad-id", `${what} ${JSON.stringify(id.slice(0, 40))} is not 1 to 120 characters of letters, digits, dot, dash and underscore, and it does not start with a dot or a dash`);
+    throw new Refusal("bad-id", `${what} ${JSON.stringify(id.slice(0, 40))} must be 1 to 120 characters of letters, digits, dot, dash and underscore, and must not start with a dot or a dash`);
   }
 }
 
@@ -347,8 +347,11 @@ export function buildSwap(a: RunwayAudioArgs, tempDir: string = os.tmpdir()): Sw
   let st: fs.Stats;
   try {
     st = fs.lstatSync(a.in);
-  } catch {
-    throw new Refusal("input-missing", `input ${a.in} is missing`);
+  } catch (e) {
+    // a missing path and a path lstat cannot look at (no search right on its folder) refuse alike
+    const code = (e as { code?: unknown }).code;
+    const how = code === "ENOENT" ? "is missing" : `cannot be read (${typeof code === "string" ? code : "unknown"})`;
+    throw new Refusal("input-missing", `input ${a.in} ${how}`);
   }
   if (!st.isFile()) throw new Refusal("input-missing", `input ${a.in} is not a regular file`);
   const clipId = path.basename(a.in, path.extname(a.in));
@@ -613,7 +616,8 @@ async function liveRun(a: RunwayAudioArgs, b: SwapBuilt, deps?: RunwayAudioDeps)
   try {
     fs.closeSync(fs.openSync(b.lockPath, "wx"));
   } catch {
-    throw new Refusal("ledger-busy", `lock file ${b.lockPath} exists`);
+    // a lock file that exists and a folder where none can be made (no write right) refuse alike
+    throw new Refusal("ledger-busy", `lock file ${b.lockPath} exists or cannot be created`);
   }
   try {
     const total = readLedgerTotal(b.ledgerReal); // each line again, under the lock

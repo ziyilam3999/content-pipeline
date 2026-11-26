@@ -69,8 +69,9 @@ appended and before a request is sent.
 - `voice-unknown` — `--voice` is not one of the preset ids of the list (exact and with case).
 - `bad-id` — `--plan-id` or the clip id is not 1 to 120 characters of letters, digits, dot,
   dash and underscore, or starts with a dot or a dash.
-- `input-missing` — `--in` is missing, or is a folder, a symlink, a FIFO or a device; such a
-  path is not opened.
+- `input-missing` — `--in` is missing, cannot be read (an lstat error other than a missing
+  path, such as no search right on its folder), or is a folder, a symlink, a FIFO or a device;
+  such a path is not opened.
 - `input-no-sound` — `--in` holds no sound stream, or the WAV to be sent has no length.
 - `input-too-big` — the data URI of the WAV is longer than `MAX_DATA_URI_CHARS` of
   `adapters/runway.ts` (5000000 characters).
@@ -84,7 +85,7 @@ appended and before a request is sent.
   `cost_usd` of 0 or more, or has a service the table of `adapters/videogen.ts` does not hold.
 - `over-ceiling` — the total of the record plus the estimate is above `--ceiling-usd`.
 - `key-missing` (with `--live`) — the key reader threw, or returned an empty or blank text.
-- `ledger-busy` (with `--live`) — the lock file `<record>.lock` exists.
+- `ledger-busy` (with `--live`) — the lock file `<record>.lock` exists or cannot be created.
 - `retry-limit` (with `--live`) — the record holds 2 swap attempt lines of this plan id and
   this clip id.
 

@@ -122,6 +122,10 @@ function toolIt(name: string, fn: () => Promise<void>): void {
   maybeIt(`${name} ${NEEDS_TOOL}`, fn);
 }
 
+// lstat as root answers where another user gets EACCES: the test of that refusal needs another user
+const AS_ROOT = typeof process.getuid === "function" && process.getuid() === 0;
+const userIt = ON_WIN32 || AS_ROOT ? it.skip : it;
+
 function ffmpeg(args: string[], input?: Buffer): void {
   execFileSync(FFMPEG as string, ["-hide_banner", "-loglevel", "error", "-nostdin", ...args], {
     input,
@@ -723,6 +727,19 @@ describe("a57 cap", () => {
     const r4 = await run(one.args({ extra: ["--live"] }), oneFake);
     expect(r4.code).toBe(0);
     expect(oneFake.createCount).toBe(1);
+
+    // a line of kind outcome that carries the sent object of a swap line counts as no attempt:
+    // the kind is read too. With one swap attempt line the count stays 1 and the run goes through
+    const stray = makeCtx(true);
+    writeLedger(stray.ledger, [
+      swapAttempt(PLAN_ID, "donor"), swapOutcome(),
+      { kind: "outcome", service: "runway", cost_usd: 0, sent: { plan_id: PLAN_ID, clip_id: "donor", endpoint: "speech_to_speech" } },
+    ]);
+    expect(ra.countSwapAttempts(stray.ledger, PLAN_ID, "donor")).toBe(1);
+    const strayFake = new FakeCaller();
+    const r5 = await run(stray.args({ extra: ["--live"] }), strayFake);
+    expect(r5.code).toBe(0);
+    expect(strayFake.createCount).toBe(1);
   });
 
   toolIt("retry-limit under lock", async () => {
@@ -1585,9 +1602,21 @@ function gitLike(): string {
 
 const REQUIRED_OPTIONS = ["--in", "--voice", "--remove-noise", "--plan-id", "--out", "--ledger", "--ceiling-usd"];
 
-const INPUT_MISSING: { label: string; posix: boolean; make: (ctx: Ctx) => string }[] = [
-  { label: "a missing path", posix: false, make: (c) => path.join(c.tmp, "no-such-file.wav") },
-  { label: "a folder", posix: false, make: (c) => c.out },
+// label; whether the case needs a POSIX file kind; the stderr line of the run, for a pinned case;
+// how the path is made
+const INPUT_MISSING: { label: string; posix: boolean; text?: (input: string) => string; make: (ctx: Ctx) => string }[] = [
+  {
+    label: "a missing path",
+    posix: false,
+    text: (input) => `input-missing input ${input} is missing\n`,
+    make: (c) => path.join(c.tmp, "no-such-file.wav"),
+  },
+  {
+    label: "a folder",
+    posix: false,
+    text: (input) => `input-missing input ${input} is not a regular file\n`,
+    make: (c) => c.out,
+  },
   {
     label: "a symlink to a sound file",
     posix: true,
@@ -1728,6 +1757,27 @@ describe("a57 fail closed", () => {
     }
   });
 
+  it("bad-id text", async () => {
+    const ctx = plainCtx();
+    const s = snap(ctx);
+    const file = path.join(ctx.tmp, ".abc.wav");
+    fs.writeFileSync(file, "made-up bytes that are no sound");
+    // the text names the rule the id breaks. ".abc" holds 4 allowed characters and starts with a
+    // dot: a text saying it holds other characters and does not start with a dot is false twice
+    const rule = "must be 1 to 120 characters of letters, digits, dot, dash and underscore, and must not start with a dot or a dash";
+    const rows: [string, ArgsOpts][] = [["plan id", { planId: ".abc" }], ["clip id", { in: file }]];
+    for (const extra of LIVE_ONLY) {
+      for (const [what, o] of rows) {
+        const fake = new FakeCaller();
+        const keyReader = jest.fn(() => KEY);
+        const r = await run(ctx.args({ ...o, extra }), fake, keyReader);
+        expectRefusal(r, "bad-id", fake, ctx, s);
+        expect([what, r.err]).toEqual([what, `bad-id ${what} ".abc" ${rule}\n`]);
+        expect(keyReader).not.toHaveBeenCalled();
+      }
+    }
+  });
+
   toolIt("bad-id: a leading underscore and 120 characters pass", async () => {
     const ids: [string, string][] = [
       ["a leading underscore", "_abc"],
@@ -1763,12 +1813,14 @@ describe("a57 fail closed", () => {
     const ctx = plainCtx();
     const s = snap(ctx);
     for (const c of INPUT_MISSING.filter((x) => !x.posix)) {
+      const input = c.make(ctx);
       for (const extra of LIVE_ONLY) {
         const fake = new FakeCaller();
         const keyReader = jest.fn(() => KEY);
-        const r = await run(ctx.args({ in: c.make(ctx), extra }), fake, keyReader);
+        const r = await run(ctx.args({ in: input, extra }), fake, keyReader);
         expectRefusal(r, "input-missing", fake, ctx, s);
         expect([c.label, keyReader.mock.calls.length]).toEqual([c.label, 0]);
+        if (c.text) expect([c.label, r.err]).toEqual([c.label, c.text(input)]); // the text names the case
       }
     }
   });
@@ -1788,6 +1840,29 @@ describe("a57 fail closed", () => {
         expectRefusal(r, "input-missing", fake, ctx, s);
         expect([c.label, keyReader.mock.calls.length]).toEqual([c.label, 0]);
       }
+    }
+  });
+
+  userIt("input-missing (a folder with no search right; skipped on win32 and as root, where lstat gives no EACCES)", async () => {
+    const ctx = plainCtx();
+    const locked = path.join(ctx.tmp, "no-search");
+    fs.mkdirSync(locked);
+    const input = path.join(locked, "donor.wav"); // a regular file lstat cannot reach: its folder has no search right
+    fs.writeFileSync(input, "made-up bytes that are no sound");
+    const mode = fs.statSync(locked).mode & 0o777;
+    fs.chmodSync(locked, 0o000);
+    try {
+      const s = snap(ctx);
+      for (const extra of LIVE_ONLY) {
+        const fake = new FakeCaller();
+        const keyReader = jest.fn(() => KEY);
+        const r = await run(ctx.args({ in: input, extra }), fake, keyReader);
+        expectRefusal(r, "input-missing", fake, ctx, s);
+        expect(r.err).toBe(`input-missing input ${input} cannot be read (EACCES)\n`); // the code stays input-missing
+        expect(keyReader).not.toHaveBeenCalled();
+      }
+    } finally {
+      fs.chmodSync(locked, mode); // the right back, so the temp folder can be read and cleaned
     }
   });
 
@@ -1984,7 +2059,10 @@ describe("a57 fail closed", () => {
     const r = await run(ctx.args({ extra: ["--live"] }), fake, keyReader);
     expect(keyReader).toHaveBeenCalledTimes(1); // the key is read before the lock is looked at
     expectRefusal(r, "ledger-busy", fake, ctx, s, true); // the lock is neither stolen nor removed
-    expect(r.err).toContain("ledger-busy");
+    // the text covers a lock file that exists and one that cannot be made (no write right);
+    // the path printed is the real path of the record folder, as checkFolder resolves it
+    const lock = `${path.join(fs.realpathSync(ctx.tmp), path.basename(ctx.ledger))}.lock`;
+    expect(r.err).toBe(`ledger-busy lock file ${lock} exists or cannot be created\n`);
     // the dry run does not look at the lock
     const dry = await run(ctx.args(), new FakeCaller());
     expect(dry.code).toBe(0);
