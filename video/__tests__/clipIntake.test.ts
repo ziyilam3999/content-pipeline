@@ -1170,9 +1170,6 @@ describe("clip-intake shown — the fixed values are held to the storyboard file
     const clipIds = body.filter((r) => r[iAsset] === "clip").map((r) => r[iClip]);
     expect(clipIds.length).toBeGreaterThan(1);
     expect(Object.keys(SHOWN_CLIPS)).toEqual(clipIds);
-    // the still card is not a recorded take: its id is not an allowed clip
-    const stillCard = body.find((r) => r[iAsset] === "screen");
-    expect(stillCard?.[iClip]).toBe("SCR-1");
     for (const r of body) {
       if (r[iAsset] !== "clip") expect(Object.keys(SHOWN_CLIPS)).not.toContain(r[iClip]);
     }
@@ -1341,6 +1338,7 @@ describe("clip-intake check — the answer shown", () => {
   test.each([
     ["C-11 alone", ["C-11"]],
     ["C-01 alone", ["C-01"]],
+    ["C-13 alone", ["C-13"]],
   ])("a note with %s is ready", (_label, clips) => {
     const { outDir, sha } = setupShown(`sc${clips[0]}`, (s) => ({ note: shownNote(s, { clips }) }));
     const r = checkOne(outDir);
@@ -1458,6 +1456,7 @@ describe("clip-intake check — shown fails closed", () => {
     ["c-01 in lower case", ["c-01"]],
     ["one id twice", ["C-01", "C-01"]],
     ["screens of two phones in one take (C-05 with C-11)", ["C-05", "C-11"]],
+    ["screens of two phones in one take (C-13 with C-11)", ["C-13", "C-11"]],
     // inherited keys of a plain object: an `in` lookup would take them for clip ids
     ["an inherited key name (constructor)", ["constructor"]],
     ["an inherited key name (toString)", ["toString"]],
