@@ -102,8 +102,9 @@ The codes of the source kind. `validateSpec` gives the first four (apply and che
 
 `spend-missing` to `spend-hash-mismatch` are the rule for an `ai-clip` source; when more than one
 code fits, the first of this order is given: `spend-missing`, `spend-unreadable`, `not-in-spend`,
-`spend-not-video`, `spend-hash-mismatch`. With several outcome lines for one attempt id, the rule
-reads the lines of status `ok`. Each is exit 2 with one line: in `apply` nothing is written in
+`spend-not-video`, `spend-hash-mismatch`; the order is over all `ai-clip` sources of the spec, and
+the line names the first source in spec order with that code. With several outcome lines for one
+attempt id, the rule reads the lines of status `ok`. Each is exit 2 with one line: in `apply` nothing is written in
 `--out`, in `check` no part line is printed. A `recorded-clip` source still needs its intake
 record (`not-in-intake`).
 

@@ -70,7 +70,8 @@ export interface Source {
   attempt_id?: string;
   width: number;
   height: number;
-  /** Top rows of this source cut away; without the key the output's crop_top (even, below the height). */
+  /** Top rows of this source cut away (even, below the height); without the key the output's crop_top,
+   *  and 0 for an ai-clip source (cropTopOf). */
   crop_top?: number;
   blur: BlurBox[];
   cut: Cut[];
@@ -827,10 +828,14 @@ function isVideoService(service: unknown): boolean {
   return typeof service === "string" && Object.prototype.hasOwnProperty.call(SERVICE_CAP_GROUPS, service) && SERVICE_CAP_GROUPS[service] === "ai-video";
 }
 
+/** The codes of one ai-clip source, in the order given when the sources of a spec differ. */
+const SPEND_ORDER = ["not-in-spend", "spend-not-video", "spend-hash-mismatch"] as const;
+type SpendCode = (typeof SPEND_ORDER)[number];
+
 /** The refusal code of an ai-clip source that is not in the spend lines, else undefined. The source
  *  is accepted when one line holds kind outcome, status ok, the attempt_id of the source, a service
  *  of the AI video group and the sha256 of the clip file. */
-function spendProblem(s: Source, lines: SpendLine[]): "not-in-spend" | "spend-not-video" | "spend-hash-mismatch" | undefined {
+function spendProblem(s: Source, lines: SpendLine[]): SpendCode | undefined {
   const ok = lines.filter(
     (l) => l.kind === "outcome" && // a line of another kind does not count
       l.status === "ok" && // an outcome of another status does not count
@@ -849,7 +854,7 @@ function listedAsTake(s: Source, lines: SpendLine[]): boolean {
 }
 
 /** The detail after the code of a spend refusal. */
-const SPEND_DETAIL: Record<string, string> = {
+const SPEND_DETAIL: Record<SpendCode, string> = {
   "not-in-spend": "has no outcome line of status ok for its attempt_id in --spend",
   "spend-not-video": "has no outcome line of status ok of a service of the AI video group in --spend",
   "spend-hash-mismatch": "has no outcome line of status ok with the sha256 of the clip file in --spend",
@@ -922,13 +927,14 @@ export function applyEdit(opts: ApplyOpts): string[] {
   // The source files: present, unchanged, and known to intake (a recorded take) or to the spend
   // record (an AI clip, by attempt id and sha256).
   const paths = new Map<string, string>();
+  const spendFaults: { id: string; code: SpendCode }[] = []; // in spec order
   for (const s of sp.sources) {
     const file = path.join(realClips, s.file);
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new Refusal("source-missing", `source ${s.id} is not in --clips`);
     if (sha256Streamed(file) !== s.sha256) throw new Refusal("source-changed", `source ${s.id} differs from the spec sha256`);
     if (isAi(s)) {
-      const problem = spendProblem(s, spendLines ?? []);
-      if (problem !== undefined) throw new Refusal(problem, `source ${s.id} ${SPEND_DETAIL[problem]}`);
+      const code = spendProblem(s, spendLines ?? []);
+      if (code !== undefined) spendFaults.push({ id: s.id, code });
     } else {
       if (spendLines !== undefined && listedAsTake(s, spendLines)) {
         throw new Refusal("ai-as-recorded", `source ${s.id} is a recorded-clip source whose sha256 is the file_sha256 of a line in --spend`);
@@ -946,6 +952,11 @@ export function applyEdit(opts: ApplyOpts): string[] {
       if (!known) throw new Refusal("not-in-intake", `source ${s.id} has no ${INTAKE_SCHEMA} record in --intake`);
     }
     paths.set(s.id, file);
+  }
+  // One order over the ai-clip sources of the spec; the line names the first source with the code
+  for (const code of SPEND_ORDER) {
+    const first = spendFaults.find((f) => f.code === code);
+    if (first !== undefined) throw new Refusal(code, `source ${first.id} ${SPEND_DETAIL[code]}`);
   }
 
   if (!hasSystemFfmpeg()) throw new Refusal("ffmpeg-missing", "no system ffmpeg (the bundled one lacks gblur, overlay, pad, fps, loop and setpts)");

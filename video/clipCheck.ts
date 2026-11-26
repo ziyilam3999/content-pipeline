@@ -87,6 +87,9 @@ function isVideoService(service: unknown): boolean {
   return typeof service === "string" && Object.prototype.hasOwnProperty.call(SERVICE_CAP_GROUPS, service) && SERVICE_CAP_GROUPS[service] === "ai-video";
 }
 
+/** The codes of spendRefusal, in the order given when the sources of a spec differ. */
+const SPEND_ORDER = ["not-in-spend", "spend-not-video", "spend-hash-mismatch"];
+
 /** The refusal of an ai-clip source that is not in the spend lines: the source is accepted when one
  *  line holds kind outcome, status ok, the attempt_id of the source, a service of the AI video group
  *  and the sha256 of the clip file. */
@@ -544,17 +547,23 @@ function checkEdit(opts: CheckOpts): { lines: string[]; fail: number } {
   const spendLines = spendLinesOf(sp, opts.spend);
 
   const clips = new Map<string, string>();
+  const spendRefused: Refusal[] = []; // in spec order
   for (const s of sp.sources) {
     const file = path.join(opts.clips, s.file);
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new Refusal("source-missing", `source ${s.id} is not in --clips`);
     if (sha256Streamed(file) !== s.sha256) throw new Refusal("source-changed", `source ${s.id} differs from the spec sha256`);
     if (isAi(s)) {
       const refused = spendRefusal(s, spendLines ?? []);
-      if (refused) throw refused;
+      if (refused) spendRefused.push(refused);
     } else if (spendLines !== undefined && spendLines.some((l) => l.file_sha256 === s.sha256)) {
       throw new Refusal("ai-as-recorded", `source ${s.id} is a recorded-clip source whose sha256 is the file_sha256 of a line in --spend`);
     }
     clips.set(s.id, file);
+  }
+  // One order over the ai-clip sources of the spec; the line names the first source with the code
+  for (const code of SPEND_ORDER) {
+    const first = spendRefused.find((r) => r.code === code);
+    if (first !== undefined) throw first;
   }
 
   try {

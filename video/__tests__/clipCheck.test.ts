@@ -21,6 +21,7 @@ import {
   makeZoomFixture,
   mixedSpec,
   outcomeLine,
+  twoAiSpec,
   writeLines,
   zoomSpec,
   type AiFixture,
@@ -732,5 +733,42 @@ describe("clip:edit check", () => {
     const b = goodOnce();
     const out = tmp("spend-no-ai");
     refusedBySpend(check(b.specPa, b.f.clipsDir, b.out, spendArgs([path.join(out, "gone.jsonl")])), "spend-unreadable");
+  });
+
+  // ── the order of the spend codes is over all ai-clip sources of the spec ───────────────────
+
+  /** check of twoAiSpec on the good ai-mixed output (ai2 is played by no piece) with a record of
+   *  `lines(sha256 of the AI clip)`. */
+  function checkTwoAi(name: string, lines: (aiSha: string) => unknown[]) {
+    const g = aiOnce();
+    const spec = specAt(g.f, "two-ai.json", twoAiSpec(g.f.sha256, g.f.aiSha256));
+    const record = writeLines(g.f.spendDir, `${name}.jsonl`, lines(g.f.aiSha256));
+    return { g, spec, r: check(spec, g.f.clipsDir, g.out, spendArgs([record])) };
+  }
+  const WRONG_SHA = "ef".repeat(32);
+
+  ffTest("(52) check, two ai-clip sources, the first with a wrong hash and the second with an attempt id in no line: not-in-spend, naming the second", () => {
+    const { r } = checkTwoAi("two-a", () => [outcomeLine(WRONG_SHA)]);
+    expect(r.err).toBe("not-in-spend: source ai2 has no outcome line of status ok for its attempt_id in --spend\n");
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+  });
+
+  ffTest("(53) check, two ai-clip sources, the first with the line of a still service and the second with a wrong hash: spend-not-video, naming the first", () => {
+    const { r } = checkTwoAi("two-b", (aiSha) => [outcomeLine(aiSha, { service: STILL_SERVICE }), outcomeLine(WRONG_SHA, { attempt_id: OTHER_ATTEMPT })]);
+    expect(r.err).toBe("spend-not-video: source ai has no outcome line of status ok of a service of the AI video group in --spend\n");
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+  });
+
+  ffTest("(54) check, two ai-clip sources, both with a wrong hash: spend-hash-mismatch, naming the first; with both lines right the check passes", () => {
+    const { g, spec, r } = checkTwoAi("two-c", () => [outcomeLine(WRONG_SHA), outcomeLine(WRONG_SHA, { attempt_id: OTHER_ATTEMPT })]);
+    expect(r.err).toBe("spend-hash-mismatch: source ai has no outcome line of status ok with the sha256 of the clip file in --spend\n");
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    const right = writeLines(g.f.spendDir, "two-right.jsonl", [outcomeLine(g.f.aiSha256), outcomeLine(g.f.aiSha256, { attempt_id: OTHER_ATTEMPT })]);
+    const good = check(spec, g.f.clipsDir, g.out, spendArgs([right]));
+    expect(good.err).toBe("");
+    expect(good.code).toBe(0);
   });
 });

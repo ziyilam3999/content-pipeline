@@ -262,6 +262,14 @@ export function aiMixedSpec(takeSha: string, aiSha: string, slug = "ai-mixed"): 
   };
 }
 
+/** aiMixedSpec with a second ai-clip source, ai2, after the first: the same file under
+ *  OTHER_ATTEMPT, played by no piece. */
+export function twoAiSpec(takeSha: string, aiSha: string): ClipEditSpec {
+  const s = aiMixedSpec(takeSha, aiSha);
+  s.sources.push({ ...s.sources[1], id: "ai2", attempt_id: OTHER_ATTEMPT, blur: [], cut: [] });
+  return s;
+}
+
 export interface AiFixture extends SpecFixture {
   /** The sha256 of the AI clip (sha256 is the take's). */
   aiSha256: string;

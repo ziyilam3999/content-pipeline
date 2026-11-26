@@ -25,6 +25,7 @@ import {
   makeZoomFixture,
   mixedSpec,
   outcomeLine,
+  twoAiSpec,
   writeLines,
   zoomSpec,
   type AiFixture,
@@ -1034,5 +1035,45 @@ describe("clip:edit", () => {
     expect(good.err).toBe("");
     expect(good.code).toBe(0);
     expect(good.out).toBe("clip-edit: wrote take-only frames=30 sec=1\n");
+  });
+
+  // ── the order of the spend codes is over all ai-clip sources of the spec ───────────────────
+
+  /** apply of twoAiSpec with a record of `lines(sha256 of the AI clip)`. */
+  function applyTwoAi(lines: (aiSha: string) => unknown[]): { f: AiFixture; spec: string; r: ReturnType<typeof apply> } {
+    const f = aiMixed();
+    const two = twoAiSpec(f.sha256, f.aiSha256);
+    expect(validateSpec(two)).toEqual([]);
+    const spec = writeSpec(f, "two-ai.json", two);
+    return { f, spec, r: apply(f, spendArgs([writeLines(f.spendDir, "record.jsonl", lines(f.aiSha256))]), { spec }) };
+  }
+  const WRONG_SHA = "ef".repeat(32);
+
+  ffTest("(29) two ai-clip sources, the first with a wrong hash and the second with an attempt id in no line: not-in-spend, naming the second", () => {
+    const { f, r } = applyTwoAi(() => [outcomeLine(WRONG_SHA)]);
+    expect(r.err).toBe("not-in-spend: source ai2 has no outcome line of status ok for its attempt_id in --spend\n");
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    expect(fs.readdirSync(f.outDir)).toEqual([]);
+  });
+
+  ffTest("(30) two ai-clip sources, the first with the line of a still service and the second with a wrong hash: spend-not-video, naming the first", () => {
+    const { f, r } = applyTwoAi((aiSha) => [outcomeLine(aiSha, { service: STILL_SERVICE }), outcomeLine(WRONG_SHA, { attempt_id: OTHER_ATTEMPT })]);
+    expect(r.err).toBe("spend-not-video: source ai has no outcome line of status ok of a service of the AI video group in --spend\n");
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    expect(fs.readdirSync(f.outDir)).toEqual([]);
+  });
+
+  ffTest("(31) two ai-clip sources, both with a wrong hash: spend-hash-mismatch, naming the first; with both lines right the spec is cut", () => {
+    const { f, spec, r } = applyTwoAi(() => [outcomeLine(WRONG_SHA), outcomeLine(WRONG_SHA, { attempt_id: OTHER_ATTEMPT })]);
+    expect(r.err).toBe("spend-hash-mismatch: source ai has no outcome line of status ok with the sha256 of the clip file in --spend\n");
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    expect(fs.readdirSync(f.outDir)).toEqual([]);
+    const right = writeLines(f.spendDir, "right.jsonl", [outcomeLine(f.aiSha256), outcomeLine(f.aiSha256, { attempt_id: OTHER_ATTEMPT })]);
+    const good = apply(f, spendArgs([right]), { spec });
+    expect(good.err).toBe("");
+    expect(good.code).toBe(0);
   });
 });
