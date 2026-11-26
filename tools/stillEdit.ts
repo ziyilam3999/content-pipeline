@@ -6,7 +6,8 @@
  *   --item <id> — one item of the plan (one run handles one item)
  *   --out <dir> — where a live run writes the image
  *   --ledger <file> — the spend record
- *   --ceiling-usd <n> — the AI image cap for this run (at most 1)
+ *   --ceiling-usd <n> — a ceiling on the total of the spend record for this run (at most
+ *     PAID_SPEND_CAP_USD of adapters/videogen.ts)
  * Optional:
  *   --in <png or jpeg> — the still to edit; with it the call is an edit, without it text to image
  *   --timeout-seconds <n> — the limit of the call (default 120)

@@ -5,7 +5,8 @@
  *   --plan <file> — the run plan (tools/runway-tryout-plan.json)
  *   --out <dir> — where a live run writes the clip
  *   --ledger <file> — the spend record
- *   --ceiling-usd <n> — the AI video cap for this run
+ *   --ceiling-usd <n> — a ceiling on the total of the spend record for this run (at most
+ *     PAID_SPEND_CAP_USD of adapters/videogen.ts)
  * Optional:
  *   --clip <id> — one clip of the plan
  *   --still <file> — the still image of an image_to_video clip

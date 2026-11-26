@@ -270,7 +270,8 @@ describe("t1 dry run", () => {
     expect(lines[1]).toMatch(
       new RegExp(`^still: item id=ai-4-no-pillars mode=edit model=gemini-2\\.5-flash-image prompt-sha256=[0-9a-f]{64} in-sha256=${sha(PNG_BYTES)} estimate-usd=0\\.040$`),
     );
-    expect(lines[2]).toBe("still: spend group=ai-image spent usd=0.000 ceiling=1 room usd=1.000 room-after usd=0.960");
+    expect(lines[2].startsWith("still: spend group=all spent usd=")).toBe(true);
+    expect(lines[2]).toBe("still: spend group=all spent usd=0.000 ceiling=1 room usd=1.000 room-after usd=0.960");
     expect(mockExecCalls.length).toBe(0); // the default key reader (env, Keychain) never ran
     expect(fake.calls.length).toBe(0);
     expect(readBytes(ctx.ledger)).toBeNull(); // writes nothing
@@ -298,7 +299,7 @@ describe("t1 dry run", () => {
     const fake = new FakeCaller();
     const r = await run(ctx.args({ in: still }), fake);
     expect(r.code).toBe(0);
-    expect(r.out).toContain("still: spend group=ai-image spent usd=0.040 ceiling=1 room usd=0.960 room-after usd=0.920");
+    expect(r.out).toContain("still: spend group=all spent usd=0.040 ceiling=1 room usd=0.960 room-after usd=0.920");
     expect(readBytes(ctx.ledger)).toEqual(before); // byte-equal before and after
   });
 });
@@ -537,10 +538,10 @@ describe("t3 spend lines", () => {
   });
 });
 
-// ── (4) the cap group ai-image, apart from ai-video and paid-media ─────────────────────
+// ── (4) one cap over the whole record ──────────────────────────────────────────────────
 
-describe("t4 cap group", () => {
-  it("a gemini-image attempt line of 0.04 counts 40000 micro-USD in ai-image; ai-video and paid-media stay as before", () => {
+describe("t4 one spend total", () => {
+  it("a gemini-image attempt line of 0.04 counts in the one total with the video and elevenlabs lines", () => {
     const ctx = makeCtx();
     writeLedger(ctx.ledger, [
       { kind: "attempt", service: "gemini-image", cost_usd: 0.04 },
@@ -548,9 +549,7 @@ describe("t4 cap group", () => {
       { kind: "attempt", service: "runway", cost_usd: 12.71 },
       { service: "elevenlabs", cost_usd: 5 },
     ]);
-    expect(vg.readLedgerTotal(ctx.ledger, "ai-image")).toBe(40_000);
-    expect(vg.readLedgerTotal(ctx.ledger, "ai-video")).toBe(18_870_000);
-    expect(vg.readLedgerTotal(ctx.ledger, "paid-media")).toBe(5_000_000);
+    expect(vg.readLedgerTotal(ctx.ledger)).toBe(23_910_000); // 0.04 + 6.16 + 12.71 + 5
   });
 
   it("a record holding a gemini-image line does not refuse in the video:tryout dry run (no ledger-unreadable)", async () => {
@@ -565,7 +564,7 @@ describe("t4 cap group", () => {
     expect(r.err).toBe("");
   });
 
-  it("spent 0.97 plus 0.04 against ceiling 1 refuses over-ceiling (the text names ai-image); 0.96 passes at exactly 1", async () => {
+  it("spent 0.97 plus 0.04 against ceiling 1 refuses over-ceiling (the text names the record total); 0.96 passes at exactly 1", async () => {
     const over = makeCtx();
     writeLedger(over.ledger, [{ kind: "attempt", service: "gemini-image", cost_usd: 0.97 }]);
     const before = readBytes(over.ledger);
@@ -574,7 +573,8 @@ describe("t4 cap group", () => {
     const r = await run(over.args({ in: still }), fake);
     expect(r.code).toBe(2);
     expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
-    expect(r.err).toContain("ai-image");
+    expect(r.err).toContain("spend record total");
+    expect(r.err).not.toMatch(GROUP_WORDS);
     expect(fake.calls.length).toBe(0);
     expect(readBytes(over.ledger)).toEqual(before);
 
@@ -586,16 +586,145 @@ describe("t4 cap group", () => {
     expect(r2.out).toContain("room-after usd=0.000");
   });
 
-  it("the reverse: USD 18.87 of ai-video lines and no gemini-image line passes the dry run at ceiling 1 with spent usd=0.000", async () => {
+  it("the reverse: USD 18.87 of video lines and no gemini-image line refuses the dry run at ceiling 1 with over-ceiling", async () => {
     const ctx = makeCtx();
     writeLedger(ctx.ledger, [
       { kind: "attempt", service: "gemini-omni", cost_usd: 6.16 },
       { kind: "attempt", service: "runway", cost_usd: 12.71 },
     ]);
+    const before = readBytes(ctx.ledger);
     const still = writeStill(ctx.tmp);
-    const r = await run(ctx.args({ in: still }), new FakeCaller());
+    const fake = new FakeCaller();
+    const r = await run(ctx.args({ in: still }), fake);
+    await expectRefusal(r, "over-ceiling", fake, ctx.ledger, before);
+    expect(r.err).toContain("spend record total 18.870 plus estimate 0.040 is above ceiling 1");
+    expect(r.err).not.toMatch(GROUP_WORDS);
+  });
+});
+
+// ── (4b) the one spend cap: the ceiling, the refusals ──────────────────────────────────
+
+/** The words of the old split: no printed line and no refusal text holds one. */
+const GROUP_WORDS = /ai-video|ai-image|paid-media|all paid/;
+
+const spendLine = (service: string, cost: number): Record<string, unknown> => ({ kind: "attempt", service, cost_usd: cost });
+
+describe("t4b one spend cap", () => {
+  it("ceiling limit", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [spendLine("gemini-image", 0.04)]);
+    const before = readBytes(ctx.ledger);
+    const still = writeStill(ctx.tmp);
+    const ok = await run(ctx.args({ in: still, ceiling: "46" }), new FakeCaller());
+    expect(ok.code).toBe(0);
+    expect(ok.out).toContain("ceiling=46 ");
+    for (const ceiling of ["46.01", "47"]) {
+      for (const extra of [[], ["--live"]] as string[][]) {
+        const fake = new FakeCaller();
+        const keyReader = jest.fn(() => KEY);
+        const r = await run(ctx.args({ in: still, ceiling, extra }), fake, keyReader);
+        expect([ceiling, r.code]).toEqual([ceiling, 2]);
+        expect(r.err).toBe("usage --ceiling-usd must be above 0 and at most 46\n");
+        expect(keyReader).not.toHaveBeenCalled();
+        expect(fake.calls.length).toBe(0);
+        expect(readBytes(ctx.ledger)).toEqual(before);
+      }
+    }
+  });
+
+  it("other tools' lines count", async () => {
+    const over = makeCtx();
+    writeLedger(over.ledger, [spendLine("gemini-omni", 20), spendLine("runway", 20), spendLine("elevenlabs", 5.97)]);
+    const before = readBytes(over.ledger);
+    const still = writeStill(over.tmp);
+    for (const extra of [[], ["--live"]] as string[][]) {
+      const fake = new FakeCaller();
+      const keyReader = jest.fn(() => KEY);
+      const r = await run(over.args({ in: still, ceiling: "46", extra }), fake, keyReader);
+      await expectRefusal(r, "over-ceiling", fake, over.ledger, before);
+      expect(r.err).toContain("spend record total 45.970 plus estimate 0.040 is above ceiling 46");
+      expect(r.err).not.toMatch(GROUP_WORDS);
+      expect(keyReader).not.toHaveBeenCalled();
+    }
+
+    const exact = makeCtx();
+    writeLedger(exact.ledger, [spendLine("gemini-omni", 20), spendLine("runway", 20), spendLine("elevenlabs", 5.96)]);
+    const still2 = writeStill(exact.tmp);
+    const r = await run(exact.args({ in: still2, ceiling: "46" }), new FakeCaller());
     expect(r.code).toBe(0);
-    expect(r.out).toContain("still: spend group=ai-image spent usd=0.000 ceiling=1 room usd=1.000 room-after usd=0.960");
+    const spend = r.out.split("\n").find((l) => l.startsWith("still: spend group=all spent usd="));
+    expect(spend).toBe("still: spend group=all spent usd=45.960 ceiling=46 room usd=0.040 room-after usd=0.000");
+    expect(r.out).not.toMatch(GROUP_WORDS);
+  });
+
+  it("other tool's line under the lock", async () => {
+    const ctx = makeCtx();
+    const still = writeStill(ctx.tmp);
+    const fake = new FakeCaller();
+    let after: Buffer | null = null;
+    // the first check passes (no record yet); the key reader plays the other tool's run
+    const keyReader = jest.fn(() => {
+      fs.appendFileSync(ctx.ledger, `${JSON.stringify(spendLine("runway", 46))}\n`);
+      after = readBytes(ctx.ledger);
+      return KEY;
+    });
+    const r = await run(ctx.args({ in: still, ceiling: "46", extra: ["--live"] }), fake, keyReader);
+    expect(keyReader).toHaveBeenCalledTimes(1);
+    expect(r.code).toBe(2);
+    expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
+    expect(r.err).toContain("spend record total 46.000 ");
+    expect(r.err).not.toMatch(GROUP_WORDS);
+    expect(fake.calls.length).toBe(0);
+    expect(after).not.toBeNull();
+    expect(readBytes(ctx.ledger)).toEqual(after); // no attempt line of this run
+    expect(fs.existsSync(`${ctx.ledger}.lock`)).toBe(false);
+  });
+
+  it("ceiling under the spent total", async () => {
+    const ctx = makeCtx();
+    writeLedger(ctx.ledger, [
+      spendLine("gemini-omni", 6.16),
+      spendLine("runway", 12.71),
+      spendLine("gemini-image", 0.44),
+      spendLine("elevenlabs", 5),
+    ]);
+    const before = readBytes(ctx.ledger);
+    const still = writeStill(ctx.tmp);
+    for (const extra of [[], ["--live"]] as string[][]) {
+      const fake = new FakeCaller();
+      const keyReader = jest.fn(() => KEY);
+      const r = await run(ctx.args({ in: still, ceiling: "24", extra }), fake, keyReader);
+      await expectRefusal(r, "over-ceiling", fake, ctx.ledger, before);
+      expect(r.err).toContain("spend record total 24.310 ");
+      expect(r.err).not.toMatch(GROUP_WORDS);
+      expect(keyReader).not.toHaveBeenCalled();
+    }
+  });
+
+  it("unknown service names are refused by still:edit, dry run and live", async () => {
+    const lines: [string, string][] = [
+      ["a made-up name", '{"cost_usd":0.1,"service":"made-up-service"}\n'],
+      ["another letter case", '{"cost_usd":0.1,"service":"Runway"}\n'],
+      ["constructor", '{"cost_usd":0.1,"service":"constructor"}\n'],
+      ["__proto__", '{"cost_usd":0.1,"service":"__proto__"}\n'],
+      ["an empty text", '{"cost_usd":0.1,"service":""}\n'],
+      ["a service that is not a text", '{"cost_usd":0.1,"service":["runway"]}\n'],
+      ["no service field", '{"cost_usd":0.1}\n'],
+    ];
+    for (const [label, text] of lines) {
+      const ctx = makeCtx();
+      fs.writeFileSync(ctx.ledger, text);
+      const before = readBytes(ctx.ledger);
+      const still = writeStill(ctx.tmp);
+      for (const extra of [[], ["--live"]] as string[][]) {
+        const fake = new FakeCaller();
+        const r = await run(ctx.args({ in: still, ceiling: "46", extra }), fake);
+        expect([label, r.code]).toEqual([label, 2]);
+        expect([label, r.err.trim().split(/\s+/)[0]]).toEqual([label, "ledger-unreadable"]);
+        expect([label, fake.calls.length]).toEqual([label, 0]);
+        expect(readBytes(ctx.ledger)).toEqual(before);
+      }
+    }
   });
 });
 
@@ -676,13 +805,13 @@ describe("t6 refusals: usage", () => {
     expect(r.err).toContain("--ceiling-usd must be a plain number");
   });
 
-  it("usage: --ceiling-usd above the cap (1.01) refuses with its own text", async () => {
+  it("usage: --ceiling-usd above the cap (46.01) refuses with its own text", async () => {
     const ctx = makeCtx();
     const still = writeStill(ctx.tmp);
     const fake = new FakeCaller();
-    const r = await run(ctx.args({ in: still, ceiling: "1.01" }), fake);
+    const r = await run(ctx.args({ in: still, ceiling: "46.01" }), fake);
     await expectRefusal(r, "usage", fake, ctx.ledger);
-    expect(r.err).toContain("--ceiling-usd must be above 0 and at most 1");
+    expect(r.err).toContain("--ceiling-usd must be above 0 and at most 46");
   });
 
   it("usage: an option given with no value (--item as the last argument) refuses with its own text", async () => {
@@ -703,11 +832,11 @@ describe("t6 refusals: usage", () => {
     expect(r.err).toContain("--ceiling-usd must be above 0 and at most");
   });
 
-  it("usage: --ceiling-usd 2 (above the cap) refuses with its own text", async () => {
+  it("usage: --ceiling-usd 47 (above the cap) refuses with its own text", async () => {
     const ctx = makeCtx();
     const still = writeStill(ctx.tmp);
     const fake = new FakeCaller();
-    const r = await run(ctx.args({ in: still, ceiling: "2" }), fake);
+    const r = await run(ctx.args({ in: still, ceiling: "47" }), fake);
     await expectRefusal(r, "usage", fake, ctx.ledger);
     expect(r.err).toContain("--ceiling-usd must be above 0 and at most");
   });
@@ -946,7 +1075,8 @@ describe("t10 double checks", () => {
     const r = await run(ctx.args({ in: still }), fake);
     expect(r.code).toBe(2);
     expect(r.err.trim().split(/\s+/)[0]).toBe("over-ceiling");
-    expect(r.err).toContain("ai-image");
+    expect(r.err).toContain("spend record total");
+    expect(r.err).not.toMatch(GROUP_WORDS);
     expect(fake.calls.length).toBe(0);
     expect(readBytes(ctx.ledger)).toEqual(before);
   });

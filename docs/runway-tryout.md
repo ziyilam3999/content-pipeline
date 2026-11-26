@@ -161,6 +161,28 @@ Not tested live. Nothing here was sent to Runway yet.
   2026-11-30 UTC (20% off) and 15.7 list from 2026-12-01; the plan keeps 15.7, so the estimate
   and the cap check over-state the charge by about 25% this week.
 
+## Spend cap
+
+There is one cap, USD 46, over the whole spend record.
+The record is written and read by three tools: `video:gen`, `video:tryout` and `still:edit`.
+Every line of the record counts, whatever tool wrote it.
+`--ceiling-usd` is a ceiling on the total of the spend record for this run, at most 46.
+A value under the total already spent refuses.
+The number sits in `PAID_SPEND_CAP_USD` in `adapters/videogen.ts`.
+The operator raises it when needed.
+
+Two things went with the old split. The USD 1 guard on image spend is gone.
+One tool can now use all the room.
+An unknown service in the record refuses each of the three tools.
+
+Known limit: two adapters make paid calls, write no spend line and check no cap.
+They are `adapters/voice.ts` (ElevenLabs voice, `fetch` at line 135) and
+`adapters/genart.ts` (Gemini art, `fetch` at line 178).
+Their spend is outside this cap until a ticket adds them.
+
+The dated run notes in this file ("against the USD 25 AI video cap", "under the cap") were
+written under the old AI video cap. They stay as history.
+
 ## Tracking
 
 - The spend record lines (attempt ids) in the shared paid-media spend record.
