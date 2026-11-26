@@ -814,8 +814,8 @@ function printUsage(): void {
       "and looked_by names who looked.\n" +
       '"shown" is taken on the lines whose shot list rule is blur, and only under a top-level\n' +
       '"shown" note with four keys: sha256 (the take\'s), video (getspace-level3), clips (its story 1\n' +
-      "clip ids of one phone) and decision (a text with the date, who decided and where that is\n" +
-      "recorded). The cut does not read the note.\n" +
+      "clip ids of one phone) and decision (a text with a YYYY-MM-DD date and a word beside it;\n" +
+      "write in it who decided and where that is recorded). The cut does not read the note.\n" +
       "Honest limit: the tool proves that a person answered every line, not that the answers are true.\n",
   );
 }

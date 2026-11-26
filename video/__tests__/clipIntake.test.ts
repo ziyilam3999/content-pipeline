@@ -1529,6 +1529,15 @@ describe("clip-intake check — shown fails closed", () => {
     expectRefused(outDir, ["kinds-changed"]);
   });
 
+  test("two lines swapped, the blur lines answered shown and no shown note -> kinds-changed alone, no shown key", () => {
+    // the shown lines are not judged while the kinds are out of order: the missing note is not a second reason
+    const { outDir, checklistPath } = setupShown("skc3", () => ({ kinds: SHOWN_ALL, note: undefined }));
+    const c = readJson(checklistPath);
+    [c.lines[3], c.lines[4]] = [c.lines[4], c.lines[3]];
+    fs.writeFileSync(checklistPath, JSON.stringify(c, null, 2) + "\n");
+    expectRefused(outDir, ["kinds-changed"]);
+  });
+
   test("the three new reasons beside a bad answer -> the order bad-answer, shown-not-allowed, shown-no-decision, shown-bad-scope", () => {
     const { outDir } = setupShown("sord", (s) => ({
       kinds: ["own-name", "status-bar-clock"],
