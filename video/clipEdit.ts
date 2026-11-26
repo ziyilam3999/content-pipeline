@@ -114,7 +114,7 @@ const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(mp4|mov)$/;
 const SHA_RE = /^[0-9a-f]{64}$/;
 const COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
-/** An attempt id as the paid tools write it (randomUUID): 36 characters of lower-case hex and dashes. */
+/** An attempt id as the paid tools write it (randomUUID): lower-case hex in the layout 8-4-4-4-12. */
 const ATTEMPT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -277,7 +277,7 @@ export function validateSpec(spec: unknown): string[] {
       if (ai === true) {
         const aid: unknown = s.attempt_id;
         if (typeof aid !== "string" || !ATTEMPT_ID_RE.test(aid)) {
-          add("bad-attempt-id", `${where}.attempt_id is ${show(aid)}, not 36 characters of lower-case hex and dashes`);
+          add("bad-attempt-id", `${where}.attempt_id is ${show(aid)}, not lower-case hex in the layout 8-4-4-4-12`);
         }
       } else if (ai === false && s.attempt_id !== undefined) {
         add("attempt-on-recorded", `${where} is a recorded-clip source and holds attempt_id`);

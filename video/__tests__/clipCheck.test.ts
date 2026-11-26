@@ -771,4 +771,11 @@ describe("clip:edit check", () => {
     expect(good.err).toBe("");
     expect(good.code).toBe(0);
   });
+
+  ffTest("(55) check, two ai-clip sources, the first with the line of a still service and the second with an attempt id in no line: not-in-spend, naming the second (before spend-not-video)", () => {
+    const { r } = checkTwoAi("two-d", (aiSha) => [outcomeLine(aiSha, { service: STILL_SERVICE })]);
+    expect(r.err).toBe("not-in-spend: source ai2 has no outcome line of status ok for its attempt_id in --spend\n");
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+  });
 });

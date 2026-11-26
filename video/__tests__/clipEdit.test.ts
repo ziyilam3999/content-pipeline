@@ -697,6 +697,10 @@ describe("clip:edit", () => {
       (over: Record<string, unknown>): ((s: ClipEditSpec) => void) =>
       (s) =>
         void Object.assign(ai(s), over);
+    // The 32 hex characters of AI_ATTEMPT with the dashes moved (8-8-4-4-8): 36 characters of
+    // lower-case hex and dashes, in a layout other than 8-4-4-4-12
+    const movedDashes = "1a2b3c4d-5e6f4a7b-8c9d-0e1f-2a3b4c5d";
+    expect(movedDashes).toMatch(/^[0-9a-f-]{36}$/);
     const faults: [string, (s: ClipEditSpec) => void][] = [
       ["bad-kind", set({ kind: "ai" })],
       ["bad-kind", set({ kind: "AI-CLIP" })],
@@ -706,6 +710,7 @@ describe("clip:edit", () => {
       ["bad-attempt-id", set({ attempt_id: AI_ATTEMPT.toUpperCase() })],
       ["bad-attempt-id", set({ attempt_id: AI_ATTEMPT.slice(1) })], // 35 characters
       ["bad-attempt-id", set({ attempt_id: AI_ATTEMPT.replace(/-/g, "") })], // 32 characters
+      ["bad-attempt-id", set({ attempt_id: movedDashes })], // 36 characters, the dashes moved
       ["bad-attempt-id", set({ attempt_id: 42 })],
       ["attempt-on-recorded", set({ kind: "recorded-clip" })],
       ["attempt-on-recorded", (s) => void delete ai(s).kind],
@@ -1075,5 +1080,13 @@ describe("clip:edit", () => {
     const good = apply(f, spendArgs([right]), { spec });
     expect(good.err).toBe("");
     expect(good.code).toBe(0);
+  });
+
+  ffTest("(32) two ai-clip sources, the first with the line of a still service and the second with an attempt id in no line: not-in-spend, naming the second (before spend-not-video)", () => {
+    const { f, r } = applyTwoAi((aiSha) => [outcomeLine(aiSha, { service: STILL_SERVICE })]);
+    expect(r.err).toBe("not-in-spend: source ai2 has no outcome line of status ok for its attempt_id in --spend\n");
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    expect(fs.readdirSync(f.outDir)).toEqual([]);
   });
 });

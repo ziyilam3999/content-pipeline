@@ -83,8 +83,8 @@ A source's crop feeds the same checks as `output.crop_top`: `box-above-crop`, `c
 The codes of the source kind. `validateSpec` gives the first four (apply and check exit 2):
 
 - `bad-kind` — `kind` is not `recorded-clip` or `ai-clip`.
-- `bad-attempt-id` — an `ai-clip` source without an `attempt_id` of 36 characters of lower-case
-  hex and dashes.
+- `bad-attempt-id` — an `ai-clip` source whose `attempt_id` is missing, or is not lower-case hex
+  in the layout 8-4-4-4-12.
 - `attempt-on-recorded` — a `recorded-clip` source (the key absent or written out) holds `attempt_id`.
 - `crop-on-ai` — an `ai-clip` source holds a `crop_top` other than 0.
 - `spend-missing` — the spec holds an `ai-clip` source and `--spend` names no file.
