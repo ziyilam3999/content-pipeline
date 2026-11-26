@@ -1187,6 +1187,34 @@ describe("clip-intake shown — the fixed values are held to the storyboard file
     }
     expect(sideOf.get("C-11")).toBe("giver");
   });
+
+  test("PIN (5) the Hide cell of an allowed clip starts with blur and ends with the shown-note sentence; the other rows hold no words of it", () => {
+    // the sentence the shot list adds to the Hide cell of an allowed clip (A59)
+    const TAIL =
+      "; in the level three video an item may stay readable when the check list of its take holds a shown note for this video and this clip; the other videos cut from this take keep the blur";
+    const rows = tableCells(sectionOf(shotListText, "## Clips"));
+    const head = rows[0];
+    const iClip = head.indexOf("Clip");
+    const iHide = head.indexOf("Hide");
+    const hideOf = new Map(rows.slice(2).map((r) => [r[iClip], r[iHide]]));
+    const shownIds = Object.keys(SHOWN_CLIPS);
+    expect(shownIds.length).toBeGreaterThanOrEqual(5);
+    let withSentence = 0;
+    let withoutWords = 0;
+    for (const [id, hide] of hideOf) {
+      if (shownIds.includes(id)) {
+        withSentence++;
+        expect([id, hide.startsWith("blur: "), hide.endsWith(TAIL)]).toEqual([id, true, true]);
+      } else {
+        withoutWords++;
+        for (const word of ["shown note", "level three", "readable"]) expect([id, hide]).toEqual([id, expect.not.stringContaining(word)]);
+      }
+    }
+    // a clip added to SHOWN_CLIPS with its shot list row left as it is is read under the first branch
+    expect(withSentence).toBe(shownIds.length);
+    expect(withSentence).toBeGreaterThanOrEqual(5);
+    expect(withoutWords).toBeGreaterThanOrEqual(1);
+  });
 });
 
 const SHOWN_FIVE = ["own-name", "other-user-name-rating-photo", "map-position", "transaction-id", "credit-balance"];
