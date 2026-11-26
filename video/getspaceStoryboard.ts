@@ -17,7 +17,7 @@
  *     checkAiShots). The asset screen is level3 only; still and synth are refused in all four.
  *   - an AI list First frame cell is none, last frame of an earlier AI clip, or start still <Name>: a row of the
  *     optional Start stills table (Name, Shows, Sha256 text); the checker holds the shape, opens no picture.
- *   - the shot list holds the 15 check-list lines, the five fixed answers, at most 12 clips, both sides of a
+ *   - the shot list holds the 15 check-list lines, the five fixed answers, at most 13 clips, both sides of a
  *     take, and a Hide cell that names blur and the fixed-list words for the facts a clip shows.
  *   - an on-screen fact id is a fact the beat's clip shows; with all three storyboards present, each clip is
  *     used by a beat.
@@ -59,7 +59,7 @@ const SNAPSHOT_SCHEMA = "getspace-facts/1";
 const FACT_KEYS = ["id", "section", "on_screen", "open", "numbers"];
 const SECTIONS = ["seek", "give", "helps", "open"];
 const ON_SCREEN = ["yes", "care", "never", "no"];
-const MAX_CLIPS = 12;
+const MAX_CLIPS = 13;
 
 const STORYBOARD_HEADER = "| # | Beat | Dur | Asset | Clip | On-screen text | Narration |";
 const AI_HEADER = "| Id | Sec | Shows | First frame | Prompt |";

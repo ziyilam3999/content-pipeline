@@ -73,6 +73,7 @@ export const SHOWN_CLIPS: Record<string, "seeker" | "giver"> = {
   "C-01": "seeker",
   "C-05": "seeker",
   "C-06": "seeker",
+  "C-13": "seeker",
   "C-07": "seeker",
   "C-11": "giver",
 };

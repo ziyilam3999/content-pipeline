@@ -17,7 +17,7 @@ target_runtime_sec: 86
 | 4 | Home tile | 4 | clip | C-01 | Find Parking [S-01] | With short credits or an unpaid penalty, a sheet opens instead. [S-01] |
 | 5 | Match | 10 | clip | C-05 | 20 seconds [S-08] Choose This or Search Again [S-09] Distance in metres [H-15] | A proposed match counts down, and the app accepts it by itself at the end. [S-08] The seeker can tap Choose This or Search Again. [S-09] It also shows the distance in metres. [H-15] |
 | 6 | Head over | 8 | clip | C-06 | Head to the giver [S-10] | Next, the screen says a giver was matched. [S-10] It asks the driver to head to the giver's location and shows an estimated arrival time. [S-10] |
-| 7 | Pillar notes | 8 | screen | SCR-1 | Level, Pillar Number, Pillar Colour, Zone [G-04] You are nearby [S-11] | The seeker sees the giver's pillar notes on the match. [G-04] Once arrival is near, the text changes to You are nearby. [S-11] |
+| 7 | Pillar notes | 8 | clip | C-13 | Parking Level, Pillar Number, Pillar Color, Zone [G-04] | The seeker sees the giver's pillar notes on the match. [G-04] |
 | 8 | Giver's car | 4 | ai | AI-2 | - | The giver is told the seeker is nearby once the arrival is close. [G-11] |
 | 9 | Red car returns | 5 | ai | AI-3 | - | - |
 | 10 | A car leaves | 10 | ai | AI-4 | - | The giver's Confirmation screen can then say Swap successful and ask the giver to wait for the seeker to confirm. [G-12] |

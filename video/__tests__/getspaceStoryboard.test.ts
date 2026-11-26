@@ -141,6 +141,35 @@ describe("getspace storyboards - the real tree and the fixture", () => {
   });
 });
 
+describe("getspace storyboards - the clip cap", () => {
+  const real = path.join(__dirname, "..", "..", "storyboards");
+
+  /** A copy of the real folder with its files only. */
+  function copyOfRealFolder(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "getspace-cap-"));
+    for (const e of fs.readdirSync(real, { withFileTypes: true })) {
+      if (e.isFile()) fs.copyFileSync(path.join(real, e.name), path.join(dir, e.name));
+    }
+    return dir;
+  }
+
+  test("the clip cap", () => {
+    const dir = copyOfRealFolder();
+    try {
+      // the C-13 row once more, under the id C-14
+      const list = path.join(dir, SHOT);
+      const lastRow = fs.readFileSync(list, "utf8").split("\n").filter((l) => l.startsWith("| C-13 |")).pop() ?? "";
+      fs.appendFileSync(list, rep(lastRow, "| C-13 |", "| C-14 |"));
+      expect(checkGetspaceStoryboards({ storyboardRoot: dir })).toContain("FAIL getspace-shot-list.md: 14 clips, at most 13");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    // the real tree holds 13 rows
+    const out = checkGetspaceStoryboards({ storyboardRoot: real });
+    expect(out.some((l) => l.includes("at most"))).toBe(false);
+  });
+});
+
 type Plant = [string, (f: Files) => void, string];
 
 const svc = ["g", "s-ab"].join("");

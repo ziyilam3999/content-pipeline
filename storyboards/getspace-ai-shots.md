@@ -18,7 +18,6 @@
 
 | Id | Shows | Facts shown |
 |----|-------|-------------|
-| SCR-1 | The seeker's match screen with the giver's level, pillar number, pillar colour and zone notes, then the You are nearby text, all made-up values | G-04, S-11 |
 
 ## Start stills
 
