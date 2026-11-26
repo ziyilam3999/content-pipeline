@@ -1,4 +1,4 @@
-# clip:edit — cut sources into a silent 9:16 video (A41, A57)
+# clip:edit — cut sources into a silent video (A41, A57)
 
 Two verbs, both reading one spec file (schema `clip-edit/1`) and the source clips:
 
@@ -7,8 +7,9 @@ Two verbs, both reading one spec file (schema `clip-edit/1`) and the source clip
 
 `apply` writes `<slug>.mp4`, `<slug>.edit.json` and a contact sheet under `review/` in `--out`.
 It needs `--clips` and `--out` to be outside any git work tree. `check` reads the mp4 from
-outside, writes nothing, and prints one `PASS` or `FAIL` line per part. Exit 2 is a refusal,
-exit 1 a failed part.
+outside, writes nothing, and prints one `PASS` or `FAIL` line per part; on an mp4 whose size
+differs from the spec's output size, the `shape` line is the one part line printed for that
+video. Exit 2 is a refusal, exit 1 a failed part.
 
 ## The spec
 
@@ -39,7 +40,7 @@ No new flags: `apply` and `check` take the flags above.
 
 New codes of `validateSpec` (apply and check exit 2):
 
-- `bad-crop` — a source's `crop_top` is odd, negative, not a finite number, or not below the source height.
+- `bad-crop` — a source's `crop_top` is not an even whole number, is negative, or is not below the source height.
 - `zoom-on-still` — `zoom_to` on a held-frame piece.
 - `bad-zoom` — `zoom_to` is not a finite number, not above 1, above 1.25, or the piece has fewer than 2 output frames.
 - `zoom-with-blur` — `zoom_to` on a piece whose source has a blur box (the blur proof of the check maps boxes without a zoom).
